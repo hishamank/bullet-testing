@@ -109,3 +109,29 @@ first — the trade-off was already considered.
   shape) read worse and degrade jump-to-definition for the web client. Four small honest
   duplications beat one clever abstraction across four sites. Do not re-propose. Revisit only if a
   fifth/sixth entity lands.
+
+## apps/web
+
+PR #5 was a clean bill of health — nothing rejected. The one clean win (dropping the unused
+`lucide-react` dependency) was **applied**, not deferred. The two items below were deferred as-is.
+
+### Deferred
+
+- **`API_URL` default duplicates `.env.example`** — `apps/web/lib/trpc.tsx`
+  (the `process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'` fallback).
+  Finding: the `'http://localhost:3001'` default lives in code *and* is pinned in
+  `apps/web/.env.example` — two sources of truth for the same value, via a silent env fallback that
+  papers over a missing-env case.
+  Why deferred: harmless (and convenient) for a local scaffold — the reviewer rated it
+  consider-only, no change required. Making `.env`/`.env.local` the single source (and letting an
+  absent var surface loudly) is a behavior change out of proportion to a scaffold default. Left with
+  an inline `TODO(review)` marker. Revisit when web grows real environment/config handling.
+
+- **Dead `.dark` token block** — `apps/web/app/globals.css` (the full `.dark { … }` token set plus
+  `@custom-variant dark`).
+  Finding: the complete dark-mode token set ships, but `app/layout.tsx` never sets a `dark` class or
+  mounts a theme provider, so the tokens are inert today.
+  Why deferred: this is the *stock* shadcn-init output — the canonical token set the design tool
+  expects — so it is standard rather than hand-rolled, and deleting it would diverge from what
+  shadcn regenerates. Left in place with an inline `/* TODO(review) */` marker; do NOT delete.
+  Revisit if/when a dark-mode trigger (theme provider or `dark` class) actually lands.

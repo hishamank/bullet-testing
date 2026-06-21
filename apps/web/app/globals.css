@@ -24,6 +24,9 @@
   --ring: oklch(0.708 0 0);
 }
 
+/* TODO(review): dead dark-mode token block — stock shadcn output, but the layout never
+   sets a `dark` class or theme provider, so these tokens are inert today. Kept intentionally
+   (the design tool expects the canonical set); do not delete. — see REVIEW-BACKLOG.md */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

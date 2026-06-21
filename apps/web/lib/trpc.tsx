@@ -15,6 +15,9 @@ import { useState } from 'react'
 
 export const { TRPCProvider, useTRPC } = createTRPCContext<AppRouter>()
 
+// TODO(review): the 'http://localhost:3001' default duplicates the same value pinned in
+// .env.example — two sources of truth via a silent env fallback. Harmless for a local
+// scaffold; revisit to make .env the single source. — see REVIEW-BACKLOG.md
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
 function makeQueryClient() {
