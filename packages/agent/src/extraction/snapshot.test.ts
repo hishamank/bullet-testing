@@ -46,7 +46,16 @@ describe('buildSnapshot', () => {
     updateTask(db, done.id, { status: 'done' })
 
     const snap = buildSnapshot({ db }, ownerId)
-    expect(snap.trackers).toEqual([{ id: expect.any(String), name: 'mood', input_type: 'scale' }])
+    // The snapshot also carries the tracker's full config so the resolver can validate/clamp an
+    // appended entry value against the definition's bounds (@bullet/db defers that check to us).
+    expect(snap.trackers).toEqual([
+      {
+        id: expect.any(String),
+        name: 'mood',
+        input_type: 'scale',
+        config: { input_type: 'scale', min: 1, max: 5 },
+      },
+    ])
     // Only the OPEN (todo/in_progress) task is included; the done one is excluded.
     // The snapshot carries the full mutable task fields (notes/due_at/priority) so the resolver
     // can build a mark-done UPDATE payload that satisfies the apply engine's INSERT-schema re-check.

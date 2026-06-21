@@ -22,6 +22,11 @@ export interface ProcessResult {
   suggestionIds: string[]
   /** Ids of the suggestions auto-applied (tier 'auto'). */
   appliedIds: string[]
+  /**
+   * Ids of 'auto'-tier suggestions whose auto-apply FAILED and so remain pending (fail-soft). A
+   * non-empty list means some records degraded to normal pending suggestions instead of applying.
+   */
+  failedAutoApplyIds: string[]
   /** Count of candidates intentionally skipped (durable_fact / out-of-scope). */
   skipped: number
 }
@@ -68,14 +73,18 @@ export async function processExtractJob(deps: AgentDeps, job: Job): Promise<Proc
   }
 
   // 5) Auto-apply the 'auto'-tier suggestions. acceptSuggestion re-validates against live state;
-  // if one fails it stays pending (surfaced for the user) rather than failing the whole job.
+  // if one fails it stays pending (degrades to a normal suggestion) rather than failing the whole
+  // job. We still RECORD the failure (failedAutoApplyIds) instead of swallowing it, so it is
+  // observable on the result and the 'extraction:complete' event (for the Task 4 server/SSE).
   const appliedIds: string[] = []
+  const failedAutoApplyIds: string[] = []
   for (const id of autoIds) {
     try {
       acceptSuggestion(deps.db, id)
       appliedIds.push(id)
     } catch {
       // Leave it pending; a record that no longer applies cleanly becomes a normal suggestion.
+      failedAutoApplyIds.push(id)
     }
   }
 
@@ -84,7 +93,8 @@ export async function processExtractJob(deps: AgentDeps, job: Job): Promise<Proc
     bulletId: bullet.id,
     suggestionIds,
     appliedIds,
+    failedAutoApplyIds,
   })
 
-  return { suggestionIds, appliedIds, skipped }
+  return { suggestionIds, appliedIds, failedAutoApplyIds, skipped }
 }

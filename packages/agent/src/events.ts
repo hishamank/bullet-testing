@@ -17,6 +17,13 @@ export interface ExtractionCompleteEvent {
   suggestionIds: string[]
   /** Ids of the suggestions that were auto-applied (tier 'auto'). */
   appliedIds: string[]
+  /**
+   * Ids of 'auto'-tier suggestions whose auto-apply FAILED (e.g. the target was deleted between
+   * persist and apply). These degrade to normal pending suggestions — the product behavior stays
+   * fail-soft — but we SURFACE them here (instead of swallowing) so the server/SSE can observe it.
+   * Empty on a clean run.
+   */
+  failedAutoApplyIds: string[]
 }
 
 /** Payload emitted when a bullet's extraction job fails. */

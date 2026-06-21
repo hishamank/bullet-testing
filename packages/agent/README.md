@@ -57,8 +57,11 @@ global, opens its own DB, or reads `process.env` deep in the pipeline.
 
 ### Extraction — `src/extraction/*`
 
-- `ExtractionSnapshot` = `{ trackers: {id,name,input_type}[]; openTasks: {id,title,status}[] }` —
-  active tracker DEFINITIONS + OPEN (todo/in_progress) tasks. `buildSnapshot(deps, ownerId)`.
+- `ExtractionSnapshot` = `{ trackers: {id,name,input_type,config}[]; openTasks: {id,title,status,
+  notes,due_at,priority}[] }` — active tracker DEFINITIONS + OPEN (todo/in_progress) tasks.
+  `buildSnapshot(deps, ownerId)`. The model only sees `name`/`input_type` (and task `title`/
+  `status`); the extra fields back the resolver: a tracker's `config` lets it validate/clamp an
+  appended entry value (see §4.4), and a task's mutable fields back the mark-done UPDATE payload.
 - `extractionResponseSchema` (zod) = `{ candidates: Candidate[] }`. A `Candidate` =
   `{ kind, orientation, text, fields, referenceName?, confidence }`. The Ollama `format`
   JSON-schema (`extractionJsonSchema`) is **derived from this zod schema** via
@@ -93,6 +96,15 @@ never drop the data to indecision. A match is "confident" at fuse score ≥ `0.6
 perfect). For append/update the final `confidence` is the **mean of the model confidence and the
 fuse score**, so the number is explainable.
 
+> **Tracker-entry value validation (the agent owns this check).** @bullet/db's apply engine
+> explicitly DEFERS validating an appended entry `value` against the parent tracker's config to the
+> resolver (the only layer holding the tracker). So on the `append` path `resolveCandidates` coerces
+> by `input_type` AND validates/clamps against `config`: `scale` clamps to `[min, max]`; `number`
+> clamps to `min`/`max` when present; `multi_select` filters to the valid option subset; `boolean`/
+> `text` pass through. A `single_select` value outside the option set cannot be salvaged — rather
+> than emit a broken entry, the candidate **falls back to an UNLINKED activity create** (activity-
+> first: the data is preserved, never lost). The tracker's `config` is carried on `SnapshotTracker`.
+
 #### §4.5 tier policy — `assignTier(targetKind, operation, confidence, config)`
 
 - **DEFINITION creates** (`target_kind ∈ DEFINITION_TARGET_KINDS`, i.e. `tracker`): **NEVER
@@ -125,8 +137,10 @@ fuse score**, so the number is explainable.
 
 - `processExtractJob(deps, job)` — load bullet → `buildSnapshot` → `extractCandidates` →
   `resolveCandidates` → persist each as a Suggestion (PROVENANCE from the bullet) → **auto-apply**
-  the `auto`-tier ones via `acceptSuggestion` (which re-validates against current state). Emits
-  `extraction:complete`. Returns `{ suggestionIds, appliedIds, skipped }`.
+  the `auto`-tier ones via `acceptSuggestion` (which re-validates against current state). A failed
+  auto-apply is **fail-soft** (the suggestion degrades to a normal pending one and the job still
+  completes) but is **surfaced, not swallowed** — its id is collected in `failedAutoApplyIds`.
+  Emits `extraction:complete`. Returns `{ suggestionIds, appliedIds, failedAutoApplyIds, skipped }`.
 - `createExtractionWorker(deps)` — the **sole consumer** of `extract_bullet` jobs (concurrency is
   strictly **1**). `start(intervalMs)` / `stop()` (polling loop, re-entrancy-guarded) and
   `drain()` (process all queued jobs, for tests). Claims one job at a time via the @bullet/db jobs
@@ -137,7 +151,9 @@ fuse score**, so the number is explainable.
 
 Events (subscribe via `deps.emitter`, type-exported as `AgentEmitter` / `AgentEvents`):
 
-- `extraction:complete` `{ jobId, bulletId, suggestionIds, appliedIds }`
+- `extraction:complete` `{ jobId, bulletId, suggestionIds, appliedIds, failedAutoApplyIds }` —
+  `failedAutoApplyIds` lists `auto`-tier suggestions whose auto-apply failed and degraded to
+  pending (empty on a clean run), so the server/SSE can observe a silent fail-soft.
 - `extraction:error` `{ jobId, bulletId, error }`
 
 ### Reconciliation — `src/reconcile/*` (§4.7)

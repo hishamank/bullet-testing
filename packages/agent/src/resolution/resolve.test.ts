@@ -61,7 +61,14 @@ describe('orientation routing', () => {
 
   test('happened + strong tracker match → APPEND a tracker_entry with target_id', () => {
     const snapshot: ExtractionSnapshot = {
-      trackers: [{ id: 'tracker-1', name: 'mood', input_type: 'scale' }],
+      trackers: [
+        {
+          id: 'tracker-1',
+          name: 'mood',
+          input_type: 'scale',
+          config: { input_type: 'scale', min: 1, max: 5 },
+        },
+      ],
       openTasks: [],
     }
     const { suggestions } = resolveCandidates(
@@ -165,6 +172,101 @@ describe('orientation routing', () => {
   })
 })
 
+describe('tracker_entry value validation against the tracker config', () => {
+  test('a scale entry above max is CLAMPED to max', () => {
+    const snapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 'tracker-1',
+          name: 'mood',
+          input_type: 'scale',
+          config: { input_type: 'scale', min: 1, max: 5 },
+        },
+      ],
+      openTasks: [],
+    }
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'mood was amazing',
+          referenceName: 'mood',
+          fields: { value: 9 },
+        }),
+      ],
+      snapshot,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('tracker_entry')
+    // 9 on a 1–5 scale is clamped to the max (5), not persisted unchecked.
+    expect(s.payload.value).toBe(5)
+  })
+
+  test('a single_select with an out-of-set value falls back to an UNLINKED activity', () => {
+    const snapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 'tracker-1',
+          name: 'workout',
+          input_type: 'single_select',
+          config: { input_type: 'single_select', options: ['run', 'lift', 'swim'] },
+        },
+      ],
+      openTasks: [],
+    }
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'did yoga',
+          referenceName: 'workout',
+          fields: { value: 'yoga' },
+        }),
+      ],
+      snapshot,
+      config,
+    )
+    const s = first(suggestions)
+    // The invalid select value is NOT emitted as a broken entry; the data is preserved as an
+    // UNLINKED activity (activity-first).
+    expect(s.target_kind).toBe('activity')
+    expect(s.operation).toBe('create')
+    expect(s.target_id).toBeNull()
+    expect(s.payload.tracker_id).toBeNull()
+  })
+
+  test('a multi_select keeps ONLY the values in the option set', () => {
+    const snapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 'tracker-1',
+          name: 'symptoms',
+          input_type: 'multi_select',
+          config: { input_type: 'multi_select', options: ['cough', 'fever', 'fatigue'] },
+        },
+      ],
+      openTasks: [],
+    }
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'had a cough and a headache',
+          referenceName: 'symptoms',
+          fields: { value: ['cough', 'headache', 'fatigue'] },
+        }),
+      ],
+      snapshot,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('tracker_entry')
+    // 'headache' is not an option → dropped; the valid subset is kept.
+    expect(s.payload.value).toEqual(['cough', 'fatigue'])
+  })
+})
+
 describe('tier assignment (§4.5)', () => {
   test('tracker definition is NEVER auto, even at confidence 1', () => {
     const { suggestions } = resolveCandidates(
@@ -237,7 +339,14 @@ describe('tier assignment (§4.5)', () => {
 describe('confidence combination', () => {
   test('append confidence blends model confidence with the fuse match score', () => {
     const snapshot: ExtractionSnapshot = {
-      trackers: [{ id: 'tracker-1', name: 'mood', input_type: 'scale' }],
+      trackers: [
+        {
+          id: 'tracker-1',
+          name: 'mood',
+          input_type: 'scale',
+          config: { input_type: 'scale', min: 1, max: 5 },
+        },
+      ],
       openTasks: [],
     }
     const { suggestions } = resolveCandidates(

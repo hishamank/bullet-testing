@@ -20,7 +20,14 @@ describe('extraction schema → format', () => {
 describe('buildExtractionPrompt', () => {
   test('embeds the bullet text and the inlined snapshot', () => {
     const messages = buildExtractionPrompt('ran 5k', {
-      trackers: [{ id: 't1', name: 'mood', input_type: 'scale' }],
+      trackers: [
+        {
+          id: 't1',
+          name: 'mood',
+          input_type: 'scale',
+          config: { input_type: 'scale', min: 1, max: 5 },
+        },
+      ],
       openTasks: [
         {
           id: 'k1',

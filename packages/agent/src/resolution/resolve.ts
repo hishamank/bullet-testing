@@ -26,11 +26,12 @@ import type {
   SuggestionPayload,
   SuggestionTier,
   TargetKind,
+  TrackerConfig,
   TrackerInputType,
 } from '@bullet/core'
 import type { AgentConfig } from '../config'
 import type { Candidate } from '../extraction/schema'
-import type { ExtractionSnapshot, SnapshotTask } from '../extraction/snapshot'
+import type { ExtractionSnapshot, SnapshotTask, SnapshotTracker } from '../extraction/snapshot'
 import { type Match, matchOpenTask, matchTracker } from './match'
 import { assignTier } from './tier'
 
@@ -163,9 +164,15 @@ function resolveHappened(
   const trackerScore = trackerHit?.score ?? 0
   const taskScore = taskHit?.score ?? 0
 
-  // A quantified reading + strong tracker match → append a tracker_entry.
-  if (trackerHit && trackerScore >= MATCH_LINK_THRESHOLD && trackerScore >= taskScore) {
-    return appendTrackerEntry(candidate, trackerHit, config)
+  // A quantified reading + strong tracker match → append a tracker_entry — BUT only if the
+  // value can be made valid for the tracker's config. If not (e.g. a single_select value outside
+  // the option set), we do NOT emit a broken entry: we fall through to activity-first below so
+  // the data is preserved as an UNLINKED activity create rather than lost.
+  const trackerMatched =
+    !!trackerHit && trackerScore >= MATCH_LINK_THRESHOLD && trackerScore >= taskScore
+  if (trackerHit && trackerMatched) {
+    const entry = appendTrackerEntry(candidate, trackerHit, config)
+    if (entry) return entry
   }
 
   // A strong OPEN-TASK match → mark that task done (mutate an existing instance).
@@ -174,25 +181,39 @@ function resolveHappened(
   }
 
   // Otherwise an action with no confident match → create an activity. If there is a tracker
-  // match that is present-but-weak we still leave it UNLINKED (activity-first; never guess a
-  // link we are not confident about).
-  return createActivity(candidate, trackerHit, config)
+  // match that is present-but-weak we leave it UNLINKED (activity-first; never guess a link we
+  // are not confident about). And if the tracker matched STRONGLY but the append fell through
+  // (its value was invalid for that tracker's config), we ALSO leave it unlinked — linking to a
+  // tracker that rejected the value would be misleading; we preserve the data, not the bad link.
+  const linkHit = trackerMatched ? undefined : trackerHit
+  return createActivity(candidate, linkHit, config)
 }
 
-/** happened + strong tracker → append a tracker_entry under the matched tracker. */
+/**
+ * happened + strong tracker → append a tracker_entry under the matched tracker.
+ *
+ * Returns `null` when the candidate value cannot be made valid for the tracker's config (e.g. a
+ * `single_select` value not in the option set). The caller then falls back to an UNLINKED
+ * activity create so the data is never lost (activity-first).
+ */
 function appendTrackerEntry(
   candidate: Candidate,
-  trackerHit: Match<{ id: string; name: string; input_type: TrackerInputType }>,
+  trackerHit: Match<SnapshotTracker>,
   config: AgentConfig,
-): ResolvedSuggestion {
-  const confidence = clamp01(combine(candidate.confidence, trackerHit.score))
+): ResolvedSuggestion | null {
   const value = coerceEntryValue(candidate.fields, trackerHit.item.input_type)
+  // Validate/clamp against the tracker's config (@bullet/db defers this to us — see snapshot.ts).
+  // `null` means "no valid value for this tracker" → caller falls back to activity-first.
+  const validated = validateEntryValue(value, trackerHit.item.config)
+  if (validated === null) return null
+
+  const confidence = clamp01(combine(candidate.confidence, trackerHit.score))
   const payload: SuggestionPayload = {
     // `tracker_id` is part of the tracker_entry INSERT schema, so the apply engine's
     // re-validation (which runs BEFORE it wires tracker_id from target_id) requires it present.
     // The apply engine overrides it from target_id, so the two always agree.
     tracker_id: trackerHit.item.id,
-    value,
+    value: validated,
     logged_at: timestampField(candidate.fields, ['logged_at', 'occurred_at'], nowMs()),
   }
   return {
@@ -241,7 +262,7 @@ function markTaskDone(
 /** happened + no confident match → create an activity (linked only if confident, else unlinked). */
 function createActivity(
   candidate: Candidate,
-  trackerHit: Match<{ id: string; name: string; input_type: TrackerInputType }> | undefined,
+  trackerHit: Match<SnapshotTracker> | undefined,
   config: AgentConfig,
 ): ResolvedSuggestion {
   // Only link if the tracker match is confident; otherwise leave unlinked (activity-first).
@@ -423,5 +444,49 @@ function coerceEntryValue(
     default:
       // single_select / text → a string value.
       return typeof raw === 'string' ? raw : raw === undefined ? '' : String(raw)
+  }
+}
+
+/**
+ * Validate/clamp a coerced entry value against the PARENT tracker's `config` (the agent is the
+ * documented owner of this check — @bullet/db's apply engine defers it to us; see snapshot.ts).
+ *
+ * Returns the made-valid value, or `null` when the value cannot be salvaged for this tracker
+ * (so the caller can fall back to an UNLINKED activity rather than emit a broken entry):
+ *
+ *  - `scale`         → clamp to [min, max].
+ *  - `number`        → clamp to min/max when present (one-sided if only one is set).
+ *  - `single_select` → value must be in `options`, else `null` (fall back to activity-first).
+ *  - `multi_select`  → keep only options in the set (a valid subset); `[]` is a valid empty entry.
+ *  - `boolean`/`text`→ unchanged.
+ */
+function validateEntryValue(
+  value: number | string | boolean | string[],
+  config: TrackerConfig,
+): number | string | boolean | string[] | null {
+  switch (config.input_type) {
+    case 'scale': {
+      if (typeof value !== 'number') return null
+      return Math.max(config.min, Math.min(config.max, value))
+    }
+    case 'number': {
+      if (typeof value !== 'number') return null
+      let n = value
+      if (config.min !== undefined) n = Math.max(config.min, n)
+      if (config.max !== undefined) n = Math.min(config.max, n)
+      return n
+    }
+    case 'single_select': {
+      // A single_select with a value outside the option set cannot be made valid → fall back.
+      return typeof value === 'string' && config.options.includes(value) ? value : null
+    }
+    case 'multi_select': {
+      // Keep only the values present in the option set (a valid, possibly-empty, subset).
+      const arr = Array.isArray(value) ? value : []
+      return arr.filter((v) => config.options.includes(v))
+    }
+    default:
+      // boolean / text — no config-driven bounds to enforce.
+      return value
   }
 }

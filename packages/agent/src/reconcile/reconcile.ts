@@ -56,6 +56,11 @@ export interface ReconcileResult {
   newSuggestionIds: string[]
   /** Newly-persisted suggestions that were auto-applied. */
   appliedIds: string[]
+  /**
+   * Newly-persisted 'auto'-tier suggestions whose auto-apply FAILED and so remain pending
+   * (fail-soft). Surfaced rather than swallowed, mirroring `processExtractJob`.
+   */
+  failedAutoApplyIds: string[]
   /** Applied entities from this bullet KEPT because a new create matched them. */
   keptEntityIds: string[]
   /** Applied entities from this bullet RETIRED (soft-deleted) because nothing matched. */
@@ -164,6 +169,7 @@ export async function reprocessBullet(deps: AgentDeps, bulletId: string): Promis
   const keptEntityIds: string[] = []
   const newSuggestionIds: string[] = []
   const appliedIds: string[] = []
+  const failedAutoApplyIds: string[] = []
 
   for (const draft of drafts) {
     const key = draftKey(draft)
@@ -188,7 +194,8 @@ export async function reprocessBullet(deps: AgentDeps, bulletId: string): Promis
         acceptSuggestion(deps.db, suggestion.id)
         appliedIds.push(suggestion.id)
       } catch {
-        // Leave pending if it no longer applies cleanly.
+        // Leave pending if it no longer applies cleanly — surfaced, not swallowed.
+        failedAutoApplyIds.push(suggestion.id)
       }
     }
   }
@@ -202,5 +209,12 @@ export async function reprocessBullet(deps: AgentDeps, bulletId: string): Promis
     }
   }
 
-  return { retiredPendingIds, newSuggestionIds, appliedIds, keptEntityIds, retiredEntityIds }
+  return {
+    retiredPendingIds,
+    newSuggestionIds,
+    appliedIds,
+    failedAutoApplyIds,
+    keptEntityIds,
+    retiredEntityIds,
+  }
 }

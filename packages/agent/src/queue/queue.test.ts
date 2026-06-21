@@ -5,12 +5,14 @@ import {
   createTracker,
   createUser,
   type DbConnection,
+  enqueueJob,
   getJobById,
   getTaskById,
   listActivities,
   listSuggestionsByBullet,
   listTasks,
   listTrackerEntries,
+  softDeleteTracker,
 } from '@bullet/db'
 import { describe, expect, test } from 'vitest'
 import { AGENT_CONFIG_DEFAULTS } from '../config'
@@ -254,6 +256,149 @@ describe('queue end-to-end', () => {
     // The loop survived and processed the valid job too.
     expect(completed).toHaveLength(1)
     expect(completed[0]?.bulletId).toBe(realBullet.id)
+  })
+
+  test('fail-soft auto-apply: target tracker deleted before apply → suggestion stays pending, NO entry, job done, failedAutoApply reflects it', async () => {
+    const conn = createTestDb()
+    const user = createUser(conn.db, { name: 'U' })
+    const seedBullet = createBullet(conn.db, { owner_id: user.id, text: 'seed' })
+    const tracker = createTracker(conn.db, {
+      owner_id: user.id,
+      source_bullet_id: seedBullet.id,
+      name: 'mood',
+      input_type: 'scale',
+      config: { input_type: 'scale', min: 1, max: 5 },
+    })
+    const bullet = createBullet(conn.db, { owner_id: user.id, text: 'mood was 4' })
+
+    const emitter = createAgentEmitter()
+    const completed: ExtractionCompleteEvent[] = []
+    emitter.on('extraction:complete', (e) => completed.push(e))
+
+    // The chat handler runs AFTER buildSnapshot (which still sees the active tracker, so a strong
+    // tracker_entry append is resolved + persisted) but BEFORE auto-apply. Soft-deleting the
+    // tracker here makes acceptSuggestion's re-validation fail → the suggestion degrades to a
+    // normal pending one, no entry is written, and the failure is SURFACED (not swallowed).
+    const deps = makeDeps(
+      conn,
+      {
+        chat: () => {
+          softDeleteTracker(conn.db, tracker.id)
+          return JSON.stringify({
+            candidates: [
+              {
+                kind: 'tracker_entry',
+                orientation: 'happened',
+                text: 'mood was 4',
+                referenceName: 'mood',
+                fields: { value: 4 },
+                confidence: 0.95,
+              },
+            ],
+          })
+        },
+      },
+      emitter,
+    )
+
+    const job = enqueueExtraction(deps, bullet.id, user.id)
+    const worker = createExtractionWorker(deps)
+    const processed = await worker.drain()
+    expect(processed).toBe(1)
+
+    // The job still completes successfully (fail-soft — a bad auto-apply never fails the job).
+    expect(getJobById(conn.db, job.id)?.status).toBe('done')
+
+    // The suggestion was persisted but NOT accepted (it degraded to a normal pending suggestion).
+    const suggestions = listSuggestionsByBullet(conn.db, bullet.id)
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]?.tier).toBe('auto')
+    expect(suggestions[0]?.status).not.toBe('accepted')
+    expect(suggestions[0]?.status).toBe('pending')
+
+    // NO tracker_entry was persisted.
+    expect(listTrackerEntries(conn.db, user.id)).toHaveLength(0)
+
+    // The failure is observable: failedAutoApply reflects the degraded suggestion; appliedIds empty.
+    expect(completed).toHaveLength(1)
+    expect(completed[0]?.appliedIds).toEqual([])
+    expect(completed[0]?.failedAutoApplyIds).toEqual([suggestions[0]?.id])
+
+    // The loop survives: a following valid job still processes (a plain UNLINKED activity).
+    const nextBullet = createBullet(conn.db, { owner_id: user.id, text: 'went for a walk' })
+    const deps2 = makeDeps(conn, {
+      chat: () =>
+        JSON.stringify({
+          candidates: [
+            {
+              kind: 'activity',
+              orientation: 'happened',
+              text: 'went for a walk',
+              fields: { name: 'walk' },
+              confidence: 0.95,
+            },
+          ],
+        }),
+    })
+    enqueueExtraction(deps2, nextBullet.id, user.id)
+    expect(await createExtractionWorker(deps2).drain()).toBe(1)
+    expect(listSuggestionsByBullet(conn.db, nextBullet.id)).toHaveLength(1)
+  })
+
+  test('unhandled job type: worker fails the job + emits one extraction:error (bulletId null), loop survives', async () => {
+    const conn = createTestDb()
+    const user = createUser(conn.db, { name: 'U' })
+    const realBullet = createBullet(conn.db, { owner_id: user.id, text: 'ran 5k' })
+
+    const emitter = createAgentEmitter()
+    const errors: { jobId: string; bulletId: string | null; error: string }[] = []
+    emitter.on('extraction:error', (e) => errors.push(e))
+    const completed: ExtractionCompleteEvent[] = []
+    emitter.on('extraction:complete', (e) => completed.push(e))
+
+    const deps = makeDeps(
+      conn,
+      {
+        chat: () =>
+          JSON.stringify({
+            candidates: [
+              {
+                kind: 'activity',
+                orientation: 'happened',
+                text: 'ran 5k',
+                fields: { name: 'ran 5k' },
+                confidence: 0.95,
+              },
+            ],
+          }),
+      },
+      emitter,
+    )
+
+    // A job the worker does NOT handle, then a valid extract_bullet job — the loop must survive.
+    const badJob = enqueueJob(conn.db, {
+      type: 'send_email',
+      owner_id: user.id,
+      payload: { bulletId: realBullet.id },
+    })
+    enqueueExtraction(deps, realBullet.id, user.id)
+
+    const worker = createExtractionWorker(deps)
+    const processed = await worker.drain()
+    expect(processed).toBe(2)
+
+    // The unhandled job is FAILED.
+    expect(getJobById(conn.db, badJob.id)?.status).toBe('failed')
+
+    // Exactly one extraction:error was emitted for it, with bulletId null (the type was the problem).
+    expect(errors).toHaveLength(1)
+    expect(errors[0]?.jobId).toBe(badJob.id)
+    expect(errors[0]?.bulletId).toBeNull()
+
+    // The loop survived: the following valid extract_bullet job still processed.
+    expect(completed).toHaveLength(1)
+    expect(completed[0]?.bulletId).toBe(realBullet.id)
+    expect(listSuggestionsByBullet(conn.db, realBullet.id)).toHaveLength(1)
   })
 })
 

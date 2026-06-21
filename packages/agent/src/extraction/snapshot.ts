@@ -11,15 +11,24 @@
  * stays compact and the model references things by NAME, not by leaking ids.
  */
 
-import type { TaskPriority, TrackerInputType } from '@bullet/core'
+import type { TaskPriority, TrackerConfig, TrackerInputType } from '@bullet/core'
 import { listTasks, listTrackers } from '@bullet/db'
 import type { AgentDeps } from '../deps'
 
-/** A tracker definition, as the model sees it. */
+/**
+ * A tracker definition.
+ *
+ * The model only ever sees `name` + `input_type` (see prompt.ts `renderSnapshot`), but the row
+ * carries the tracker's full `config` so the resolver can VALIDATE/CLAMP an appended
+ * tracker_entry value against the definition's bounds (scale min/max, select option set,
+ * number min/max). @bullet/db's apply engine explicitly DEFERS this check to the agent (see the
+ * TODO in packages/db apply.ts `applyAppend`), since only the resolver has the tracker in hand.
+ */
 export interface SnapshotTracker {
   id: string
   name: string
   input_type: TrackerInputType
+  config: TrackerConfig
 }
 
 /**
@@ -59,6 +68,7 @@ export function buildSnapshot(deps: Pick<AgentDeps, 'db'>, ownerId: string): Ext
     id: t.id,
     name: t.name,
     input_type: t.input_type,
+    config: t.config,
   }))
 
   const openTasks: SnapshotTask[] = listTasks(deps.db, ownerId)
