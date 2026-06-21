@@ -1,0 +1,26 @@
+# dependencies
+node_modules
+
+# build output
+dist
+.turbo
+.next
+out
+
+# test
+coverage
+
+# local databases
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+*.db
+
+# env
+.env
+.env.local
+.env.*.local
+
+# misc
+*.log
+.DS_Store
