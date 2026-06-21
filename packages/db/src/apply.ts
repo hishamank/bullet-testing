@@ -250,10 +250,16 @@ function applyUpdate(db: Db, suggestion: Suggestion, data: Record<string, unknow
     )
   }
 
-  // Only mutable task fields are picked from the payload — never id/owner/provenance/created.
+  // Only mutable task fields the suggestion ACTUALLY proposed are applied — never
+  // id/owner/provenance/created. Key presence is read from the suggestion's RAW payload, NOT
+  // from `data`: `data` is the INSERT-schema parse, and `taskInsertSchema` defaults
+  // `status` to 'todo', so `'status' in data` is always true. Picking from `data` would write
+  // status on every update and silently reset an in_progress/done task whose payload omitted
+  // it. The validated `data` is still used for the VALUES (coercion/normalisation).
+  const rawPayload = suggestion.payload
   const patch: Record<string, unknown> = {}
   for (const key of ['status', 'title', 'notes', 'due_at', 'priority'] as const) {
-    if (key in data) patch[key] = data[key]
+    if (key in rawPayload) patch[key] = data[key]
   }
 
   const updated = updateTask(db, existing.id, patch)
@@ -293,12 +299,18 @@ export function acceptSuggestion(db: Db, id: string): ResolveResult {
   const suggestion = resolveSuggestion(db, id)
   guardPending(suggestion)
 
-  const result = applySuggestion(db, suggestion)
-  const updated = updateSuggestion(db, suggestion.id, {
-    status: 'accepted',
-    resolved_at: now(),
+  // Apply + status transition are ONE atomic unit: a thrown apply (e.g. its live-state guards
+  // fail) rolls back, leaving the suggestion 'pending' with no orphaned entity; a crash
+  // between the two writes can never leave the entity created while the suggestion stays
+  // pending (which would let a re-accept duplicate it).
+  return db.transaction((tx) => {
+    const result = applySuggestion(tx, suggestion)
+    const updated = updateSuggestion(tx, suggestion.id, {
+      status: 'accepted',
+      resolved_at: now(),
+    })
+    return { suggestion: updated ?? suggestion, result }
   })
-  return { suggestion: updated ?? suggestion, result }
 }
 
 /**
@@ -325,26 +337,32 @@ export function editSuggestion(db: Db, id: string, newPayload: SuggestionPayload
   const suggestion = resolveSuggestion(db, id)
   guardPending(suggestion)
 
-  // Validate the edited payload up-front (clear error before we mutate anything).
+  // Validate the edited payload STRUCTURALLY up-front (clear error before any write).
   validatePayloadOrThrow(suggestion.target_kind, newPayload)
 
-  // Persist the edited payload and mark edited/resolved. We then apply from an in-memory
-  // snapshot that still reads status='pending' (applySuggestion guards on pending) carrying
-  // the edited payload — only the persisted row holds the terminal 'edited' status.
-  const edited = updateSuggestion(db, suggestion.id, {
-    payload: newPayload,
-    status: 'edited',
-    resolved_at: now(),
+  // Apply + status transition are ONE atomic unit, and — mirroring acceptSuggestion — we
+  // APPLY FIRST, then persist 'edited'. applySuggestion re-runs the live-state guards
+  // (append/update target must exist + be active) against the edited payload; if any throws,
+  // the transaction rolls back and the row stays 'pending' (re-editable), with no entity
+  // created. We apply from an in-memory snapshot that still reads status='pending' (so
+  // applySuggestion's pending-guard passes) carrying the edited payload; only the persisted
+  // row reaches the terminal 'edited' status, and only if the apply succeeded.
+  return db.transaction((tx) => {
+    const applyInput: Suggestion = {
+      ...suggestion,
+      payload: newPayload,
+      status: 'pending',
+    }
+    const result = applySuggestion(tx, applyInput)
+
+    const edited = updateSuggestion(tx, suggestion.id, {
+      payload: newPayload,
+      status: 'edited',
+      resolved_at: now(),
+    })
+
+    return { suggestion: edited ?? suggestion, result }
   })
-
-  const applyInput: Suggestion = {
-    ...(edited ?? suggestion),
-    payload: newPayload,
-    status: 'pending',
-  }
-  const result = applySuggestion(db, applyInput)
-
-  return { suggestion: edited ?? suggestion, result }
 }
 
 /** Throw unless the suggestion is active and pending (prevents double-resolution). */

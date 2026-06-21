@@ -4,16 +4,24 @@
  */
 
 import { fileURLToPath } from 'node:url'
+import type { RunResult } from 'better-sqlite3'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
+import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core'
 import { schema } from './schema'
 
 /** A better-sqlite3 database handle. */
 export type Sqlite = Database.Database
 
-/** The Drizzle database, typed with the full schema. */
-export type Db = ReturnType<typeof drizzle<typeof schema>>
+/**
+ * The Drizzle database, typed with the full schema. Declared as the synchronous
+ * `BaseSQLiteDatabase` rather than the concrete better-sqlite3 wrapper so the SAME type also
+ * describes a transaction handle (`db.transaction((tx) => …)` yields an `SQLiteTransaction`,
+ * which extends this base). Repositories therefore accept either the top-level connection or a
+ * transaction `tx` unchanged, letting the apply engine run multi-write operations atomically.
+ */
+export type Db = BaseSQLiteDatabase<'sync', RunResult, typeof schema>
 
 /** What `createDb` returns: the Drizzle wrapper plus the underlying raw handle. */
 export interface DbConnection {

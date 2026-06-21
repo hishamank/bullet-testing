@@ -5,7 +5,7 @@ import { createTestDb } from './client'
 import { DbError } from './errors'
 import { getActivityById } from './repositories/activities'
 import { createSuggestion, getSuggestionById, listSuggestions } from './repositories/suggestions'
-import { createTask, getTaskById } from './repositories/tasks'
+import { createTask, getTaskById, updateTask } from './repositories/tasks'
 import { listEntriesByTracker } from './repositories/trackerEntries'
 import { createTracker, getTrackerById, softDeleteTracker } from './repositories/trackers'
 import { seedOwnerAndBullet } from './test-helpers'
@@ -258,6 +258,91 @@ test('applySuggestion UPDATE: marks a task done; rejects when target missing', (
   expect(() => applySuggestion(db, onMissing.id)).toThrow(/not found/i)
 })
 
+test('applySuggestion UPDATE: a payload omitting status does NOT reset an in_progress task', () => {
+  const { db } = createTestDb()
+  const { ownerId, bulletId } = seedOwnerAndBullet(db)
+  const task = createTask(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    title: 'Ship feature',
+    notes: 'keep me',
+    due_at: 1_700_000_000_000,
+    priority: 'P2',
+  })
+  // Move the task off its starting state; this is what an omitted-status UPDATE must NOT reset.
+  updateTask(db, task.id, { status: 'in_progress' })
+
+  // A priority/title edit whose RAW payload OMITS `status`. `status` is the one task field
+  // with a schema default ('todo'), so validation injects it into the parsed `data` even
+  // though the user never proposed it. The patch must be built from the raw payload's keys —
+  // if it were built from `data`, every UPDATE would write status and silently reset the task.
+  const s = createSuggestion(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    target_kind: 'task',
+    operation: 'update',
+    target_id: task.id,
+    payload: {
+      owner_id: ownerId,
+      source_bullet_id: bulletId,
+      title: 'Ship feature (renamed)',
+      notes: 'keep me',
+      due_at: 1_700_000_000_000,
+      priority: 'P1',
+      // status deliberately omitted
+    },
+    confidence: 0.9,
+    tier: 'suggest',
+    resolved_at: null,
+  })
+
+  const updated = applySuggestion(db, s.id) as Task
+  expect(updated.title).toBe('Ship feature (renamed)') // proposed → applied
+  expect(updated.priority).toBe('P1') // proposed → applied
+  expect(updated.status).toBe('in_progress') // NOT reset to 'todo' by the insert-schema default
+})
+
+test('applySuggestion UPDATE: omitting a mutable field leaves the live value untouched', () => {
+  const { db } = createTestDb()
+  const { ownerId, bulletId } = seedOwnerAndBullet(db)
+  const task = createTask(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    title: 'Original title',
+    notes: 'original notes',
+    due_at: 1_700_000_000_000,
+    priority: 'P2',
+  })
+  updateTask(db, task.id, { status: 'done' })
+
+  // A status-only transition (the canonical "mark done" UPDATE). title/notes/due_at/priority
+  // happen to be carried in the payload for schema validity, but assert specifically that the
+  // DONE status reached the row and the title the user kept was preserved.
+  const s = createSuggestion(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    target_kind: 'task',
+    operation: 'update',
+    target_id: task.id,
+    payload: {
+      owner_id: ownerId,
+      source_bullet_id: bulletId,
+      title: 'Original title',
+      status: 'in_progress',
+      notes: 'original notes',
+      due_at: 1_700_000_000_000,
+      priority: 'P2',
+    },
+    confidence: 0.9,
+    tier: 'suggest',
+    resolved_at: null,
+  })
+
+  const updated = applySuggestion(db, s.id) as Task
+  expect(updated.status).toBe('in_progress') // explicit status IS written when present
+  expect(updated.title).toBe('Original title')
+})
+
 // === accept / reject / edit transitions ===
 
 test('acceptSuggestion: applies + sets status accepted/resolved_at; guards double-resolve', () => {
@@ -358,4 +443,95 @@ test('editSuggestion rejects an invalid edited payload before mutating', () => {
   ).toThrow(/invalid/i)
   // Still pending — the failed edit did not resolve it.
   expect(getSuggestionById(db, s.id)?.status).toBe('pending')
+})
+
+test('editSuggestion: a structurally-valid edit whose append target is gone leaves it pending', () => {
+  const { db } = createTestDb()
+  const { ownerId, bulletId } = seedOwnerAndBullet(db)
+  const tracker = createTracker(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    name: 'Mood',
+    input_type: 'scale',
+    config: { input_type: 'scale', min: 1, max: 5 },
+  })
+
+  // An append suggestion targeting the (currently active) tracker.
+  const s = createSuggestion(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    target_kind: 'tracker_entry',
+    operation: 'append',
+    target_id: tracker.id,
+    payload: {
+      owner_id: ownerId,
+      source_bullet_id: bulletId,
+      tracker_id: tracker.id,
+      value: 3,
+      logged_at: Date.now(),
+    },
+    confidence: 0.9,
+    tier: 'auto',
+    resolved_at: null,
+  })
+
+  // The target tracker is deleted/mutated AFTER extraction. The edited payload is fully
+  // STRUCTURALLY valid; only the live-state guard inside applySuggestion fails.
+  softDeleteTracker(db, tracker.id)
+
+  expect(() =>
+    editSuggestion(db, s.id, {
+      owner_id: ownerId,
+      source_bullet_id: bulletId,
+      tracker_id: tracker.id,
+      value: 5, // edited value
+      logged_at: Date.now(),
+    }),
+  ).toThrow(/not active/i)
+
+  // The failed apply must have ROLLED BACK the status/payload write: still pending and
+  // re-editable, with no orphaned entry, no terminal 'edited' status, no resolved_at.
+  const after = getSuggestionById(db, s.id)
+  expect(after?.status).toBe('pending')
+  expect(after?.resolved_at).toBeNull()
+  expect(after?.payload.value).toBe(3) // original payload preserved, not the edited 5
+  expect(listEntriesByTracker(db, tracker.id)).toHaveLength(0) // no entry created
+})
+
+test('acceptSuggestion: a failed apply rolls back, leaving the suggestion pending (atomic)', () => {
+  const { db } = createTestDb()
+  const { ownerId, bulletId } = seedOwnerAndBullet(db)
+  const tracker = createTracker(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    name: 'Mood',
+    input_type: 'scale',
+    config: { input_type: 'scale', min: 1, max: 5 },
+  })
+  const s = createSuggestion(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    target_kind: 'tracker_entry',
+    operation: 'append',
+    target_id: tracker.id,
+    payload: {
+      owner_id: ownerId,
+      source_bullet_id: bulletId,
+      tracker_id: tracker.id,
+      value: 2,
+      logged_at: Date.now(),
+    },
+    confidence: 0.9,
+    tier: 'auto',
+    resolved_at: null,
+  })
+
+  // Target deleted after extraction → apply's live-state guard throws.
+  softDeleteTracker(db, tracker.id)
+
+  expect(() => acceptSuggestion(db, s.id)).toThrow(/not active/i)
+  const after = getSuggestionById(db, s.id)
+  expect(after?.status).toBe('pending')
+  expect(after?.resolved_at).toBeNull()
+  expect(listEntriesByTracker(db, tracker.id)).toHaveLength(0)
 })
