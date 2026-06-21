@@ -9,25 +9,45 @@
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { loadServerConfig } from './config'
-import { buildServerContext } from './context'
+import { buildServerContext, type ServerDeps } from './context'
 
 /**
- * Boot the server. Returns a `stop()` for programmatic shutdown (used by the boot smoke test);
- * when run directly it also wires SIGINT/SIGTERM to the same path.
+ * Options for {@link startServer}. All optional: by default the server loads config from the
+ * environment and opens the real db + HTTP Ollama client. Tests inject `deps` (an in-memory db +
+ * a scripted Ollama) and `port: 0` (an OS-chosen ephemeral port) to exercise the real socket and
+ * the graceful-shutdown path without touching the model or the filesystem.
  */
-export async function startServer(): Promise<{ port: number; stop: () => Promise<void> }> {
+export interface StartServerOptions {
+  /** Pre-built singleton deps. When omitted, the real context is built from config. */
+  deps?: ServerDeps
+  /** Override the listen port (`0` lets the OS pick a free port — handy for tests). */
+  port?: number
+}
+
+/**
+ * Boot the server. Returns the bound `port` and a `stop()` for programmatic shutdown (used by the
+ * boot smoke test); when run directly it also wires SIGINT/SIGTERM to the same path.
+ */
+export async function startServer(
+  opts: StartServerOptions = {},
+): Promise<{ port: number; stop: () => Promise<void> }> {
   const config = loadServerConfig()
 
   // Singleton deps: open the db (migrate), wire the HTTP Ollama client + the agent runtime.
-  const deps = buildServerContext({ databasePath: config.databasePath, config: config.agent })
+  // Tests inject their own deps (in-memory db + scripted Ollama) so no model/socket is required.
+  const deps =
+    opts.deps ?? buildServerContext({ databasePath: config.databasePath, config: config.agent })
 
   // Start draining the extraction queue (single GPU slot) BEFORE serving requests.
   deps.runtime.worker.start()
 
   const app = createApp(deps, { corsOrigin: config.corsOrigin })
-  const server = serve({ fetch: app.fetch, port: config.port })
+  const port = opts.port ?? config.port
+  const server = serve({ fetch: app.fetch, port })
+  // The OS may have chosen an ephemeral port (`port: 0`); report the one actually bound.
+  const boundPort = (server.address() as { port: number } | null)?.port ?? port
 
-  const url = `http://localhost:${config.port}`
+  const url = `http://localhost:${boundPort}`
   console.log(`[@bullet/server] listening on ${url} (db: ${config.databasePath})`)
 
   let stopped = false
@@ -35,12 +55,20 @@ export async function startServer(): Promise<{ port: number; stop: () => Promise
     if (stopped) return
     stopped = true
     deps.runtime.worker.stop()
-    await new Promise<void>((resolve) => server.close(() => resolve()))
+    // `server.close()` only STOPS ACCEPTING new connections, then waits for all existing ones to
+    // end before its callback fires. A `GET /events` SSE stream is a long-lived connection that
+    // never ends on its own, so a single open browser tab would otherwise hang shutdown forever
+    // (stop() never resolves, the db never closes). Force-terminate lingering sockets right after
+    // requesting close so the callback can run. `closeAllConnections` exists on Node 18.2+/24.
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve())
+      ;(server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.()
+    })
     deps.sqlite?.close()
     console.log('[@bullet/server] stopped')
   }
 
-  return { port: config.port, stop }
+  return { port: boundPort, stop }
 }
 
 /** True when this module is the program's entry point (run via `tsx src/server.ts`). */

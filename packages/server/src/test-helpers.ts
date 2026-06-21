@@ -18,9 +18,11 @@ export function buildTestDeps(
   script: OllamaScript = {},
   config: AgentConfig = AGENT_CONFIG_DEFAULTS,
 ): ServerDeps {
-  const { db } = createTestDb()
+  const { db, sqlite } = createTestDb()
   const ollama = createScriptedOllamaClient(script)
-  return createServerDeps({ db, ollama, config })
+  // Thread the raw handle through so a test exercising the standalone shutdown path can assert the
+  // db is actually closed by `stop()` (the real server keeps it for the same reason).
+  return createServerDeps({ db, ollama, config, sqlite })
 }
 
 /**
