@@ -22,6 +22,7 @@
  */
 
 import type {
+  SuggestionInsert,
   SuggestionOperation,
   SuggestionPayload,
   SuggestionTier,
@@ -64,12 +65,19 @@ export interface ResolveOutcome {
  * payload. The apply engine then FORCES provenance from the suggestion anyway, so the two can
  * never disagree. `resolved_at` is null (a fresh suggestion is unresolved; the field is
  * required-but-nullable).
+ *
+ * Returns the db `SuggestionInsert` (not a loose `Record<string, unknown>`), so the compiler —
+ * not just this comment — guarantees the envelope/payload shape `createSuggestion` accepts. The
+ * server-managed lifecycle fields (id/created_at/updated_at/state) are minted by the db on insert,
+ * so they are intentionally omitted (the INSERT schema makes them optional); `status` is stated
+ * explicitly as 'pending' — its schema default — so a fresh suggestion always persists as pending
+ * (runtime-identical to relying on the default, now compiler-guaranteed).
  */
 export function withProvenance(
   draft: ResolvedSuggestion,
   ownerId: string,
   sourceBulletId: string,
-): Record<string, unknown> {
+): SuggestionInsert {
   return {
     target_kind: draft.target_kind,
     operation: draft.operation,
@@ -78,6 +86,7 @@ export function withProvenance(
     tier: draft.tier,
     owner_id: ownerId,
     source_bullet_id: sourceBulletId,
+    status: 'pending',
     resolved_at: null,
     payload: {
       ...draft.payload,
@@ -101,11 +110,6 @@ function combine(modelConfidence: number, matchScore: number): number {
 /** Clamp to [0, 1] (defensive — the model is constrained but we never trust it blindly). */
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n))
-}
-
-/** A finite epoch-ms timestamp for record/occurrence fields when the model omits one. */
-function nowMs(): number {
-  return Date.now()
 }
 
 /**
@@ -180,13 +184,20 @@ function resolveHappened(
     return markTaskDone(candidate, taskHit, config)
   }
 
-  // Otherwise an action with no confident match → create an activity. If there is a tracker
-  // match that is present-but-weak we leave it UNLINKED (activity-first; never guess a link we
-  // are not confident about). And if the tracker matched STRONGLY but the append fell through
-  // (its value was invalid for that tracker's config), we ALSO leave it unlinked — linking to a
-  // tracker that rejected the value would be misleading; we preserve the data, not the bad link.
-  const linkHit = trackerMatched ? undefined : trackerHit
-  return createActivity(candidate, linkHit, config)
+  // Otherwise an action with no confident match → create an activity. Decide the tracker link
+  // ONCE here and pass an already-resolved id to createActivity (no second threshold check):
+  //  - present-but-weak match  → leave UNLINKED (activity-first; never guess a link we are not
+  //    confident about).
+  //  - matched STRONGLY but the append fell through (its value was invalid for that tracker's
+  //    config, so `trackerMatched` is true yet we reached here) → ALSO leave unlinked: linking to
+  //    a tracker that rejected the value would be misleading; we preserve the data, not the bad link.
+  // So the link survives ONLY when the tracker hit cleared the threshold AND was not the
+  // strong-but-value-invalid case — i.e. exactly when `trackerMatched` is false but the hit is strong.
+  const linkedTrackerId =
+    !trackerMatched && trackerHit && trackerScore >= MATCH_LINK_THRESHOLD
+      ? trackerHit.item.id
+      : null
+  return createActivity(candidate, linkedTrackerId, config)
 }
 
 /**
@@ -214,7 +225,7 @@ function appendTrackerEntry(
     // The apply engine overrides it from target_id, so the two always agree.
     tracker_id: trackerHit.item.id,
     value: validated,
-    logged_at: timestampField(candidate.fields, ['logged_at', 'occurred_at'], nowMs()),
+    logged_at: timestampField(candidate.fields, ['logged_at', 'occurred_at'], Date.now()),
   }
   return {
     target_kind: 'tracker_entry',
@@ -259,19 +270,21 @@ function markTaskDone(
   }
 }
 
-/** happened + no confident match → create an activity (linked only if confident, else unlinked). */
+/**
+ * happened + no confident match → create an activity. The link decision is made ONCE by the
+ * caller (`resolveHappened`); this function just records the already-resolved `linkedTrackerId`
+ * (null = unlinked, activity-first).
+ */
 function createActivity(
   candidate: Candidate,
-  trackerHit: Match<SnapshotTracker> | undefined,
+  linkedTrackerId: string | null,
   config: AgentConfig,
 ): ResolvedSuggestion {
-  // Only link if the tracker match is confident; otherwise leave unlinked (activity-first).
-  const linked = trackerHit && trackerHit.score >= MATCH_LINK_THRESHOLD ? trackerHit : undefined
   const name = stringField(candidate.fields, ['name', 'title'], candidate.text)
   const payload: SuggestionPayload = {
     name,
-    occurred_at: timestampField(candidate.fields, ['occurred_at', 'logged_at'], nowMs()),
-    tracker_id: linked ? linked.item.id : null,
+    occurred_at: timestampField(candidate.fields, ['occurred_at', 'logged_at'], Date.now()),
+    tracker_id: linkedTrackerId,
     notes: stringFieldOrNull(candidate.fields, ['notes']),
     quantity: numberFieldOrNull(candidate.fields, ['quantity', 'value']),
     unit: stringFieldOrNull(candidate.fields, ['unit']),

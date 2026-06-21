@@ -55,5 +55,7 @@ export interface AgentEmitter {
 /** Create a fresh typed agent emitter. */
 export function createAgentEmitter(): AgentEmitter {
   // The untyped EventEmitter is the substrate; the AgentEmitter interface is the typed surface.
+  // TODO(review): the `as unknown as` double-cast is a contained structural-typing escape hatch —
+  // see REVIEW-BACKLOG.md (deferred: a delegating wrapper would add more code than it removes).
   return new EventEmitter() as unknown as AgentEmitter
 }

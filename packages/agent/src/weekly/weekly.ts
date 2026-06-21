@@ -13,17 +13,20 @@
 import type { Suggestion } from '@bullet/core'
 import { createSuggestion, listActivities } from '@bullet/db'
 import type { AgentDeps } from '../deps'
+import { type ResolvedSuggestion, withProvenance } from '../resolution/resolve'
 
-/** A proposed tracker-definition suggestion, ready to persist (provenance attached). */
-export interface WeeklyProposal {
+/**
+ * A proposed tracker-definition suggestion: the canonical {@link ResolvedSuggestion} draft (so it
+ * carries the SAME target_kind/operation/target_id/payload/confidence/tier shape and tier rules as
+ * the main pipeline — and persists through the SAME `withProvenance`) plus two report fields for
+ * explainability/tests. Provenance (owner_id/source_bullet_id) is attached at persist time, not
+ * carried on the draft — exactly like every other resolved suggestion.
+ */
+export interface WeeklyProposal extends ResolvedSuggestion {
+  /** The owner this proposal is for (the provenance owner attached at persist time). */
   owner_id: string
+  /** The member activity's source bullet (the Suggestion's required provenance anchor). */
   source_bullet_id: string
-  target_kind: 'tracker'
-  operation: 'create'
-  target_id: null
-  payload: Record<string, unknown>
-  confidence: number
-  tier: 'suggest'
   /** The normalized activity name that triggered the proposal (for explainability/tests). */
   groupName: string
   /** How many unlinked activities shared this name. */
@@ -87,8 +90,6 @@ export function createWeeklyAnalyzer(
       for (const [key, group] of groups) {
         if (group.count < threshold) continue
         proposals.push({
-          owner_id: ownerId,
-          source_bullet_id: group.sourceBulletId,
           target_kind: 'tracker',
           operation: 'create',
           target_id: null,
@@ -102,6 +103,8 @@ export function createWeeklyAnalyzer(
           confidence: 0.6,
           // Definitions are NEVER auto (CLAUDE.md §4.5).
           tier: 'suggest',
+          owner_id: ownerId,
+          source_bullet_id: group.sourceBulletId,
           groupName: key,
           count: group.count,
         })
@@ -110,24 +113,11 @@ export function createWeeklyAnalyzer(
     },
 
     persist(proposals: WeeklyProposal[]): Suggestion[] {
+      // Route through the SAME canonical `withProvenance` as the main pipeline so weekly can never
+      // drift from the tier/provenance rules: a WeeklyProposal IS a ResolvedSuggestion draft, and
+      // `withProvenance` injects owner_id + source_bullet_id into both the envelope and the payload.
       return proposals.map((p) =>
-        createSuggestion(deps.db, {
-          owner_id: p.owner_id,
-          source_bullet_id: p.source_bullet_id,
-          target_kind: p.target_kind,
-          operation: p.operation,
-          target_id: p.target_id,
-          // The apply engine re-validates the payload against the tracker INSERT schema, which
-          // requires owner_id + source_bullet_id present; inject them (apply forces them anyway).
-          payload: {
-            ...p.payload,
-            owner_id: p.owner_id,
-            source_bullet_id: p.source_bullet_id,
-          },
-          confidence: p.confidence,
-          tier: p.tier,
-          resolved_at: null,
-        }),
+        createSuggestion(deps.db, withProvenance(p, p.owner_id, p.source_bullet_id)),
       )
     },
   }

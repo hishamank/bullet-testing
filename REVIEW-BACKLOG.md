@@ -64,3 +64,17 @@ first — the trade-off was already considered.
   Removing the cast cleanly would require per-kind apply branches — churn out of proportion to the
   one-line boundary. Left with an inline `TODO(review)` marker. Revisit if the apply paths ever go
   per-kind for another reason.
+
+## @bullet/agent
+
+### Deferred
+
+- **`createAgentEmitter` double-cast (`as unknown as AgentEmitter`)** — `packages/agent/src/events.ts`.
+  Finding: `new EventEmitter() as unknown as AgentEmitter` is the classic "I'm overriding the type
+  system" smell — the one structural-typing escape hatch in the package. The reviewer called it
+  acceptable/contained: the typed facade (`AgentEmitter` over `AgentEvents`) is the right call and
+  the surface is sound.
+  Why deferred: the alternative — a small wrapper object delegating `on`/`once`/`off`/`emit` to a
+  private `EventEmitter` — would *add* more code than it removes for no behavioral gain, and the
+  cast is confined to this one factory (callers only ever see the typed `AgentEmitter`). Left with
+  an inline `TODO(review)` marker. Revisit only if the emitter grows methods or the cast leaks.

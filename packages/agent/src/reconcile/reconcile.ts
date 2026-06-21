@@ -29,8 +29,6 @@
  */
 
 import {
-  acceptSuggestion,
-  createSuggestion,
   getBulletById,
   listActivitiesBySourceBullet,
   listSuggestionsByBullet,
@@ -45,8 +43,9 @@ import type { AgentDeps } from '../deps'
 import { AgentError } from '../errors'
 import { extractCandidates } from '../extraction/extract'
 import { buildSnapshot } from '../extraction/snapshot'
+import { persistAndAutoApply } from '../persist'
 import type { ResolvedSuggestion } from '../resolution/resolve'
-import { resolveCandidates, withProvenance } from '../resolution/resolve'
+import { resolveCandidates } from '../resolution/resolve'
 
 /** What a reprocess did — enough for the caller (and tests) to assert the reconciliation. */
 export interface ReconcileResult {
@@ -186,18 +185,18 @@ export async function reprocessBullet(deps: AgentDeps, bulletId: string): Promis
       }
     }
 
-    // Otherwise persist as a new suggestion (with provenance) and auto-apply if 'auto'.
-    const suggestion = createSuggestion(deps.db, withProvenance(draft, bullet.owner_id, bullet.id))
-    newSuggestionIds.push(suggestion.id)
-    if (suggestion.tier === 'auto') {
-      try {
-        acceptSuggestion(deps.db, suggestion.id)
-        appliedIds.push(suggestion.id)
-      } catch {
-        // Leave pending if it no longer applies cleanly — surfaced, not swallowed.
-        failedAutoApplyIds.push(suggestion.id)
-      }
-    }
+    // Otherwise persist as a new suggestion (with provenance) and auto-apply if 'auto'. Same
+    // fail-soft persist→apply policy as the main pipeline (shared `persistAndAutoApply`): a stale
+    // auto-apply leaves the suggestion pending and is surfaced in failedAutoApplyIds, not swallowed.
+    // (destructure as autoApplied/autoFailed — `applied` is already the applied-entities list.)
+    const {
+      id,
+      applied: autoApplied,
+      failed: autoFailed,
+    } = persistAndAutoApply(deps, draft, bullet.owner_id, bullet.id)
+    newSuggestionIds.push(id)
+    if (autoApplied) appliedIds.push(id)
+    if (autoFailed) failedAutoApplyIds.push(id)
   }
 
   // 4) Retire applied entities from this bullet that matched NO new create.

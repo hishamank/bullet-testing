@@ -9,12 +9,13 @@
  * loudly rather than corrupting data.
  */
 
-import { acceptSuggestion, createSuggestion, getBulletById, type Job } from '@bullet/db'
+import { getBulletById, type Job } from '@bullet/db'
 import type { AgentDeps } from '../deps'
 import { AgentError } from '../errors'
 import { extractCandidates } from '../extraction/extract'
 import { buildSnapshot } from '../extraction/snapshot'
-import { resolveCandidates, withProvenance } from '../resolution/resolve'
+import { persistAndAutoApply } from '../persist'
+import { resolveCandidates } from '../resolution/resolve'
 
 /** What processing one extraction job produced. */
 export interface ProcessResult {
@@ -63,29 +64,18 @@ export async function processExtractJob(deps: AgentDeps, job: Job): Promise<Proc
   // 3) Resolve to Suggestion INSERT drafts (routing + matching + tier).
   const { suggestions: drafts, skipped } = resolveCandidates(candidates, snapshot, deps.config)
 
-  // 4) Persist each draft as a Suggestion, attaching provenance (owner_id + source_bullet_id).
+  // 4) Persist each draft as a Suggestion (with provenance) and AUTO-APPLY the 'auto'-tier ones.
+  // The persist→auto-apply→fail-soft policy lives in `persistAndAutoApply` (shared with reconcile):
+  // a stale auto-apply leaves the suggestion pending and is RECORDED in failedAutoApplyIds (not
+  // swallowed), so it is observable on the result and the 'extraction:complete' event (Task 4 SSE).
   const suggestionIds: string[] = []
-  const autoIds: string[] = []
-  for (const draft of drafts) {
-    const suggestion = createSuggestion(deps.db, withProvenance(draft, bullet.owner_id, bullet.id))
-    suggestionIds.push(suggestion.id)
-    if (suggestion.tier === 'auto') autoIds.push(suggestion.id)
-  }
-
-  // 5) Auto-apply the 'auto'-tier suggestions. acceptSuggestion re-validates against live state;
-  // if one fails it stays pending (degrades to a normal suggestion) rather than failing the whole
-  // job. We still RECORD the failure (failedAutoApplyIds) instead of swallowing it, so it is
-  // observable on the result and the 'extraction:complete' event (for the Task 4 server/SSE).
   const appliedIds: string[] = []
   const failedAutoApplyIds: string[] = []
-  for (const id of autoIds) {
-    try {
-      acceptSuggestion(deps.db, id)
-      appliedIds.push(id)
-    } catch {
-      // Leave it pending; a record that no longer applies cleanly becomes a normal suggestion.
-      failedAutoApplyIds.push(id)
-    }
+  for (const draft of drafts) {
+    const { id, applied, failed } = persistAndAutoApply(deps, draft, bullet.owner_id, bullet.id)
+    suggestionIds.push(id)
+    if (applied) appliedIds.push(id)
+    if (failed) failedAutoApplyIds.push(id)
   }
 
   deps.emitter.emit('extraction:complete', {
