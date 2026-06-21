@@ -1,0 +1,36 @@
+{
+  "name": "@bullet/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@bullet/agent": "workspace:*",
+    "@bullet/core": "workspace:*",
+    "@bullet/db": "workspace:*",
+    "@hono/node-server": "^2.0.5",
+    "@hono/trpc-server": "^0.4.2",
+    "@trpc/server": "^11.18.0",
+    "hono": "^4.12.26",
+    "zod": "^3.25.76"
+  }
+}

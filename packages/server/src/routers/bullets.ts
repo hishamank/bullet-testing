@@ -1,0 +1,43 @@
+/**
+ * bullets router. The bullet is the atomic input unit and the provenance anchor; creating one
+ * schedules extraction, editing one re-runs extraction (§4.7), deleting one offers the three
+ * modes (§4.6). Every procedure is a thin wrapper over a @bullet/db repo / the @bullet/agent
+ * runtime — no DB access or pipeline code lives here.
+ */
+
+import { createBullet, getBulletById, listBullets, softDelete, updateBullet } from '@bullet/db'
+import { TRPCError } from '@trpc/server'
+import { publicProcedure, router } from '../trpc'
+import { bulletCreateInput, bulletDeleteInput, bulletUpdateInput, byIdInput } from './inputs'
+
+export const bulletsRouter = router({
+  /** Create a bullet, then enqueue its extraction job (the serial worker processes it). */
+  create: publicProcedure.input(bulletCreateInput).mutation(async ({ ctx, input }) => {
+    const bullet = createBullet(ctx.db, { owner_id: ctx.ownerId, text: input.text })
+    await ctx.runtime.enqueueExtraction(bullet.id, ctx.ownerId)
+    return bullet
+  }),
+
+  /** List the owner's active bullets. */
+  list: publicProcedure.query(({ ctx }) => listBullets(ctx.db, ctx.ownerId)),
+
+  /** Fetch one bullet by id. */
+  get: publicProcedure.input(byIdInput).query(({ ctx, input }) => {
+    const bullet = getBulletById(ctx.db, input.id)
+    if (!bullet) throw new TRPCError({ code: 'NOT_FOUND', message: `bullet ${input.id} not found` })
+    return bullet
+  }),
+
+  /** Edit a bullet's text, then re-run extraction reconciling against applied entities (§4.7). */
+  update: publicProcedure.input(bulletUpdateInput).mutation(async ({ ctx, input }) => {
+    const bullet = updateBullet(ctx.db, input.id, { text: input.text })
+    if (!bullet) throw new TRPCError({ code: 'NOT_FOUND', message: `bullet ${input.id} not found` })
+    const reconcile = await ctx.runtime.reprocessBullet(input.id)
+    return { bullet, reconcile }
+  }),
+
+  /** Soft-delete a bullet per the chosen mode: cancel | cascade | keep (§4.6). */
+  delete: publicProcedure
+    .input(bulletDeleteInput)
+    .mutation(({ ctx, input }) => softDelete(ctx.db, input.id, input.mode)),
+})
