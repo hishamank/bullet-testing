@@ -41,6 +41,15 @@ export function listActivities(db: Db, ownerId: string, opts: ListOptions = {}):
   return db.select().from(activities).where(where).all()
 }
 
+/** List the ACTIVE activities traced directly to one bullet (for the cascade soft-delete). */
+export function listActivitiesBySourceBullet(db: Db, bulletId: string): Activity[] {
+  return db
+    .select()
+    .from(activities)
+    .where(and(eq(activities.source_bullet_id, bulletId), eq(activities.state, 'active')))
+    .all()
+}
+
 /** Mutable activity fields (never id/owner/provenance/created_at). */
 export type ActivityUpdate = Partial<
   Pick<Activity, 'name' | 'occurred_at' | 'tracker_id' | 'notes' | 'quantity' | 'unit'>

@@ -27,7 +27,7 @@ import type {
   TrackerEntryValue,
   TrackerInputType,
 } from '@bullet/core'
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { JobPayload, JobStatus, JobType } from './jobs'
 
 /** The closed enum value sets, mirrored from @bullet/core (kept literal for drizzle). */
@@ -94,97 +94,118 @@ export const bullets = sqliteTable('bullets', {
 })
 
 /** tasks — an actionable. */
-export const tasks = sqliteTable('tasks', {
-  id: text('id').primaryKey(),
-  owner_id: text('owner_id')
-    .notNull()
-    .references(() => users.id),
-  source_bullet_id: text('source_bullet_id').references(() => bullets.id),
-  status: text('status', { enum: TASK_STATUS }).notNull(),
-  title: text('title').notNull(),
-  notes: text('notes'),
-  due_at: integer('due_at'),
-  priority: text('priority', { enum: TASK_PRIORITY }),
-  created_at: integer('created_at').notNull(),
-  updated_at: integer('updated_at').notNull(),
-  state: text('state', { enum: RECORD_STATE }).notNull(),
-})
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    source_bullet_id: text('source_bullet_id').references(() => bullets.id),
+    status: text('status', { enum: TASK_STATUS }).notNull(),
+    title: text('title').notNull(),
+    notes: text('notes'),
+    due_at: integer('due_at'),
+    priority: text('priority', { enum: TASK_PRIORITY }),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+    state: text('state', { enum: RECORD_STATE }).notNull(),
+  },
+  // Indexes the cascade-by-provenance lookup (softDelete 'cascade' filters on source_bullet_id).
+  (t) => [index('tasks_source_bullet_id_idx').on(t.source_bullet_id)],
+)
 
 /** trackers — a definition of something measured. */
-export const trackers = sqliteTable('trackers', {
-  id: text('id').primaryKey(),
-  owner_id: text('owner_id')
-    .notNull()
-    .references(() => users.id),
-  source_bullet_id: text('source_bullet_id').references(() => bullets.id),
-  name: text('name').notNull(),
-  input_type: text('input_type', { enum: TRACKER_INPUT_TYPE }).notNull(),
-  config: text('config', { mode: 'json' }).$type<TrackerConfig>().notNull(),
-  created_at: integer('created_at').notNull(),
-  updated_at: integer('updated_at').notNull(),
-  state: text('state', { enum: RECORD_STATE }).notNull(),
-})
+export const trackers = sqliteTable(
+  'trackers',
+  {
+    id: text('id').primaryKey(),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    source_bullet_id: text('source_bullet_id').references(() => bullets.id),
+    name: text('name').notNull(),
+    input_type: text('input_type', { enum: TRACKER_INPUT_TYPE }).notNull(),
+    config: text('config', { mode: 'json' }).$type<TrackerConfig>().notNull(),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+    state: text('state', { enum: RECORD_STATE }).notNull(),
+  },
+  (t) => [index('trackers_source_bullet_id_idx').on(t.source_bullet_id)],
+)
 
 /** tracker_entries — a value logged against a Tracker at a point in time. */
-export const trackerEntries = sqliteTable('tracker_entries', {
-  id: text('id').primaryKey(),
-  owner_id: text('owner_id')
-    .notNull()
-    .references(() => users.id),
-  source_bullet_id: text('source_bullet_id').references(() => bullets.id),
-  tracker_id: text('tracker_id')
-    .notNull()
-    .references(() => trackers.id),
-  value: text('value', { mode: 'json' }).$type<TrackerEntryValue>().notNull(),
-  logged_at: integer('logged_at').notNull(),
-  created_at: integer('created_at').notNull(),
-  updated_at: integer('updated_at').notNull(),
-  state: text('state', { enum: RECORD_STATE }).notNull(),
-})
+export const trackerEntries = sqliteTable(
+  'tracker_entries',
+  {
+    id: text('id').primaryKey(),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    source_bullet_id: text('source_bullet_id').references(() => bullets.id),
+    tracker_id: text('tracker_id')
+      .notNull()
+      .references(() => trackers.id),
+    value: text('value', { mode: 'json' }).$type<TrackerEntryValue>().notNull(),
+    logged_at: integer('logged_at').notNull(),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+    state: text('state', { enum: RECORD_STATE }).notNull(),
+  },
+  (t) => [index('tracker_entries_source_bullet_id_idx').on(t.source_bullet_id)],
+)
 
 /** activities — a record of something the user DID; may optionally link to a Tracker. */
-export const activities = sqliteTable('activities', {
-  id: text('id').primaryKey(),
-  owner_id: text('owner_id')
-    .notNull()
-    .references(() => users.id),
-  source_bullet_id: text('source_bullet_id').references(() => bullets.id),
-  name: text('name').notNull(),
-  occurred_at: integer('occurred_at').notNull(),
-  tracker_id: text('tracker_id').references(() => trackers.id),
-  notes: text('notes'),
-  quantity: real('quantity'),
-  unit: text('unit'),
-  created_at: integer('created_at').notNull(),
-  updated_at: integer('updated_at').notNull(),
-  state: text('state', { enum: RECORD_STATE }).notNull(),
-})
+export const activities = sqliteTable(
+  'activities',
+  {
+    id: text('id').primaryKey(),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    source_bullet_id: text('source_bullet_id').references(() => bullets.id),
+    name: text('name').notNull(),
+    occurred_at: integer('occurred_at').notNull(),
+    tracker_id: text('tracker_id').references(() => trackers.id),
+    notes: text('notes'),
+    quantity: real('quantity'),
+    unit: text('unit'),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+    state: text('state', { enum: RECORD_STATE }).notNull(),
+  },
+  (t) => [index('activities_source_bullet_id_idx').on(t.source_bullet_id)],
+)
 
 /**
  * suggestions — the extraction envelope. `source_bullet_id` is NON-null (always derived from
  * a bullet). `target_id` is polymorphic across target kinds, so it carries NO FK.
  */
-export const suggestions = sqliteTable('suggestions', {
-  id: text('id').primaryKey(),
-  owner_id: text('owner_id')
-    .notNull()
-    .references(() => users.id),
-  source_bullet_id: text('source_bullet_id')
-    .notNull()
-    .references(() => bullets.id),
-  target_kind: text('target_kind', { enum: TARGET_KIND }).notNull(),
-  operation: text('operation', { enum: SUGGESTION_OPERATION }).notNull(),
-  // Polymorphic across kinds — intentionally NO foreign key.
-  target_id: text('target_id'),
-  payload: text('payload', { mode: 'json' }).$type<SuggestionPayload>().notNull(),
-  confidence: real('confidence').notNull(),
-  tier: text('tier', { enum: SUGGESTION_TIER }).notNull(),
-  status: text('status', { enum: SUGGESTION_STATUS }).notNull(),
-  resolved_at: integer('resolved_at'),
-  created_at: integer('created_at').notNull(),
-  updated_at: integer('updated_at').notNull(),
-  state: text('state', { enum: RECORD_STATE }).notNull(),
-})
+export const suggestions = sqliteTable(
+  'suggestions',
+  {
+    id: text('id').primaryKey(),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    source_bullet_id: text('source_bullet_id')
+      .notNull()
+      .references(() => bullets.id),
+    target_kind: text('target_kind', { enum: TARGET_KIND }).notNull(),
+    operation: text('operation', { enum: SUGGESTION_OPERATION }).notNull(),
+    // Polymorphic across kinds — intentionally NO foreign key.
+    target_id: text('target_id'),
+    payload: text('payload', { mode: 'json' }).$type<SuggestionPayload>().notNull(),
+    confidence: real('confidence').notNull(),
+    tier: text('tier', { enum: SUGGESTION_TIER }).notNull(),
+    status: text('status', { enum: SUGGESTION_STATUS }).notNull(),
+    resolved_at: integer('resolved_at'),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+    state: text('state', { enum: RECORD_STATE }).notNull(),
+  },
+  (t) => [index('suggestions_source_bullet_id_idx').on(t.source_bullet_id)],
+)
 
 /**
  * jobs — the serial queue for the future worker (e.g. `extract_bullet`). No soft-delete

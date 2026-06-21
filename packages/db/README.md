@@ -20,6 +20,9 @@ The schema is written to survive a future move to hosted Postgres:
 - **JSON** columns (`trackers.config`, `tracker_entries.value`, `suggestions.payload`,
   `jobs.payload`) are `text({ mode: 'json' }).$type<...>()` with the matching core type.
   (Postgres: `jsonb`.)
+- **indexes** — `source_bullet_id` is indexed on `tasks`, `trackers`, `tracker_entries`,
+  `activities`, and `suggestions` (the cascade soft-delete filters on it). Drizzle `index()`,
+  portable to Postgres.
 
 The driver enforces `PRAGMA foreign_keys = ON`.
 
@@ -71,8 +74,15 @@ Per entity (`users`, `bullets`, `tasks`, `trackers`, `trackerEntries`, `activiti
 - **`softDelete`** sets `state = 'deleted'` and bumps `updated_at` (the bullet-level cascade
   lives in the apply engine).
 
+The extracted entities (`tasks`, `trackers`, `trackerEntries`, `activities`) also expose a
+`list…BySourceBullet(db, bulletId)` helper returning the **active** rows traced directly to one
+bullet (mirroring `listSuggestionsByBullet`). These push the
+`source_bullet_id = ? AND state = 'active'` predicate to SQL (indexed) and back the cascade
+soft-delete, so it is O(rows traced to that bullet) rather than O(all of the owner's rows).
+
 The **jobs** repo exposes `enqueueJob`, `claimNextJob` (queued → running, oldest first — for the
 future serial worker), `markJobDone`, `markJobFailed(error)`, `getJobById`, `listJobsByStatus`.
+`claimNextJob` / `listJobsByStatus` order by `(created_at, id)` for a deterministic tiebreak.
 
 ## Apply / commit engine (`src/apply.ts`) — the heart
 

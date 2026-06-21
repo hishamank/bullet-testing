@@ -41,6 +41,15 @@ export function listTrackerEntries(
   return db.select().from(trackerEntries).where(where).all()
 }
 
+/** List the ACTIVE tracker entries traced directly to one bullet (for the cascade soft-delete). */
+export function listTrackerEntriesBySourceBullet(db: Db, bulletId: string): TrackerEntry[] {
+  return db
+    .select()
+    .from(trackerEntries)
+    .where(and(eq(trackerEntries.source_bullet_id, bulletId), eq(trackerEntries.state, 'active')))
+    .all()
+}
+
 /** List the entries logged against one tracker (active only unless `includeDeleted`). */
 export function listEntriesByTracker(
   db: Db,

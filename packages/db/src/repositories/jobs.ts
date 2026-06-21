@@ -56,7 +56,14 @@ export function getJobById(db: Db, id: string): Job | undefined {
 
 /** List jobs in a given status, oldest first. */
 export function listJobsByStatus(db: Db, status: JobStatus): Job[] {
-  return db.select().from(jobs).where(eq(jobs.status, status)).orderBy(asc(jobs.created_at)).all()
+  // Secondary sort on `id` is a stable, deterministic tiebreak when two jobs share a
+  // created_at millisecond (otherwise the order would rely on incidental rowid ordering).
+  return db
+    .select()
+    .from(jobs)
+    .where(eq(jobs.status, status))
+    .orderBy(asc(jobs.created_at), asc(jobs.id))
+    .all()
 }
 
 /**
@@ -69,7 +76,9 @@ export function claimNextJob(db: Db): Job | undefined {
     .select()
     .from(jobs)
     .where(eq(jobs.status, 'queued'))
-    .orderBy(asc(jobs.created_at))
+    // Stable secondary sort on `id` — see listJobsByStatus: ties on created_at must not depend
+    // on incidental rowid ordering.
+    .orderBy(asc(jobs.created_at), asc(jobs.id))
     .get()
   if (!next) return undefined
   const ts = now()

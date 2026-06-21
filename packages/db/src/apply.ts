@@ -21,7 +21,11 @@ import {
 } from '@bullet/core'
 import type { Db } from './client'
 import { DbError } from './errors'
-import { createActivity, listActivities, softDeleteActivity } from './repositories/activities'
+import {
+  createActivity,
+  listActivitiesBySourceBullet,
+  softDeleteActivity,
+} from './repositories/activities'
 import { softDeleteBullet } from './repositories/bullets'
 import { now } from './repositories/shared'
 import {
@@ -33,19 +37,19 @@ import {
 import {
   createTask,
   getTaskById,
-  listTasks,
+  listTasksBySourceBullet,
   softDeleteTask,
   updateTask,
 } from './repositories/tasks'
 import {
   createTrackerEntry,
-  listTrackerEntries,
+  listTrackerEntriesBySourceBullet,
   softDeleteTrackerEntry,
 } from './repositories/trackerEntries'
 import {
   createTracker,
   getTrackerById,
-  listTrackers,
+  listTrackersBySourceBullet,
   softDeleteTracker,
 } from './repositories/trackers'
 
@@ -209,6 +213,11 @@ function applyAppend(
     )
   }
 
+  // TODO(Task 3, packages/agent): validating the entry `value` against the PARENT tracker's
+  // `input_type` (e.g. multi_select ⇒ string[], scale ⇒ number) is intentionally deferred to
+  // the agent resolve layer, which has the tracker in hand. Here we accept the structural
+  // TrackerEntryValue union only — the same deferral is documented in
+  // packages/core/src/entities/trackerEntry.ts (trackerEntryValueSchema).
   // Wire tracker_id from the target; provenance overrides any payload-supplied owner/bullet.
   return createTrackerEntry(db, {
     ...data,
@@ -418,33 +427,28 @@ export function softDelete(db: Db, bulletId: string, mode: DeleteMode): SoftDele
     return { mode, bulletId, bulletDeleted: true, cascadedIds: [] }
   }
 
-  // mode === 'cascade': soft-delete every active row traced directly to this bullet.
-  const ownerId = bullet.owner_id
+  // mode === 'cascade': soft-delete every active row traced directly to this bullet. The
+  // `…BySourceBullet` helpers push the `source_bullet_id = ? AND state = 'active'` predicate to
+  // SQL (indexed on source_bullet_id), so this is O(rows traced to THIS bullet), not O(all of
+  // the owner's rows). Rows traced to a DIFFERENT bullet are never returned, so they stay
+  // untouched.
   const cascadedIds: string[] = []
 
-  for (const task of listTasks(db, ownerId)) {
-    if (task.source_bullet_id === bulletId) {
-      softDeleteTask(db, task.id)
-      cascadedIds.push(task.id)
-    }
+  for (const task of listTasksBySourceBullet(db, bulletId)) {
+    softDeleteTask(db, task.id)
+    cascadedIds.push(task.id)
   }
-  for (const tracker of listTrackers(db, ownerId)) {
-    if (tracker.source_bullet_id === bulletId) {
-      softDeleteTracker(db, tracker.id)
-      cascadedIds.push(tracker.id)
-    }
+  for (const tracker of listTrackersBySourceBullet(db, bulletId)) {
+    softDeleteTracker(db, tracker.id)
+    cascadedIds.push(tracker.id)
   }
-  for (const entry of listTrackerEntries(db, ownerId)) {
-    if (entry.source_bullet_id === bulletId) {
-      softDeleteTrackerEntry(db, entry.id)
-      cascadedIds.push(entry.id)
-    }
+  for (const entry of listTrackerEntriesBySourceBullet(db, bulletId)) {
+    softDeleteTrackerEntry(db, entry.id)
+    cascadedIds.push(entry.id)
   }
-  for (const activity of listActivities(db, ownerId)) {
-    if (activity.source_bullet_id === bulletId) {
-      softDeleteActivity(db, activity.id)
-      cascadedIds.push(activity.id)
-    }
+  for (const activity of listActivitiesBySourceBullet(db, bulletId)) {
+    softDeleteActivity(db, activity.id)
+    cascadedIds.push(activity.id)
   }
   for (const suggestion of listSuggestionsByBullet(db, bulletId)) {
     softDeleteSuggestion(db, suggestion.id)

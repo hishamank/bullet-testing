@@ -37,6 +37,15 @@ export function listTrackers(db: Db, ownerId: string, opts: ListOptions = {}): T
   return db.select().from(trackers).where(where).all()
 }
 
+/** List the ACTIVE trackers traced directly to one bullet (for the cascade soft-delete). */
+export function listTrackersBySourceBullet(db: Db, bulletId: string): Tracker[] {
+  return db
+    .select()
+    .from(trackers)
+    .where(and(eq(trackers.source_bullet_id, bulletId), eq(trackers.state, 'active')))
+    .all()
+}
+
 /** Mutable tracker fields. `input_type`/`config` move together (the two must stay coherent). */
 export type TrackerUpdate = Partial<Pick<Tracker, 'name' | 'input_type' | 'config'>>
 

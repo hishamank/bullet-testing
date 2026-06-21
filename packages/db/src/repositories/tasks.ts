@@ -39,6 +39,15 @@ export function listTasks(db: Db, ownerId: string, opts: ListOptions = {}): Task
   return db.select().from(tasks).where(where).all()
 }
 
+/** List the ACTIVE tasks traced directly to one bullet (for the cascade soft-delete). */
+export function listTasksBySourceBullet(db: Db, bulletId: string): Task[] {
+  return db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.source_bullet_id, bulletId), eq(tasks.state, 'active')))
+    .all()
+}
+
 /** Mutable task fields (never id/owner/provenance/created_at). */
 export type TaskUpdate = Partial<Pick<Task, 'status' | 'title' | 'notes' | 'due_at' | 'priority'>>
 

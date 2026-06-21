@@ -9,10 +9,16 @@ import {
   updateActivity,
 } from './activities'
 import { createBullet, getBulletById, listBullets, softDeleteBullet, updateBullet } from './bullets'
-import { createSuggestion, listSuggestions, softDeleteSuggestion } from './suggestions'
+import {
+  createSuggestion,
+  getSuggestionById,
+  listSuggestions,
+  softDeleteSuggestion,
+} from './suggestions'
 import { createTask, getTaskById, listTasks, softDeleteTask, updateTask } from './tasks'
 import {
   createTrackerEntry,
+  getTrackerEntryById,
   listEntriesByTracker,
   listTrackerEntries,
   softDeleteTrackerEntry,
@@ -151,6 +157,56 @@ test('suggestions: create → list → soft-delete', () => {
   expect(listSuggestions(db, ownerId)).toHaveLength(1)
   softDeleteSuggestion(db, s.id)
   expect(listSuggestions(db, ownerId)).toHaveLength(0)
+})
+
+test('JSON columns round-trip non-scalar shapes through SQLite (config/value/payload)', () => {
+  const { db } = createTestDb()
+  const { ownerId, bulletId } = seedOwnerAndBullet(db)
+
+  // trackers.config — a nested object with an array. Reads back deep-equal (would break if the
+  // `{ mode: 'json' }` text-serialisation were ever dropped and the value stringified).
+  const config = { input_type: 'multi_select', options: ['a', 'b'] } as const
+  const tr = createTracker(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    name: 'Symptoms',
+    input_type: 'multi_select',
+    config,
+  })
+  expect(getTrackerById(db, tr.id)?.config).toEqual(config)
+
+  // tracker_entries.value — an array value round-trips back as an array, not a string.
+  const value = ['a', 'b']
+  const entry = createTrackerEntry(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    tracker_id: tr.id,
+    value,
+    logged_at: Date.now(),
+  })
+  expect(getTrackerEntryById(db, entry.id)?.value).toEqual(value)
+
+  // suggestions.payload — a non-trivial object round-trips deep-equal.
+  const payload = {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    title: 'multi',
+    notes: 'two\nlines',
+    due_at: 1_700_000_000_000,
+    priority: 'P2' as const,
+  }
+  const s = createSuggestion(db, {
+    owner_id: ownerId,
+    source_bullet_id: bulletId,
+    target_kind: 'task',
+    operation: 'create',
+    target_id: null,
+    payload,
+    confidence: 0.9,
+    tier: 'suggest',
+    resolved_at: null,
+  })
+  expect(getSuggestionById(db, s.id)?.payload).toEqual(payload)
 })
 
 test('repositories reject invalid insert input with a typed DbError', () => {
