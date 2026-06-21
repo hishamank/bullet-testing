@@ -8,6 +8,7 @@ import {
   suggestionOperationSchema,
   suggestionStatusSchema,
   suggestionTierSchema,
+  type TargetKind,
   targetKindSchema,
 } from './enums'
 import { timestampMs, uuid } from './primitives'
@@ -41,8 +42,8 @@ export const confidenceSchema = z.number().min(0).max(1)
 export const DEFINITION_TARGET_KINDS = ['tracker'] as const
 export type DefinitionTargetKind = (typeof DEFINITION_TARGET_KINDS)[number]
 
-const isDefinitionTargetKind = (kind: string): boolean =>
-  (DEFINITION_TARGET_KINDS as readonly string[]).includes(kind)
+const isDefinitionTargetKind = (kind: TargetKind): boolean =>
+  (DEFINITION_TARGET_KINDS as readonly TargetKind[]).includes(kind)
 
 /**
  * The cross-field coherence checks shared by the SELECT and INSERT suggestion schemas

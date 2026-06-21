@@ -56,16 +56,25 @@ const booleanConfigShape = { input_type: z.literal('boolean') } as const
 
 const textConfigShape = { input_type: z.literal('text') } as const
 
+/**
+ * Cross-field bounds predicates, declared exactly ONCE so the standalone `*ConfigSchema`
+ * `.refine` and the union `.superRefine` cannot drift. (Zod v3 forbids a `ZodEffects` member
+ * in a `discriminatedUnion`, so the rule can't live on the union members directly — instead
+ * the same predicate runs in both places.)
+ */
+const scaleBoundsOk = (c: { min: number; max: number }): boolean => c.min < c.max
+
+const numberBoundsOk = (c: { min?: number; max?: number }): boolean =>
+  c.min === undefined || c.max === undefined || c.min <= c.max
+
 export const scaleConfigSchema = z
   .object(scaleConfigShape)
-  .refine((c) => c.min < c.max, { message: 'scale config requires min < max', path: ['max'] })
+  .refine(scaleBoundsOk, { message: 'scale config requires min < max', path: ['max'] })
 
-export const numberConfigSchema = z
-  .object(numberConfigShape)
-  .refine((c) => c.min === undefined || c.max === undefined || c.min <= c.max, {
-    message: 'number config requires min <= max when both are present',
-    path: ['max'],
-  })
+export const numberConfigSchema = z.object(numberConfigShape).refine(numberBoundsOk, {
+  message: 'number config requires min <= max when both are present',
+  path: ['max'],
+})
 
 export const singleSelectConfigSchema = z.object(singleSelectConfigShape)
 
@@ -93,14 +102,15 @@ export const trackerConfigSchema = z
     z.object(textConfigShape),
   ])
   .superRefine((c, ctx) => {
-    if (c.input_type === 'scale' && !(c.min < c.max)) {
+    // Same predicates as the standalone `*ConfigSchema` exports above — the rule lives once.
+    if (c.input_type === 'scale' && !scaleBoundsOk(c)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'scale config requires min < max',
         path: ['max'],
       })
     }
-    if (c.input_type === 'number' && c.min !== undefined && c.max !== undefined && c.min > c.max) {
+    if (c.input_type === 'number' && !numberBoundsOk(c)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'number config requires min <= max when both are present',

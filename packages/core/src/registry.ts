@@ -24,6 +24,8 @@ export const targetKindInsertSchemas = {
 export type TargetKindInsertSchemas = typeof targetKindInsertSchemas
 
 /** The INSERT schema for a given target kind. */
+// TODO(review): thin wrapper over `targetKindInsertSchemas[kind]` — kept deliberately for
+// call-site ergonomics (named, documented accessor). See REVIEW-BACKLOG.md.
 export const insertSchemaFor = <K extends TargetKind>(kind: K): TargetKindInsertSchemas[K] =>
   targetKindInsertSchemas[kind]
 
@@ -38,9 +40,6 @@ export const validateSuggestionPayload = <K extends TargetKind>(
   target_kind: K,
   payload: SuggestionPayload,
 ): z.SafeParseReturnType<unknown, z.infer<TargetKindInsertSchemas[K]>> => {
-  const schema = targetKindInsertSchemas[target_kind]
-  return schema.safeParse(payload) as z.SafeParseReturnType<
-    unknown,
-    z.infer<TargetKindInsertSchemas[K]>
-  >
+  const schema: TargetKindInsertSchemas[K] = targetKindInsertSchemas[target_kind]
+  return schema.safeParse(payload)
 }

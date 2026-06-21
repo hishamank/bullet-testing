@@ -11,6 +11,12 @@ import { timestampMs, uuid } from './primitives'
  * These are plain object literals (raw shapes), not `z.object(...)`, so they can be spread
  * into both SELECT and INSERT object shapes and selectively overridden (e.g. made optional
  * on insert).
+ *
+ * NOTE(review): a generic `makeEntity(extraFields)` SELECT/INSERT factory was evaluated and
+ * deliberately REJECTED — it would spread indirection rather than delete it and fight the
+ * per-entity overrides (User has no owner, Bullet no provenance, Suggestion non-null
+ * provenance + defaults). Composing via these spread shapes is the chosen pattern. Please do
+ * not re-propose the factory. See REVIEW-BACKLOG.md → "Decided against".
  */
 
 /** Server-managed lifecycle fields present on every persisted, owned entity. */
