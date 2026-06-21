@@ -6,22 +6,10 @@ import { type Tracker, trackerInsertSchema } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../client'
 import { trackers } from '../schema'
-import { type ListOptions, newId, now, parseInsert } from './shared'
+import { type ListOptions, now, parseInsert, withInsertDefaults } from './shared'
 
 export function createTracker(db: Db, input: unknown): Tracker {
-  const parsed = parseInsert(trackerInsertSchema, input)
-  const ts = now()
-  const row: Tracker = {
-    id: parsed.id ?? newId(),
-    owner_id: parsed.owner_id,
-    source_bullet_id: parsed.source_bullet_id,
-    name: parsed.name,
-    input_type: parsed.input_type,
-    config: parsed.config,
-    created_at: parsed.created_at ?? ts,
-    updated_at: parsed.updated_at ?? ts,
-    state: parsed.state ?? 'active',
-  }
+  const row: Tracker = withInsertDefaults(parseInsert(trackerInsertSchema, input))
   db.insert(trackers).values(row).run()
   return row
 }

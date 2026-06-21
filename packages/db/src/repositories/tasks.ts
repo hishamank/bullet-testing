@@ -6,24 +6,10 @@ import { type Task, taskInsertSchema } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../client'
 import { tasks } from '../schema'
-import { type ListOptions, newId, now, parseInsert } from './shared'
+import { type ListOptions, now, parseInsert, withInsertDefaults } from './shared'
 
 export function createTask(db: Db, input: unknown): Task {
-  const parsed = parseInsert(taskInsertSchema, input)
-  const ts = now()
-  const row: Task = {
-    id: parsed.id ?? newId(),
-    owner_id: parsed.owner_id,
-    source_bullet_id: parsed.source_bullet_id,
-    status: parsed.status,
-    title: parsed.title,
-    notes: parsed.notes,
-    due_at: parsed.due_at,
-    priority: parsed.priority,
-    created_at: parsed.created_at ?? ts,
-    updated_at: parsed.updated_at ?? ts,
-    state: parsed.state ?? 'active',
-  }
+  const row: Task = withInsertDefaults(parseInsert(taskInsertSchema, input))
   db.insert(tasks).values(row).run()
   return row
 }

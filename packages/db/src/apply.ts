@@ -14,6 +14,7 @@ import {
   type Activity,
   type Suggestion,
   type SuggestionPayload,
+  type TargetKind,
   type Task,
   type Tracker,
   type TrackerEntry,
@@ -87,6 +88,8 @@ function validatePayloadOrThrow(
       res.error.flatten(),
     )
   }
+  // TODO(review): widens core's precise per-kind safeParse result to Record<string, unknown> —
+  // deliberate boundary for the stringly-keyed update path — see REVIEW-BACKLOG.md
   return res.data as Record<string, unknown>
 }
 
@@ -142,6 +145,19 @@ export function applySuggestion(db: Db, suggestionOrId: Suggestion | string): Ap
   }
 }
 
+/**
+ * Per-`target_kind` create dispatch. A `satisfies Record<TargetKind, …>` makes a missing kind a
+ * COMPILE error (when the closed `TargetKind` union grows) instead of a runtime `never`-guard —
+ * and it can't silently drift from the kind set core defines. `tracker_entry` routes through
+ * `createEntryVerifyingTracker` (a bare entry create must name an existing, active tracker).
+ */
+const CREATE_BY_KIND = {
+  task: createTask,
+  tracker: createTracker,
+  tracker_entry: createEntryVerifyingTracker,
+  activity: createActivity,
+} as const satisfies Record<TargetKind, (db: Db, input: Record<string, unknown>) => ApplyResult>
+
 /** `create`: mint a NEW row of `target_kind`, forcing owner/provenance from the suggestion. */
 function applyCreate(
   db: Db,
@@ -158,21 +174,7 @@ function applyCreate(
   }
 
   const input = { ...data, ...provenance }
-  switch (suggestion.target_kind) {
-    case 'task':
-      return createTask(db, input)
-    case 'tracker':
-      return createTracker(db, input)
-    case 'activity':
-      return createActivity(db, input)
-    case 'tracker_entry':
-      // A bare tracker_entry create needs a tracker_id in the payload; verify the tracker.
-      return createEntryVerifyingTracker(db, input)
-    default: {
-      const never: never = suggestion.target_kind
-      throw new DbError('UNSUPPORTED_OPERATION', `Cannot create target_kind: ${String(never)}`)
-    }
-  }
+  return CREATE_BY_KIND[suggestion.target_kind](db, input)
 }
 
 /**
@@ -202,16 +204,7 @@ function applyAppend(
     )
   }
 
-  const tracker = getTrackerById(db, suggestion.target_id)
-  if (!tracker) {
-    throw new DbError('NOT_FOUND', `append target tracker not found: ${suggestion.target_id}`)
-  }
-  if (tracker.state !== 'active') {
-    throw new DbError(
-      'INVALID_STATE',
-      `append target tracker ${tracker.id} is not active (state='${tracker.state}')`,
-    )
-  }
+  requireActiveTracker(db, suggestion.target_id)
 
   // TODO(Task 3, packages/agent): validating the entry `value` against the PARENT tracker's
   // `input_type` (e.g. multi_select ⇒ string[], scale ⇒ number) is intentionally deferred to
@@ -278,6 +271,26 @@ function applyUpdate(db: Db, suggestion: Suggestion, data: Record<string, unknow
   return updated
 }
 
+/**
+ * Load the tracker `id` and require it exists AND is active, returning it. The single source of
+ * the "append/create-entry target tracker must be live" invariant — both the `append` path and a
+ * direct `tracker_entry` create go through this so the contract and error semantics are identical
+ * (a missing tracker is `NOT_FOUND`; a soft-deleted one is `INVALID_STATE`).
+ */
+function requireActiveTracker(db: Db, id: string): Tracker {
+  const tracker = getTrackerById(db, id)
+  if (!tracker) {
+    throw new DbError('NOT_FOUND', `target tracker not found: ${id}`)
+  }
+  if (tracker.state !== 'active') {
+    throw new DbError(
+      'INVALID_STATE',
+      `target tracker ${tracker.id} is not active (state='${tracker.state}')`,
+    )
+  }
+  return tracker
+}
+
 /** Verify a tracker exists/active for a direct tracker_entry create (used by `create`). */
 function createEntryVerifyingTracker(db: Db, input: Record<string, unknown>): TrackerEntry {
   const trackerId = input.tracker_id
@@ -287,10 +300,7 @@ function createEntryVerifyingTracker(db: Db, input: Record<string, unknown>): Tr
       `tracker_entry create requires a tracker_id in the payload`,
     )
   }
-  const tracker = getTrackerById(db, trackerId)
-  if (tracker?.state !== 'active') {
-    throw new DbError('NOT_FOUND', `tracker_entry target tracker not found/active: ${trackerId}`)
-  }
+  requireActiveTracker(db, trackerId)
   return createTrackerEntry(db, input)
 }
 

@@ -7,19 +7,10 @@ import { type Bullet, bulletInsertSchema } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../client'
 import { bullets } from '../schema'
-import { type ListOptions, newId, now, parseInsert } from './shared'
+import { type ListOptions, now, parseInsert, withInsertDefaults } from './shared'
 
 export function createBullet(db: Db, input: unknown): Bullet {
-  const parsed = parseInsert(bulletInsertSchema, input)
-  const ts = now()
-  const row: Bullet = {
-    id: parsed.id ?? newId(),
-    owner_id: parsed.owner_id,
-    text: parsed.text,
-    created_at: parsed.created_at ?? ts,
-    updated_at: parsed.updated_at ?? ts,
-    state: parsed.state ?? 'active',
-  }
+  const row: Bullet = withInsertDefaults(parseInsert(bulletInsertSchema, input))
   db.insert(bullets).values(row).run()
   return row
 }

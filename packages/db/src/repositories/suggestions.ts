@@ -10,27 +10,12 @@ import { type Suggestion, type SuggestionStatus, suggestionInsertSchema } from '
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../client'
 import { suggestions } from '../schema'
-import { type ListOptions, newId, now, parseInsert } from './shared'
+import { type ListOptions, now, parseInsert, withInsertDefaults } from './shared'
 
 export function createSuggestion(db: Db, input: unknown): Suggestion {
-  const parsed = parseInsert(suggestionInsertSchema, input)
-  const ts = now()
-  const row: Suggestion = {
-    id: parsed.id ?? newId(),
-    owner_id: parsed.owner_id,
-    source_bullet_id: parsed.source_bullet_id,
-    target_kind: parsed.target_kind,
-    operation: parsed.operation,
-    target_id: parsed.target_id,
-    payload: parsed.payload,
-    confidence: parsed.confidence,
-    tier: parsed.tier,
-    status: parsed.status,
-    resolved_at: parsed.resolved_at,
-    created_at: parsed.created_at ?? ts,
-    updated_at: parsed.updated_at ?? ts,
-    state: parsed.state ?? 'active',
-  }
+  // `status` / `resolved_at` carry through from the parsed insert (the schema defaults `status`
+  // to 'pending'); `withInsertDefaults` only mints the universal lifecycle fields.
+  const row: Suggestion = withInsertDefaults(parseInsert(suggestionInsertSchema, input))
   db.insert(suggestions).values(row).run()
   return row
 }

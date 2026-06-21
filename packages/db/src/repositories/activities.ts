@@ -7,25 +7,10 @@ import { type Activity, activityInsertSchema } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../client'
 import { activities } from '../schema'
-import { type ListOptions, newId, now, parseInsert } from './shared'
+import { type ListOptions, now, parseInsert, withInsertDefaults } from './shared'
 
 export function createActivity(db: Db, input: unknown): Activity {
-  const parsed = parseInsert(activityInsertSchema, input)
-  const ts = now()
-  const row: Activity = {
-    id: parsed.id ?? newId(),
-    owner_id: parsed.owner_id,
-    source_bullet_id: parsed.source_bullet_id,
-    name: parsed.name,
-    occurred_at: parsed.occurred_at,
-    tracker_id: parsed.tracker_id,
-    notes: parsed.notes,
-    quantity: parsed.quantity,
-    unit: parsed.unit,
-    created_at: parsed.created_at ?? ts,
-    updated_at: parsed.updated_at ?? ts,
-    state: parsed.state ?? 'active',
-  }
+  const row: Activity = withInsertDefaults(parseInsert(activityInsertSchema, input))
   db.insert(activities).values(row).run()
   return row
 }
