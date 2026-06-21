@@ -4,6 +4,12 @@
  * @bullet/db / @bullet/agent.
  */
 
+// NOTE(review): a generic `crudRouter` factory collapsing the four entity routers
+// (tasks/trackers/trackerEntries/activities) was evaluated and REJECTED — see REVIEW-BACKLOG.md.
+// The variation isn't uniform (trackerEntries omits tracker_id; trackers rebuild input from
+// ZodEffects), there are only four call sites, and four explicit thin wrappers are the rubric's
+// ideal. Do not re-propose it. Revisit only if a fifth/sixth entity lands.
+
 import { router } from '../trpc'
 import { activitiesRouter } from './activities'
 import { bulletsRouter } from './bullets'

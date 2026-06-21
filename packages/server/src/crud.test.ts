@@ -146,6 +146,25 @@ describe('bullets.delete modes (§4.6)', () => {
     expect(await caller.suggestions.listPending()).toHaveLength(0)
   })
 
+  test('cancel on an unknown id throws NOT_FOUND; on an existing bullet is a no-op', async () => {
+    const caller = createCaller(buildTestDeps())
+
+    // A well-formed uuid that was never created — 'cancel' must be NOT_FOUND like get/update,
+    // not a silent success.
+    const missingId = '00000000-0000-4000-8000-000000000000'
+    await expect(caller.bullets.delete({ id: missingId, mode: 'cancel' })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+
+    // 'cancel' on an existing bullet is a no-op: the bullet stays active.
+    const bullet = await caller.bullets.create({ text: 'keep me' })
+    const result = await caller.bullets.delete({ id: bullet.id, mode: 'cancel' })
+    expect(result.mode).toBe('cancel')
+    expect(result.bulletDeleted).toBe(false)
+    expect(await caller.bullets.list()).toHaveLength(1)
+    expect((await caller.bullets.get({ id: bullet.id })).state).toBe('active')
+  })
+
   test('keep soft-deletes only the bullet; extractions survive', async () => {
     const deps = buildTestDeps(activityPlusTaskScript())
     const caller = createCaller(deps)

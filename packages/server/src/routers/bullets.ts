@@ -41,7 +41,12 @@ export const bulletsRouter = router({
   }),
 
   /** Soft-delete a bullet per the chosen mode: cancel | cascade | keep (§4.6). */
-  delete: publicProcedure
-    .input(bulletDeleteInput)
-    .mutation(({ ctx, input }) => softDelete(ctx.db, input.id, input.mode)),
+  delete: publicProcedure.input(bulletDeleteInput).mutation(({ ctx, input }) => {
+    // Verify existence for ALL modes so delete-on-missing-id is consistently NOT_FOUND (matching
+    // get/update). softDelete throws NOT_FOUND for keep/cascade but treats 'cancel' as an
+    // unconditional no-op, so without this an unknown id would silently succeed under 'cancel'.
+    if (!getBulletById(ctx.db, input.id))
+      throw new TRPCError({ code: 'NOT_FOUND', message: `bullet ${input.id} not found` })
+    return softDelete(ctx.db, input.id, input.mode)
+  }),
 })
