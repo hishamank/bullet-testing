@@ -95,6 +95,29 @@ Zod `SafeParseReturnType` of parsing `payload` against the kind's insert schema 
 `CLAUDE.md` §4.3 — the payload is validated against that kind's Zod schema). `insertSchemaFor`
 returns the schema directly when you already know the kind.
 
+## Key design decision — Suggestion envelope invariants
+
+Beyond per-field validation, the `Suggestion` SELECT and INSERT schemas enforce two
+cross-field invariants via a shared `.superRefine` (so they are written once and applied to
+both — the inferred `Suggestion` / `SuggestionInsert` types are unchanged):
+
+- **`operation` ↔ `target_id` (CLAUDE.md §4.3).** `create` mints a brand-new entity, so it
+  has no existing target — `target_id` **must be `null`**. `append` / `update` change an
+  existing entity, so `target_id` **must be non-null**. Incoherent combinations (e.g.
+  `create` with a `target_id`, or `append` with `target_id: null`) are rejected, with the
+  issue attached to the `target_id` path.
+- **Definitions are never `auto` (CLAUDE.md §4.5).** Creating a *definition* always requires
+  user confirmation regardless of confidence, so a definition's `tier` must be `'suggest'` or
+  `'ask'`, never `'auto'`. The definition target kinds are listed in the exported set
+  `DEFINITION_TARGET_KINDS` — `['tracker']` in v1, designed to extend (future: `'habit'`,
+  `'goal'`). Records (`tracker_entry`, `activity`) and `task`s may be `'auto'`. A violation is
+  rejected with the issue attached to the `tier` path.
+
+```ts
+import { DEFINITION_TARGET_KINDS } from '@bullet/core'
+//    ^ ['tracker'] as const — the kinds that can never be tier 'auto'
+```
+
 ## Develop
 
 ```sh

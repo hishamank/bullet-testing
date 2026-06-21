@@ -70,6 +70,17 @@ test('validateSuggestionPayload: accepts a correct tracker_entry payload', () =>
   expect(res.success).toBe(true)
 })
 
+test('validateSuggestionPayload: rejects a malformed tracker_entry payload (value is an object)', () => {
+  const res = validateSuggestionPayload('tracker_entry', {
+    owner_id: '22222222-2222-4222-8222-222222222222',
+    source_bullet_id: null,
+    tracker_id: '33333333-3333-4333-8333-333333333333',
+    value: { not: 'a valid value' },
+    logged_at: 1_700_000_000_000,
+  })
+  expect(res.success).toBe(false)
+})
+
 test('validateSuggestionPayload: rejects an activity payload missing required name', () => {
   const res = validateSuggestionPayload('activity', {
     owner_id: '22222222-2222-4222-8222-222222222222',

@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest'
-import { trackerEntryInsertSchema, trackerEntrySelectSchema } from './trackerEntry'
+import {
+  trackerEntryInsertSchema,
+  trackerEntrySelectSchema,
+  trackerEntryValueSchema,
+} from './trackerEntry'
 
 const validEntry = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -56,4 +60,20 @@ test('tracker entry insert: allows omitting id/created_at/updated_at/state', () 
     logged_at: 1_700_000_000_000,
   })
   expect(res.success).toBe(true)
+})
+
+// --- direct coverage of the value union ------------------------------------
+
+test('trackerEntryValueSchema: accepts number, string, boolean and string[]', () => {
+  expect(trackerEntryValueSchema.safeParse(4).success).toBe(true)
+  expect(trackerEntryValueSchema.safeParse('note').success).toBe(true)
+  expect(trackerEntryValueSchema.safeParse(true).success).toBe(true)
+  expect(trackerEntryValueSchema.safeParse(['a', 'b']).success).toBe(true)
+})
+
+test('trackerEntryValueSchema: rejects number[] and object/mixed values', () => {
+  expect(trackerEntryValueSchema.safeParse([1, 2]).success).toBe(false)
+  expect(trackerEntryValueSchema.safeParse(['a', 1]).success).toBe(false)
+  expect(trackerEntryValueSchema.safeParse({ x: 1 }).success).toBe(false)
+  expect(trackerEntryValueSchema.safeParse(null).success).toBe(false)
 })

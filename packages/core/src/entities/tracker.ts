@@ -23,73 +23,74 @@ import { nonEmptyString } from '../primitives'
  *   - text             → {}
  */
 
+/**
+ * Each config's raw object shape, declared exactly ONCE. Both the standalone
+ * `*ConfigSchema` exports and the discriminated-union members are built from these shapes, so
+ * the field definitions live in a single source of truth and can never drift.
+ */
+const scaleConfigShape = {
+  input_type: z.literal('scale'),
+  min: z.number().int(),
+  max: z.number().int(),
+  labels: z.array(z.string()).optional(),
+} as const
+
+const numberConfigShape = {
+  input_type: z.literal('number'),
+  unit: z.string().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+} as const
+
+const singleSelectConfigShape = {
+  input_type: z.literal('single_select'),
+  options: z.array(nonEmptyString()).min(1, 'select config requires at least one option'),
+} as const
+
+const multiSelectConfigShape = {
+  input_type: z.literal('multi_select'),
+  options: z.array(nonEmptyString()).min(1, 'select config requires at least one option'),
+} as const
+
+const booleanConfigShape = { input_type: z.literal('boolean') } as const
+
+const textConfigShape = { input_type: z.literal('text') } as const
+
 export const scaleConfigSchema = z
-  .object({
-    input_type: z.literal('scale'),
-    min: z.number().int(),
-    max: z.number().int(),
-    labels: z.array(z.string()).optional(),
-  })
+  .object(scaleConfigShape)
   .refine((c) => c.min < c.max, { message: 'scale config requires min < max', path: ['max'] })
 
 export const numberConfigSchema = z
-  .object({
-    input_type: z.literal('number'),
-    unit: z.string().optional(),
-    min: z.number().optional(),
-    max: z.number().optional(),
-  })
+  .object(numberConfigShape)
   .refine((c) => c.min === undefined || c.max === undefined || c.min <= c.max, {
     message: 'number config requires min <= max when both are present',
     path: ['max'],
   })
 
-export const singleSelectConfigSchema = z.object({
-  input_type: z.literal('single_select'),
-  options: z.array(nonEmptyString()).min(1, 'select config requires at least one option'),
-})
+export const singleSelectConfigSchema = z.object(singleSelectConfigShape)
 
-export const multiSelectConfigSchema = z.object({
-  input_type: z.literal('multi_select'),
-  options: z.array(nonEmptyString()).min(1, 'select config requires at least one option'),
-})
+export const multiSelectConfigSchema = z.object(multiSelectConfigShape)
 
-export const booleanConfigSchema = z.object({ input_type: z.literal('boolean') })
+export const booleanConfigSchema = z.object(booleanConfigShape)
 
-export const textConfigSchema = z.object({ input_type: z.literal('text') })
+export const textConfigSchema = z.object(textConfigShape)
 
 /**
  * The full config union. Discriminated on `input_type`.
  *
  * `scale` and `number` need cross-field refinements (`min`/`max`). Zod v3's
  * `discriminatedUnion` cannot take `ZodEffects` (a `.refine`d schema) as a member, so the
- * union is built over the raw object schemas and the `min`/`max` checks are re-applied in a
- * single `superRefine` on the resulting union.
+ * union is built over the raw object schemas (the same shapes as the standalone exports) and
+ * the `min`/`max` checks are re-applied in a single `superRefine` on the resulting union.
  */
 export const trackerConfigSchema = z
   .discriminatedUnion('input_type', [
-    z.object({
-      input_type: z.literal('scale'),
-      min: z.number().int(),
-      max: z.number().int(),
-      labels: z.array(z.string()).optional(),
-    }),
-    z.object({
-      input_type: z.literal('number'),
-      unit: z.string().optional(),
-      min: z.number().optional(),
-      max: z.number().optional(),
-    }),
-    z.object({
-      input_type: z.literal('single_select'),
-      options: z.array(nonEmptyString()).min(1, 'select config requires at least one option'),
-    }),
-    z.object({
-      input_type: z.literal('multi_select'),
-      options: z.array(nonEmptyString()).min(1, 'select config requires at least one option'),
-    }),
-    z.object({ input_type: z.literal('boolean') }),
-    z.object({ input_type: z.literal('text') }),
+    z.object(scaleConfigShape),
+    z.object(numberConfigShape),
+    z.object(singleSelectConfigShape),
+    z.object(multiSelectConfigShape),
+    z.object(booleanConfigShape),
+    z.object(textConfigShape),
   ])
   .superRefine((c, ctx) => {
     if (c.input_type === 'scale' && !(c.min < c.max)) {

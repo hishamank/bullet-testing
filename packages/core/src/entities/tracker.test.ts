@@ -1,5 +1,11 @@
 import { expect, test } from 'vitest'
-import { trackerConfigSchema, trackerInsertSchema, trackerSelectSchema } from './tracker'
+import {
+  scaleConfigSchema,
+  singleSelectConfigSchema,
+  trackerConfigSchema,
+  trackerInsertSchema,
+  trackerSelectSchema,
+} from './tracker'
 
 const base = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -111,4 +117,22 @@ test('tracker insert: allows omitting id/created_at/updated_at/state', () => {
     config: { input_type: 'scale', min: 1, max: 5 },
   })
   expect(res.success).toBe(true)
+})
+
+// --- standalone config schemas (built from the same shared shapes as the union) ---
+
+test('standalone scaleConfigSchema: accepts min < max, rejects min >= max', () => {
+  expect(scaleConfigSchema.safeParse({ input_type: 'scale', min: 1, max: 5 }).success).toBe(true)
+  expect(scaleConfigSchema.safeParse({ input_type: 'scale', min: 5, max: 5 }).success).toBe(false)
+  expect(scaleConfigSchema.safeParse({ input_type: 'scale', min: 7, max: 2 }).success).toBe(false)
+})
+
+test('standalone singleSelectConfigSchema: rejects empty options, accepts a non-empty list', () => {
+  expect(
+    singleSelectConfigSchema.safeParse({ input_type: 'single_select', options: [] }).success,
+  ).toBe(false)
+  expect(
+    singleSelectConfigSchema.safeParse({ input_type: 'single_select', options: ['low', 'high'] })
+      .success,
+  ).toBe(true)
 })

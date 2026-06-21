@@ -92,6 +92,8 @@ export {
 // Suggestion (extraction envelope)
 export {
   confidenceSchema,
+  DEFINITION_TARGET_KINDS,
+  type DefinitionTargetKind,
   type Suggestion,
   type SuggestionInsert,
   type SuggestionPayload,
