@@ -11,7 +11,7 @@
  * stays compact and the model references things by NAME, not by leaking ids.
  */
 
-import type { TrackerInputType } from '@bullet/core'
+import type { TaskPriority, TrackerInputType } from '@bullet/core'
 import { listTasks, listTrackers } from '@bullet/db'
 import type { AgentDeps } from '../deps'
 
@@ -22,11 +22,23 @@ export interface SnapshotTracker {
   input_type: TrackerInputType
 }
 
-/** An open task, as the model sees it. */
+/**
+ * An open task.
+ *
+ * The model only ever sees `title` + `status` (see prompt.ts `renderSnapshot`), but the row
+ * carries the remaining MUTABLE task fields (`notes`/`due_at`/`priority`) so the resolver can
+ * build a mark-done UPDATE payload that satisfies @bullet/db's full INSERT-schema re-validation
+ * (apply.ts validates EVERY payload against `taskInsertSchema`, which requires those keys present).
+ * Carrying the live values unchanged is safe: `applyUpdate` only patches keys the RAW payload
+ * proposes, so re-supplying them is a no-op on those fields.
+ */
 export interface SnapshotTask {
   id: string
   title: string
   status: 'todo' | 'in_progress'
+  notes: string | null
+  due_at: number | null
+  priority: TaskPriority | null
 }
 
 /** The inlined current state given to the extraction model + the resolver. */
@@ -53,7 +65,14 @@ export function buildSnapshot(deps: Pick<AgentDeps, 'db'>, ownerId: string): Ext
     .filter((t): t is typeof t & { status: 'todo' | 'in_progress' } =>
       (OPEN_TASK_STATUSES as readonly string[]).includes(t.status),
     )
-    .map((t) => ({ id: t.id, title: t.title, status: t.status }))
+    .map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      notes: t.notes,
+      due_at: t.due_at,
+      priority: t.priority,
+    }))
 
   return { trackers, openTasks }
 }

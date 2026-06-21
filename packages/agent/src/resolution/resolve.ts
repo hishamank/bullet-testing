@@ -30,7 +30,7 @@ import type {
 } from '@bullet/core'
 import type { AgentConfig } from '../config'
 import type { Candidate } from '../extraction/schema'
-import type { ExtractionSnapshot } from '../extraction/snapshot'
+import type { ExtractionSnapshot, SnapshotTask } from '../extraction/snapshot'
 import { type Match, matchOpenTask, matchTracker } from './match'
 import { assignTier } from './tier'
 
@@ -209,15 +209,29 @@ function appendTrackerEntry(
 /** happened + strong open task → update that task to status 'done'. */
 function markTaskDone(
   candidate: Candidate,
-  taskHit: Match<{ id: string; title: string }>,
+  taskHit: Match<SnapshotTask>,
   config: AgentConfig,
 ): ResolvedSuggestion {
   const confidence = clamp01(combine(candidate.confidence, taskHit.score))
+  const task = taskHit.item
+  // The apply engine RE-VALIDATES this payload against the FULL task INSERT schema
+  // (taskInsertSchema requires title + the keys notes/due_at/priority present), so a bare
+  // `{ status: 'done' }` would fail INVALID_PAYLOAD and the mark-done could never be applied.
+  // We carry the matched task's CURRENT field values unchanged alongside the only mutation we
+  // intend (status → 'done'); `applyUpdate` patches every key the raw payload proposes, so
+  // re-supplying the existing values is a no-op on those fields while satisfying validation.
+  const payload: SuggestionPayload = {
+    title: task.title,
+    notes: task.notes,
+    due_at: task.due_at,
+    priority: task.priority,
+    status: 'done',
+  }
   return {
     target_kind: 'task',
     operation: 'update',
-    target_id: taskHit.item.id,
-    payload: { status: 'done' },
+    target_id: task.id,
+    payload,
     confidence,
     // A task mark-done is an instance update — eligible for auto when confident.
     tier: assignTier('task', 'update', confidence, config),

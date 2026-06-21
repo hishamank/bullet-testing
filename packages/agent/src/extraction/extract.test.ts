@@ -21,7 +21,16 @@ describe('buildExtractionPrompt', () => {
   test('embeds the bullet text and the inlined snapshot', () => {
     const messages = buildExtractionPrompt('ran 5k', {
       trackers: [{ id: 't1', name: 'mood', input_type: 'scale' }],
-      openTasks: [{ id: 'k1', title: 'call dentist', status: 'todo' }],
+      openTasks: [
+        {
+          id: 'k1',
+          title: 'call dentist',
+          status: 'todo',
+          notes: null,
+          due_at: null,
+          priority: null,
+        },
+      ],
     })
     expect(messages[0]?.role).toBe('system')
     expect(messages[1]?.role).toBe('user')

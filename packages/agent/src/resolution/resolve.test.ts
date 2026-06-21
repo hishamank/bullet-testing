@@ -1,8 +1,19 @@
+import {
+  acceptSuggestion,
+  createBullet,
+  createSuggestion,
+  createTask,
+  createTestDb,
+  createUser,
+  getTaskById,
+  listTasks,
+} from '@bullet/db'
 import { describe, expect, test } from 'vitest'
 import { AGENT_CONFIG_DEFAULTS } from '../config'
 import type { Candidate } from '../extraction/schema'
 import type { ExtractionSnapshot } from '../extraction/snapshot'
-import { type ResolvedSuggestion, resolveCandidates } from './resolve'
+import { buildSnapshot } from '../extraction/snapshot'
+import { type ResolvedSuggestion, resolveCandidates, withProvenance } from './resolve'
 
 const config = AGENT_CONFIG_DEFAULTS
 const EMPTY: ExtractionSnapshot = { trackers: [], openTasks: [] }
@@ -75,7 +86,16 @@ describe('orientation routing', () => {
   test('happened + strong open-task match → UPDATE that task to done', () => {
     const snapshot: ExtractionSnapshot = {
       trackers: [],
-      openTasks: [{ id: 'task-1', title: 'call the dentist', status: 'todo' }],
+      openTasks: [
+        {
+          id: 'task-1',
+          title: 'call the dentist',
+          status: 'todo',
+          notes: 'before noon',
+          due_at: 123,
+          priority: 'P2',
+        },
+      ],
     }
     const { suggestions } = resolveCandidates(
       [
@@ -92,7 +112,15 @@ describe('orientation routing', () => {
     expect(s.target_kind).toBe('task')
     expect(s.operation).toBe('update')
     expect(s.target_id).toBe('task-1')
-    expect(s.payload).toEqual({ status: 'done' })
+    // The payload carries the matched task's CURRENT fields plus the only mutation (status→done),
+    // so the apply engine's full-INSERT-schema re-validation passes (a bare {status} would fail).
+    expect(s.payload).toEqual({
+      title: 'call the dentist',
+      notes: 'before noon',
+      due_at: 123,
+      priority: 'P2',
+      status: 'done',
+    })
   })
 
   test('future_oneoff → create a task', () => {
@@ -227,5 +255,69 @@ describe('confidence combination', () => {
     // A perfect match score (1) combined with model confidence 1 stays 1; the blend is the mean.
     expect(first(suggestions).confidence).toBeGreaterThan(0.5)
     expect(first(suggestions).confidence).toBeLessThanOrEqual(1)
+  })
+})
+
+/**
+ * End-to-end APPLY round-trip for the mark-done UPDATE route. A draft-shape assertion is not
+ * enough: the apply engine RE-VALIDATES the persisted payload against the full task INSERT
+ * schema, so a bare `{ status: 'done' }` is permanently unappliable (INVALID_PAYLOAD). This
+ * seeds a real open task, drives a matching 'happened' candidate, persists via withProvenance/
+ * createSuggestion, and asserts acceptSuggestion succeeds AND the SAME task row flips to 'done'.
+ */
+describe('mark-done UPDATE applies end-to-end against a real DB', () => {
+  function seedOpenTask() {
+    const { db } = createTestDb()
+    const user = createUser(db, { name: 'U' })
+    const bullet = createBullet(db, { owner_id: user.id, text: 'called the dentist' })
+    const task = createTask(db, {
+      owner_id: user.id,
+      source_bullet_id: bullet.id,
+      title: 'call the dentist',
+      notes: 'before noon',
+      due_at: 1_700_000_000_000,
+      priority: 'P2',
+    })
+    return { db, ownerId: user.id, bulletId: bullet.id, task }
+  }
+
+  test('a confident happened match flips the matched task to done (same row, not a new one)', () => {
+    const { db, ownerId, bulletId, task } = seedOpenTask()
+    const snapshot = buildSnapshot({ db }, ownerId)
+
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'called the dentist',
+          referenceName: 'call the dentist',
+          confidence: 0.95,
+        }),
+      ],
+      snapshot,
+      config,
+    )
+    const draft = first(suggestions)
+    expect(draft.target_kind).toBe('task')
+    expect(draft.operation).toBe('update')
+    expect(draft.target_id).toBe(task.id)
+    // Instance updates are auto-eligible (§4.5): a confident mark-done auto-applies.
+    expect(draft.tier).toBe('auto')
+
+    // Persist with provenance and apply through the real db engine (the re-validation path).
+    const suggestion = createSuggestion(db, withProvenance(draft, ownerId, bulletId))
+    const { result } = acceptSuggestion(db, suggestion.id)
+
+    // The SAME task row is mutated to done — no duplicate task is created.
+    expect(result.id).toBe(task.id)
+    const after = getTaskById(db, task.id)
+    expect(after?.status).toBe('done')
+    // Untouched mutable fields are preserved (we re-supplied the live values unchanged).
+    expect(after?.title).toBe('call the dentist')
+    expect(after?.notes).toBe('before noon')
+    expect(after?.due_at).toBe(1_700_000_000_000)
+    expect(after?.priority).toBe('P2')
+    // Exactly one task row exists for the owner (the update did not mint a second).
+    expect(listTasks(db, ownerId)).toHaveLength(1)
   })
 })

@@ -82,7 +82,7 @@ payload, confidence, tier }`; `owner_id`/`source_bullet_id` are attached at pers
 | orientation        | condition                          | result                                                              |
 | ------------------ | ---------------------------------- | ------------------------------------------------------------------ |
 | `happened`         | strong tracker match               | `append` `tracker_entry`, `target_id = tracker.id`, `{value, logged_at}` |
-| `happened`         | strong OPEN-task match              | `update` `task`, `target_id = task.id`, `{status:'done'}`           |
+| `happened`         | strong OPEN-task match              | `update` `task`, `target_id = task.id`, `{title, notes, due_at, priority, status:'done'}` (the matched task's live fields + `status:'done'`) |
 | `happened`         | otherwise                          | `create` `activity` (linked iff confident, else **UNLINKED** — activity-first) |
 | `future_oneoff`    | —                                  | `create` `task` `{title, due_at?, priority?}`                       |
 | `future_recurring` | —                                  | `create` `tracker` DEFINITION `{name, input_type, config}`         |
@@ -112,6 +112,14 @@ fuse score**, so the number is explainable.
 > `tracker_entry`, `tracker_id`) **present on the payload**. `withProvenance` injects these into
 > both the suggestion envelope AND the payload; the apply engine then forces provenance from the
 > envelope, so the two can never disagree.
+>
+> **Task UPDATE (mark-done) is a FULL payload, not a partial.** That same INSERT-schema re-check
+> applies to `update` too, and `taskInsertSchema` requires `title` plus the keys
+> `notes`/`due_at`/`priority` present. A bare `{status:'done'}` would fail `INVALID_PAYLOAD` and be
+> permanently unappliable. So `markTaskDone` builds the payload from the matched task's CURRENT
+> fields (carried on the enriched `SnapshotTask`) plus `status:'done'`. Re-supplying the live
+> values is safe: `applyUpdate` patches only keys the raw payload proposes, so they are a no-op on
+> those fields while `status` is the lone intended mutation.
 
 ### Serial inference queue — `src/queue/*` (single GPU slot)
 

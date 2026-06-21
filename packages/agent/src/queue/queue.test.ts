@@ -1,12 +1,15 @@
 import {
   createBullet,
+  createTask,
   createTestDb,
   createTracker,
   createUser,
   type DbConnection,
   getJobById,
+  getTaskById,
   listActivities,
   listSuggestionsByBullet,
+  listTasks,
   listTrackerEntries,
 } from '@bullet/db'
 import { describe, expect, test } from 'vitest'
@@ -124,6 +127,55 @@ describe('queue end-to-end', () => {
     expect(entries).toHaveLength(1)
     expect(entries[0]?.value).toBe(4)
     expect(entries[0]?.source_bullet_id).toBe(bullet.id)
+  })
+
+  test('auto-applies a mark-done UPDATE: flips the matched open task to done (same row)', async () => {
+    const conn = createTestDb()
+    const user = createUser(conn.db, { name: 'U' })
+    const seedBullet = createBullet(conn.db, { owner_id: user.id, text: 'seed' })
+    const task = createTask(conn.db, {
+      owner_id: user.id,
+      source_bullet_id: seedBullet.id,
+      title: 'call the dentist',
+      notes: 'before noon',
+      due_at: 1_700_000_000_000,
+      priority: 'P2',
+    })
+    const bullet = createBullet(conn.db, { owner_id: user.id, text: 'called the dentist' })
+
+    const deps = makeDeps(conn, {
+      chat: () =>
+        JSON.stringify({
+          candidates: [
+            {
+              kind: 'activity',
+              orientation: 'happened',
+              text: 'called the dentist',
+              referenceName: 'call the dentist',
+              fields: {},
+              confidence: 0.95,
+            },
+          ],
+        }),
+    })
+
+    enqueueExtraction(deps, bullet.id, user.id)
+    await createExtractionWorker(deps).drain()
+
+    // The suggestion is an auto task UPDATE that actually applied (status accepted).
+    const suggestions = listSuggestionsByBullet(conn.db, bullet.id)
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]?.target_kind).toBe('task')
+    expect(suggestions[0]?.operation).toBe('update')
+    expect(suggestions[0]?.tier).toBe('auto')
+    expect(suggestions[0]?.status).toBe('accepted')
+
+    // The SAME task row is now done — no duplicate task was minted; other fields preserved.
+    const after = getTaskById(conn.db, task.id)
+    expect(after?.status).toBe('done')
+    expect(after?.title).toBe('call the dentist')
+    expect(after?.notes).toBe('before noon')
+    expect(listTasks(conn.db, user.id)).toHaveLength(1)
   })
 
   test('does NOT auto-apply a suggest-tier suggestion (lower confidence)', async () => {

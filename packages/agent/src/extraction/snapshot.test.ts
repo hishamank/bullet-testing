@@ -31,9 +31,9 @@ describe('buildSnapshot', () => {
       owner_id: ownerId,
       source_bullet_id: bulletId,
       title: 'call dentist',
-      notes: null,
-      due_at: null,
-      priority: null,
+      notes: 'ask about cleaning',
+      due_at: 456,
+      priority: 'P1',
     })
     const done = createTask(db, {
       owner_id: ownerId,
@@ -48,7 +48,18 @@ describe('buildSnapshot', () => {
     const snap = buildSnapshot({ db }, ownerId)
     expect(snap.trackers).toEqual([{ id: expect.any(String), name: 'mood', input_type: 'scale' }])
     // Only the OPEN (todo/in_progress) task is included; the done one is excluded.
-    expect(snap.openTasks).toEqual([{ id: todo.id, title: 'call dentist', status: 'todo' }])
+    // The snapshot carries the full mutable task fields (notes/due_at/priority) so the resolver
+    // can build a mark-done UPDATE payload that satisfies the apply engine's INSERT-schema re-check.
+    expect(snap.openTasks).toEqual([
+      {
+        id: todo.id,
+        title: 'call dentist',
+        status: 'todo',
+        notes: 'ask about cleaning',
+        due_at: 456,
+        priority: 'P1',
+      },
+    ])
   })
 
   test('does not include unlinked activities or other owners rows', () => {
