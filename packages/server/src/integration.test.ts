@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { appRouter } from './routers'
-import { activityPlusTaskScript, buildTestDeps } from './test-helpers'
+import { activityPlusTaskScript, buildTestDeps, reconcileScript } from './test-helpers'
 import { createCallerFactory } from './trpc'
 
 const createCaller = createCallerFactory(appRouter)
@@ -68,11 +68,11 @@ describe('bullet → extraction → suggestion → accept (end-to-end through th
     expect(await caller.suggestions.listPending()).toHaveLength(0)
   })
 
-  test('suggestions.edit applies the modified payload', async () => {
+  test('suggestions.edit applies the modified payload and preserves provenance', async () => {
     const deps = buildTestDeps(activityPlusTaskScript())
     const caller = createCaller(deps)
 
-    await caller.bullets.create({ text: 'ran 5k, call the dentist' })
+    const bullet = await caller.bullets.create({ text: 'ran 5k, call the dentist' })
     await deps.runtime.worker.drain()
 
     const suggestion = (await caller.suggestions.listPending())[0]
@@ -89,5 +89,71 @@ describe('bullet → extraction → suggestion → accept (end-to-end through th
     const tasks = await caller.tasks.list()
     expect(tasks).toHaveLength(1)
     expect(tasks[0]?.title).toBe('call the orthodontist')
+    // Provenance survives the edit: the applied task still traces to the originating bullet
+    // (editing the payload must not sever the source_bullet_id), mirroring the accept test.
+    expect(tasks[0]?.source_bullet_id).toBe(bullet.id)
+
+    // The edited suggestion is resolved — no longer pending.
+    expect(await caller.suggestions.listPending()).toHaveLength(0)
+  })
+
+  test('bullets.update re-runs extraction and RECONCILES against applied entities (§4.7)', async () => {
+    // A single scripted client serves BOTH the create-extraction and the update-reprocess via a
+    // FIFO chat queue, because the same runtime handles both passes.
+    const deps = buildTestDeps(reconcileScript())
+    const caller = createCaller(deps)
+
+    // 1) Create a bullet → drain. Pass 1 yields an auto activity ("ran 5k", auto-applied) plus a
+    //    suggest task ("call the dentist", pending).
+    const bullet = await caller.bullets.create({ text: 'ran 5k, call the dentist' })
+    expect(await deps.runtime.worker.drain()).toBe(1)
+
+    const activitiesBefore = await caller.activities.list()
+    expect(activitiesBefore).toHaveLength(1)
+    const keptActivityId = activitiesBefore[0]?.id
+    expect(activitiesBefore[0]?.name).toBe('ran 5k')
+
+    const pendingBefore = await caller.suggestions.listPending()
+    expect(pendingBefore).toHaveLength(1)
+    const retiredSuggestionId = pendingBefore[0]?.id
+    expect(pendingBefore[0]?.target_kind).toBe('task')
+
+    // 2) Edit the bullet → the SECOND scripted response keeps "ran 5k", drops "call the dentist",
+    //    and adds a new "swam 1k". The procedure runs updateBullet + runtime.reprocessBullet.
+    const { bullet: updatedBullet, reconcile } = await caller.bullets.update({
+      id: bullet.id,
+      text: 'ran 5k, swam 1k',
+    })
+    expect(updatedBullet.text).toBe('ran 5k, swam 1k')
+
+    // 3) Assert the RECONCILE RESULT returned to the caller:
+    //    - the matched activity was KEPT (not duplicated),
+    //    - the new candidate was ADDED + auto-applied,
+    //    - the stale pending task suggestion was RETIRED,
+    //    - nothing was retired as a removed APPLIED entity ("ran 5k" still matches).
+    expect(reconcile.keptEntityIds).toEqual(keptActivityId ? [keptActivityId] : [])
+    expect(reconcile.newSuggestionIds).toHaveLength(1)
+    expect(reconcile.appliedIds).toHaveLength(1)
+    expect(reconcile.retiredPendingIds).toEqual(retiredSuggestionId ? [retiredSuggestionId] : [])
+    expect(reconcile.retiredEntityIds).toHaveLength(0)
+    expect(reconcile.failedAutoApplyIds).toHaveLength(0)
+
+    // 4) Assert DB STATE actually reconciled (not blindly recreated):
+    //    The kept activity is the SAME row (same id) and unchanged/active — proof of a match, not
+    //    a delete-and-recreate. The new activity ("swam 1k") is present. There are exactly two
+    //    active activities (no duplicate "ran 5k").
+    const activitiesAfter = await caller.activities.list()
+    expect(activitiesAfter).toHaveLength(2)
+    const names = activitiesAfter.map((a) => a.name).sort()
+    expect(names).toEqual(['ran 5k', 'swam 1k'])
+    const keptAfter = activitiesAfter.find((a) => a.id === keptActivityId)
+    expect(keptAfter?.name).toBe('ran 5k')
+    expect(keptAfter?.state).toBe('active')
+
+    // The retired (dropped) task suggestion is gone from pending; the new auto activity left
+    // nothing pending either — so there are no pending suggestions after the reconcile.
+    expect(await caller.suggestions.listPending()).toHaveLength(0)
+    // And no task was ever applied (the dropped suggestion was never accepted).
+    expect(await caller.tasks.list()).toHaveLength(0)
   })
 })

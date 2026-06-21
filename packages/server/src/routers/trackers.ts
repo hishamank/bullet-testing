@@ -17,6 +17,9 @@ export const trackersRouter = router({
       createTracker(ctx.db, { ...input, owner_id: ctx.ownerId, source_bullet_id: null }),
     ),
 
+  // TODO(multi-user): owner-scope by-id access (verify row.owner_id === ctx.ownerId) before
+  // multi-user. update/delete resolve a tracker purely by id — fine for single-user v1.
+
   update: publicProcedure.input(trackerUpdateInput).mutation(({ ctx, input }) => {
     const { id, ...patch } = input
     const updated = updateTracker(ctx.db, id, patch)

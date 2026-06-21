@@ -98,6 +98,31 @@ describe('activities CRUD round-trip', () => {
   })
 })
 
+describe('bullets.get round-trip + NOT_FOUND', () => {
+  test('create then get by id returns the same bullet', async () => {
+    const caller = createCaller(buildTestDeps())
+
+    const created = await caller.bullets.create({ text: 'brain dump' })
+    const fetched = await caller.bullets.get({ id: created.id })
+
+    expect(fetched.id).toBe(created.id)
+    expect(fetched.text).toBe('brain dump')
+    expect(fetched.owner_id).toBe(created.owner_id)
+    expect(fetched.state).toBe('active')
+    // The whole row round-trips (a bullet IS the provenance anchor — no source_bullet_id field).
+    expect(fetched).toEqual(created)
+  })
+
+  test('get of an unknown id throws NOT_FOUND', async () => {
+    const caller = createCaller(buildTestDeps())
+    // A well-formed uuid that was never created — must surface a NOT_FOUND tRPC error.
+    const missingId = '00000000-0000-4000-8000-000000000000'
+    await expect(caller.bullets.get({ id: missingId })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+  })
+})
+
 describe('bullets.delete modes (§4.6)', () => {
   test('cascade soft-deletes the bullet AND its extractions', async () => {
     const deps = buildTestDeps(activityPlusTaskScript())

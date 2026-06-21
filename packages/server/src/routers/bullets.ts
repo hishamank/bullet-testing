@@ -21,6 +21,10 @@ export const bulletsRouter = router({
   /** List the owner's active bullets. */
   list: publicProcedure.query(({ ctx }) => listBullets(ctx.db, ctx.ownerId)),
 
+  // TODO(multi-user): owner-scope by-id access (verify row.owner_id === ctx.ownerId) before
+  // multi-user. The get/update/delete procedures below resolve a bullet purely by id; correct and
+  // harmless while v1 is single-user (one owner), but a leak vector once multiple owners share a db.
+
   /** Fetch one bullet by id. */
   get: publicProcedure.input(byIdInput).query(({ ctx, input }) => {
     const bullet = getBulletById(ctx.db, input.id)

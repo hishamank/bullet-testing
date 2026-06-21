@@ -19,6 +19,10 @@ export const suggestionsRouter = router({
     listSuggestionsByStatus(ctx.db, ctx.ownerId, 'pending'),
   ),
 
+  // TODO(multi-user): owner-scope by-id access (verify row.owner_id === ctx.ownerId) before
+  // multi-user. accept/reject/edit resolve a suggestion purely by id — correct/harmless for
+  // single-user v1, but must check ownership once multiple owners share a db.
+
   /** Accept a suggestion: apply it and mark it accepted. Returns the suggestion + applied entity. */
   accept: publicProcedure
     .input(byIdInput)

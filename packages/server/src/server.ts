@@ -6,6 +6,7 @@
  * gracefully (stop the worker, close the db).
  */
 
+import { pathToFileURL } from 'node:url'
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { loadServerConfig } from './config'
@@ -71,12 +72,12 @@ export async function startServer(
   return { port: boundPort, stop }
 }
 
-/** True when this module is the program's entry point (run via `tsx src/server.ts`). */
-const isMain = (() => {
-  const entry = process.argv[1]
-  if (!entry) return false
-  return import.meta.url === new URL(`file://${entry}`).href || import.meta.url.endsWith(entry)
-})()
+/**
+ * True when this module is the program's entry point (run via `tsx src/server.ts`). Compare the
+ * module URL against the canonical file URL of the entry script (`pathToFileURL` handles platform
+ * path/percent-encoding differences) rather than a fragile string suffix match.
+ */
+const isMain = !!process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (isMain) {
   startServer()

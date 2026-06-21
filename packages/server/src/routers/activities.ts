@@ -17,6 +17,9 @@ export const activitiesRouter = router({
       createActivity(ctx.db, { ...input, owner_id: ctx.ownerId, source_bullet_id: null }),
     ),
 
+  // TODO(multi-user): owner-scope by-id access (verify row.owner_id === ctx.ownerId) before
+  // multi-user. update/delete resolve an activity purely by id — fine for single-user v1.
+
   update: publicProcedure.input(activityUpdateInput).mutation(({ ctx, input }) => {
     const { id, ...patch } = input
     const updated = updateActivity(ctx.db, id, patch)

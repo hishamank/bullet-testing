@@ -62,7 +62,20 @@ describe('createApp — HTTP surface (in-process, no socket)', () => {
     // The high-confidence activity was auto-applied.
     expect(payload.appliedIds.length).toBeGreaterThan(0)
 
-    // Disconnect — this aborts the stream and detaches the emitter listeners.
+    // While the stream is open it holds one listener per event.
+    const emitter = deps.emitter as unknown as {
+      listenerCount(event: string): number
+    }
+    expect(emitter.listenerCount('extraction:complete')).toBe(1)
+    expect(emitter.listenerCount('extraction:error')).toBe(1)
+
+    // Disconnect — this aborts the stream, which fires `onAbort` and detaches BOTH listeners.
     await reader.cancel()
+    // Yield a macrotask so the stream's abort handler runs before we assert.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // No leaked subscriptions: a regression that fails to detach (one leak per page) is caught.
+    expect(emitter.listenerCount('extraction:complete')).toBe(0)
+    expect(emitter.listenerCount('extraction:error')).toBe(0)
   })
 })
