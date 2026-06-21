@@ -19,14 +19,12 @@ import { type ResolvedSuggestion, withProvenance } from '../resolution/resolve'
  * A proposed tracker-definition suggestion: the canonical {@link ResolvedSuggestion} draft (so it
  * carries the SAME target_kind/operation/target_id/payload/confidence/tier shape and tier rules as
  * the main pipeline — and persists through the SAME `withProvenance`) plus two report fields for
- * explainability/tests. Provenance (owner_id/source_bullet_id) is attached at persist time, not
- * carried on the draft — exactly like every other resolved suggestion.
+ * explainability/tests. Provenance (owner_id/source_bullet_id) is NOT carried on the draft: like
+ * every other resolved suggestion it is attached at persist time, travelling as ARGUMENTS into
+ * `withProvenance` (the owner from `analyze(ownerId)`, the source bullet from the group it scanned)
+ * — exactly mirroring the main pipeline's `persistAndAutoApply(deps, draft, ownerId, bulletId)`.
  */
 export interface WeeklyProposal extends ResolvedSuggestion {
-  /** The owner this proposal is for (the provenance owner attached at persist time). */
-  owner_id: string
-  /** The member activity's source bullet (the Suggestion's required provenance anchor). */
-  source_bullet_id: string
   /** The normalized activity name that triggered the proposal (for explainability/tests). */
   groupName: string
   /** How many unlinked activities shared this name. */
@@ -36,8 +34,12 @@ export interface WeeklyProposal extends ResolvedSuggestion {
 export interface WeeklyAnalyzer {
   /** Analyze the owner's unlinked activities; return proposed tracker-definition suggestions. */
   analyze(ownerId: string): WeeklyProposal[]
-  /** Persist proposals as real pending Suggestions (tier 'suggest', never auto). */
-  persist(proposals: WeeklyProposal[]): Suggestion[]
+  /**
+   * Persist proposals as real pending Suggestions (tier 'suggest', never auto). Provenance travels
+   * as ARGUMENTS, off the draft: the `ownerId` (the same one `analyze` ran for) plus, per proposal,
+   * the source bullet of the group it was built from — recovered here from the owner's activities.
+   */
+  persist(ownerId: string, proposals: WeeklyProposal[]): Suggestion[]
 }
 
 export interface WeeklyAnalyzerOptions {
@@ -48,6 +50,43 @@ export interface WeeklyAnalyzerOptions {
 /** Normalize an activity name for grouping (lowercase, collapse whitespace, trim). */
 function normalizeName(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/** A grouped run of same-named unlinked activities (the unit a proposal is built from). */
+interface ActivityGroup {
+  displayName: string
+  count: number
+  /** The group's provenance anchor — the latest non-null source bullet among its members. */
+  sourceBulletId: string
+}
+
+/**
+ * Group the owner's active UNLINKED activities by normalized name, keyed by that name. Only groups
+ * attributable to a source bullet are kept (a Suggestion needs a non-null source bullet). This is
+ * the single source for BOTH the proposals (`analyze`) and their persist-time provenance (`persist`
+ * recovers each group's `sourceBulletId` here), so the two can never disagree on the anchor bullet.
+ */
+function groupUnlinkedActivities(deps: AgentDeps, ownerId: string): Map<string, ActivityGroup> {
+  const groups = new Map<string, ActivityGroup>()
+  for (const activity of listActivities(deps.db, ownerId)) {
+    if (activity.tracker_id !== null) continue // already linked → not a candidate.
+    const key = normalizeName(activity.name)
+    if (key === '') continue
+    const existing = groups.get(key)
+    if (existing) {
+      existing.count += 1
+      // Keep the latest non-null source bullet as provenance anchor.
+      if (activity.source_bullet_id) existing.sourceBulletId = activity.source_bullet_id
+    } else if (activity.source_bullet_id) {
+      // Only seed a group we can attribute to a bullet (a Suggestion needs a source bullet).
+      groups.set(key, {
+        displayName: activity.name.trim(),
+        count: 1,
+        sourceBulletId: activity.source_bullet_id,
+      })
+    }
+  }
+  return groups
 }
 
 /**
@@ -61,33 +100,8 @@ export function createWeeklyAnalyzer(
 
   return {
     analyze(ownerId: string): WeeklyProposal[] {
-      // Group active UNLINKED activities by normalized name.
-      const groups = new Map<
-        string,
-        { displayName: string; count: number; sourceBulletId: string }
-      >()
-
-      for (const activity of listActivities(deps.db, ownerId)) {
-        if (activity.tracker_id !== null) continue // already linked → not a candidate.
-        const key = normalizeName(activity.name)
-        if (key === '') continue
-        const existing = groups.get(key)
-        if (existing) {
-          existing.count += 1
-          // Keep the latest non-null source bullet as provenance anchor.
-          if (activity.source_bullet_id) existing.sourceBulletId = activity.source_bullet_id
-        } else if (activity.source_bullet_id) {
-          // Only seed a group we can attribute to a bullet (a Suggestion needs a source bullet).
-          groups.set(key, {
-            displayName: activity.name.trim(),
-            count: 1,
-            sourceBulletId: activity.source_bullet_id,
-          })
-        }
-      }
-
       const proposals: WeeklyProposal[] = []
-      for (const [key, group] of groups) {
+      for (const [key, group] of groupUnlinkedActivities(deps, ownerId)) {
         if (group.count < threshold) continue
         proposals.push({
           target_kind: 'tracker',
@@ -103,8 +117,6 @@ export function createWeeklyAnalyzer(
           confidence: 0.6,
           // Definitions are NEVER auto (CLAUDE.md §4.5).
           tier: 'suggest',
-          owner_id: ownerId,
-          source_bullet_id: group.sourceBulletId,
           groupName: key,
           count: group.count,
         })
@@ -112,13 +124,19 @@ export function createWeeklyAnalyzer(
       return proposals
     },
 
-    persist(proposals: WeeklyProposal[]): Suggestion[] {
-      // Route through the SAME canonical `withProvenance` as the main pipeline so weekly can never
-      // drift from the tier/provenance rules: a WeeklyProposal IS a ResolvedSuggestion draft, and
-      // `withProvenance` injects owner_id + source_bullet_id into both the envelope and the payload.
-      return proposals.map((p) =>
-        createSuggestion(deps.db, withProvenance(p, p.owner_id, p.source_bullet_id)),
-      )
+    persist(ownerId: string, proposals: WeeklyProposal[]): Suggestion[] {
+      // Provenance travels as ARGUMENTS, off the draft — identical to the main pipeline. The owner
+      // is the one `analyze` ran for; the source bullet is recovered per proposal from the SAME
+      // grouping `analyze` used (matched by `groupName`), then both are injected exactly once via
+      // the canonical `withProvenance`, so weekly can never drift from the tier/provenance rules.
+      const groups = groupUnlinkedActivities(deps, ownerId)
+      return proposals.map((p) => {
+        const sourceBulletId = groups.get(p.groupName)?.sourceBulletId
+        if (!sourceBulletId) {
+          throw new Error(`weekly: no source bullet for proposal group "${p.groupName}"`)
+        }
+        return createSuggestion(deps.db, withProvenance(p, ownerId, sourceBulletId))
+      })
     },
   }
 }

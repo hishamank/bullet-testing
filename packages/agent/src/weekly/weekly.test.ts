@@ -110,11 +110,14 @@ describe('createWeeklyAnalyzer', () => {
 
     const analyzer = createWeeklyAnalyzer(makeDeps(conn), { threshold: 3 })
     const proposals = analyzer.analyze(user.id)
-    const persisted = analyzer.persist(proposals)
+    const persisted = analyzer.persist(user.id, proposals)
 
     expect(persisted).toHaveLength(1)
     expect(persisted[0]?.status).toBe('pending')
     expect(persisted[0]?.tier).toBe('suggest')
+    // Provenance is unchanged: the persisted suggestion still anchors to the group's source bullet.
+    expect(persisted[0]?.source_bullet_id).toBe(bullet.id)
+    expect(persisted[0]?.owner_id).toBe(user.id)
     expect(listSuggestionsByBullet(conn.db, bullet.id)).toHaveLength(1)
   })
 })
