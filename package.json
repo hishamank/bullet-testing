@@ -21,6 +21,7 @@
     "@biomejs/biome": "^2.0.0",
     "@types/node": "^24.0.0",
     "tsup": "^8.0.0",
+    "tsx": "^4.22.4",
     "turbo": "^2.0.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"

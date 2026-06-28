@@ -78,3 +78,34 @@ first — the trade-off was already considered.
   private `EventEmitter` — would *add* more code than it removes for no behavioral gain, and the
   cast is confined to this one factory (callers only ever see the typed `AgentEmitter`). Left with
   an inline `TODO(review)` marker. Revisit only if the emitter grows methods or the cast leaks.
+
+## @bullet/server
+
+### Deferred
+
+- **By-id access is not owner-scoped** — `packages/server/src/routers/bullets.ts` and
+  `routers/tasks.ts` (and the sibling entity routers).
+  Finding: the `get`/`update`/`delete` procedures resolve a row purely by `id` without verifying
+  `row.owner_id === ctx.ownerId`. Correct and harmless while v1 is single-user (one owner), but a
+  leak vector once multiple owners share a db.
+  Why deferred: v1 is single-user by locked decision (CLAUDE.md §3); enforcing owner-scoping now
+  would add a check exercised by no current path. Tracked at the code sites as
+  `TODO(multi-user)` markers. Revisit before any multi-user / hosted future — at the same time the
+  `owner_id` plumbing throughout the stack gets real auth behind it.
+
+### Decided against
+
+- **Generic `crudRouter` factory collapsing the four entity routers** — marker at the top of
+  `packages/server/src/routers/index.ts`.
+  Proposal: a single `crudRouter({ create, list, update, softDelete, input, label })` builder to
+  replace the four near-identical `tasks` / `trackers` / `trackerEntries` / `activities` routers
+  (~150 lines → ~40).
+  Decision: **rejected** — a TRAP, not an opportunity. The variation isn't uniform
+  (`trackerEntryUpdateInput` omits `tracker_id`; `trackers` rebuild their input from `ZodEffects`
+  building blocks), so a factory would need per-entity escape hatches that re-introduce the
+  branching it claims to delete. Over only four call sites it trades four trivially-greppable
+  ~35-line files — each a thin, boring, direct wrapper, the rubric's stated ideal — for one
+  higher-order function whose generic types (`Partial<TInsert>` patch, the `T | undefined → throw`
+  shape) read worse and degrade jump-to-definition for the web client. Four small honest
+  duplications beat one clever abstraction across four sites. Do not re-propose. Revisit only if a
+  fifth/sixth entity lands.
