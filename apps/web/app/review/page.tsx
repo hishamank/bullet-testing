@@ -74,15 +74,28 @@ export default function ReviewPage() {
     }
   }
 
+  // Resolve a batch concurrently and surface partial failure, so one bad item doesn't silently
+  // abandon the rest (and the user sees what landed). Settled — never throws, owns its own notice.
+  async function batchResolve(
+    ids: string[],
+    op: (id: string) => Promise<unknown>,
+    verb: string,
+  ): Promise<void> {
+    if (ids.length === 0) return
+    const results = await Promise.allSettled(ids.map(op))
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+    if (rejected.length > 0) {
+      const reason =
+        rejected[0]?.reason instanceof Error ? rejected[0].reason.message : 'please try again'
+      setNotice(`${ids.length - rejected.length} ${verb}, ${rejected.length} failed — ${reason}`)
+    }
+  }
+
   const acceptIds = (ids: string[]) =>
-    run(async () => {
-      for (const id of ids) await accept.mutateAsync({ id })
-    })
+    run(() => batchResolve(ids, (id) => accept.mutateAsync({ id }), 'accepted'))
 
   const dismissIds = (ids: string[]) =>
-    run(async () => {
-      for (const id of ids) await reject.mutateAsync({ id })
-    })
+    run(() => batchResolve(ids, (id) => reject.mutateAsync({ id }), 'dismissed'))
 
   const applyEdit = (id: string, payload: SuggestionPayload) =>
     run(async () => {

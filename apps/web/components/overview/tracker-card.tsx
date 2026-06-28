@@ -50,11 +50,14 @@ export function TrackerCard({ tracker, entries }: { tracker: Tracker; entries: T
     const nums = recent.map((e) => Number(e.value)).filter(Number.isFinite)
     if (nums.length > 0) {
       value = round1(avg(nums))
-      const cfg = tracker.config as { unit?: string; max?: number }
+      // `config` is a discriminated union on `input_type` — narrow on the discriminant (no cast).
+      const cfg = tracker.config
       unit =
-        tracker.input_type === 'scale' && typeof cfg.max === 'number'
+        cfg.input_type === 'scale'
           ? `/ ${cfg.max}`
-          : (cfg.unit ?? '')
+          : cfg.input_type === 'number'
+            ? (cfg.unit ?? '')
+            : ''
       const half = Math.floor(nums.length / 2)
       if (nums.length >= 2)
         trend = avg(nums.slice(half)) >= avg(nums.slice(0, half || 1)) ? '↑' : '↓'

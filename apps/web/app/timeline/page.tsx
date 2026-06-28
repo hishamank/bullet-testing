@@ -126,6 +126,8 @@ export default function TimelinePage() {
                 <button
                   type="button"
                   onClick={() => toggle(d.key)}
+                  aria-expanded={open}
+                  aria-label={`${d.name}, ${d.date} — ${open ? 'collapse' : 'expand'}`}
                   className="flex w-full items-center justify-between gap-[18px] text-left"
                 >
                   <span className="flex flex-none items-baseline gap-[11px]">

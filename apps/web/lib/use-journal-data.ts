@@ -46,6 +46,11 @@ export interface JournalData {
 
 export function useJournalData(): JournalData {
   const trpc = useTRPC()
+  // TODO(review): this fans out all six list queries on every screen (Timeline only needs
+  // bullets+entities, Review needs suggestions+bullets+trackers). Mitigated for now — httpBatchLink
+  // collapses them into ONE round-trip and keys dedupe with AppShell's listPending — so the cost is
+  // low for a single-user local app. Revisit with per-screen selection if a screen gets expensive.
+  // — see REVIEW-BACKLOG.md
   const bulletsQ = useQuery(trpc.bullets.list.queryOptions())
   const tasksQ = useQuery(trpc.tasks.list.queryOptions())
   const trackersQ = useQuery(trpc.trackers.list.queryOptions())

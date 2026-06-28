@@ -62,62 +62,60 @@ export function BulletRow({ bullet, entities, pendingCount, processing }: Props)
     update.mutate({ id: bullet.id, text: next })
   }
 
-  // Shared inner content for the writing column.
-  const writing = editing ? (
-    <div className="flex-1">
-      <textarea
-        // biome-ignore lint/a11y/noAutofocus: focus the field the user just chose to edit
-        autoFocus
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault()
-            saveEdit()
-          }
-          if (e.key === 'Escape') {
-            setEditing(false)
-            setText(bullet.text)
-          }
-        }}
-        rows={2}
-        className="w-full resize-none rounded-lg border border-indigo-line bg-white px-2 py-1 font-reader text-[19px] text-ink leading-relaxed outline-none focus:border-indigo"
-      />
-      <div className="mt-1 flex items-center gap-3 font-data text-[11px]">
-        <button
-          type="button"
-          onClick={saveEdit}
-          disabled={update.isPending}
-          className="text-indigo hover:underline"
-        >
-          {update.isPending ? 'saving…' : 'save · re-runs extraction'}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setEditing(false)
-            setText(bullet.text)
-          }}
-          className="text-faint"
-        >
-          cancel
-        </button>
+  // The editor is rendered ONCE (here, only while editing), never duplicated across the
+  // desktop/mobile layouts — so a single autofocused textarea exists in the DOM at a time.
+  if (editing) {
+    return (
+      <div className="grid grid-cols-[210px_1fr] gap-x-[38px] py-[11px] max-md:grid-cols-1 max-md:gap-2">
+        <div className="flex flex-col items-end pt-[2px] text-right max-md:items-start max-md:text-left">
+          <span className="font-data text-[11px] text-faint-2">
+            {formatTime(bullet.created_at)}
+          </span>
+        </div>
+        <div>
+          <textarea
+            // biome-ignore lint/a11y/noAutofocus: focus the field the user just chose to edit
+            autoFocus
+            aria-label="Edit bullet text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                saveEdit()
+              }
+              if (e.key === 'Escape') {
+                setEditing(false)
+                setText(bullet.text)
+              }
+            }}
+            rows={2}
+            className="w-full resize-none rounded-lg border border-indigo-line bg-white px-2 py-1 font-reader text-[19px] text-ink leading-relaxed outline-none focus:border-indigo max-md:text-[16.5px]"
+          />
+          <div className="mt-1 flex items-center gap-3 font-data text-[11px]">
+            <button
+              type="button"
+              onClick={saveEdit}
+              disabled={update.isPending}
+              className="text-indigo hover:underline"
+            >
+              {update.isPending ? 'saving…' : 'save · re-runs extraction'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(false)
+                setText(bullet.text)
+              }}
+              className="text-faint"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  ) : (
-    <span className="flex-1 font-reader text-[19px] text-ink leading-relaxed">{bullet.text}</span>
-  )
-
-  const editButton = !editing && (
-    <button
-      type="button"
-      title="Edit bullet"
-      onClick={() => setEditing(true)}
-      className="flex-none pl-3 text-[14px] text-faint-3 opacity-0 transition-opacity hover:text-indigo group-hover:opacity-100"
-    >
-      ✎
-    </button>
-  )
+    )
+  }
 
   const margin = (
     <>
@@ -154,8 +152,18 @@ export function BulletRow({ bullet, entities, pendingCount, processing }: Props)
             >
               {glyph}
             </span>
-            {writing}
-            {editButton}
+            <span className="flex-1 font-reader text-[19px] text-ink leading-relaxed">
+              {bullet.text}
+            </span>
+            <button
+              type="button"
+              aria-label="Edit bullet"
+              title="Edit bullet"
+              onClick={() => setEditing(true)}
+              className="flex-none pl-3 text-[14px] text-faint-3 opacity-0 transition-opacity hover:text-indigo group-hover:opacity-100"
+            >
+              ✎
+            </button>
           </div>
         </div>
       </div>
@@ -169,23 +177,18 @@ export function BulletRow({ bullet, entities, pendingCount, processing }: Props)
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex-1">
-              {editing ? (
-                writing
-              ) : (
-                <div className="font-reader text-[16.5px] text-ink leading-snug">{bullet.text}</div>
-              )}
+            <div className="flex-1 font-reader text-[16.5px] text-ink leading-snug">
+              {bullet.text}
             </div>
-            {!editing && (
-              <button
-                type="button"
-                title="Edit bullet"
-                onClick={() => setEditing(true)}
-                className="flex-none pl-1 text-[13px] text-faint-3 hover:text-indigo"
-              >
-                ✎
-              </button>
-            )}
+            <button
+              type="button"
+              aria-label="Edit bullet"
+              title="Edit bullet"
+              onClick={() => setEditing(true)}
+              className="flex-none pl-1 text-[13px] text-faint-3 hover:text-indigo"
+            >
+              ✎
+            </button>
           </div>
           <div className="mt-[5px] flex flex-wrap items-center gap-[9px]">{margin}</div>
         </div>

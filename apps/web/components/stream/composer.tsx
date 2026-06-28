@@ -13,13 +13,7 @@ import { useTRPC } from '@/lib/trpc'
 
 const MAX_TEXTAREA_PX = 120
 
-export function Composer({
-  onCreated,
-  mobile = false,
-}: {
-  onCreated?: (bulletId: string) => void
-  mobile?: boolean
-}) {
+export function Composer({ onCreated }: { onCreated?: (bulletId: string) => void }) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
@@ -58,11 +52,7 @@ export function Composer({
 
   return (
     <div>
-      <div
-        className={`flex items-end gap-3 rounded-[26px] border border-line-warm bg-white px-[22px] py-3 shadow-[0_4px_18px_-8px_rgba(0,0,0,0.12)] transition-shadow focus-within:border-indigo focus-within:shadow-[0_0_0_3px_rgba(62,77,107,0.1)] ${
-          mobile ? 'rounded-3xl py-[10px] pr-3 pl-4' : ''
-        }`}
-      >
+      <div className="flex items-end gap-3 rounded-[26px] border border-line-warm bg-white px-[22px] py-3 shadow-[0_4px_18px_-8px_rgba(0,0,0,0.12)] transition-shadow focus-within:border-indigo focus-within:shadow-[0_0_0_3px_rgba(62,77,107,0.1)]">
         <span className="pb-[2px] font-data text-[16px] text-faint-4">•</span>
         <textarea
           ref={textareaRef}

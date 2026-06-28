@@ -26,7 +26,10 @@ export interface ExtractionComplete {
 
 export interface ExtractionError {
   jobId: string
-  bulletId: string
+  // Mirrors @bullet/agent's ExtractionErrorEvent: the bullet id may be missing/unreadable,
+  // which is itself a failure mode. This hand-typed SSE seam has no compiler backstop against
+  // the server contract (web can't import @bullet/agent), so keep it faithful by hand.
+  bulletId: string | null
   error: string
 }
 
@@ -49,7 +52,10 @@ export function useExtractionEvents(handlers: Handlers = {}): void {
     }
 
     const refresh = () => {
-      // Broad invalidation is fine for a single-user local app — every list is cheap to refetch.
+      // TODO(review): invalidate-the-world on every SSE frame (and every mutation's onSuccess) is
+      // fine for a single-user local app — every list is cheap and httpBatchLink coalesces — but a
+      // create then its extraction:complete refetch everything twice. Revisit with scoped query keys
+      // if it ever shows. — see REVIEW-BACKLOG.md
       void queryClient.invalidateQueries()
     }
 

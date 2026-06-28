@@ -10,7 +10,15 @@ import type { CreateTRPCClient } from '@trpc/client'
 
 type Client = CreateTRPCClient<AppRouter>
 
-/** The awaited output of a query procedure on the typed client. */
+/**
+ * The awaited output of a query procedure on the typed client.
+ *
+ * Deliberate substitute for tRPC's `inferRouterOutputs<AppRouter>`: that helper lives in
+ * `@trpc/server`, which `web` does not depend on (only `@trpc/client` + the tanstack adapter).
+ * Rather than pull `@trpc/server` in just for a type, we read the output off the client's
+ * query-proc decoration (`{ query }`). If `web` ever takes a `@trpc/server` dep, switch to
+ * `inferRouterOutputs` — it reads straight off the router definition and is version-sturdier.
+ */
 type QueryOutput<T> = T extends { query: (...args: never[]) => Promise<infer R> } ? R : never
 
 export type Bullet = QueryOutput<Client['bullets']['list']>[number]
@@ -22,9 +30,6 @@ export type Suggestion = QueryOutput<Client['suggestions']['listPending']>[numbe
 
 /** Closed unions, taken straight from the inferred entity fields (single source of truth). */
 export type TaskStatus = Task['status']
-export type TaskPriority = NonNullable<Task['priority']>
 export type TargetKind = Suggestion['target_kind']
 export type SuggestionTier = Suggestion['tier']
-export type SuggestionOperation = Suggestion['operation']
 export type SuggestionPayload = Suggestion['payload']
-export type TrackerInputType = Tracker['input_type']

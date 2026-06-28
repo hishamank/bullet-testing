@@ -7,14 +7,7 @@
  */
 
 import { GLYPH, KIND_LABEL, type Tag, tagForRow } from '@/lib/design'
-import type {
-  Activity,
-  Suggestion,
-  SuggestionPayload,
-  Task,
-  Tracker,
-  TrackerEntry,
-} from '@/lib/types'
+import type { Activity, Suggestion, Task, Tracker, TrackerEntry } from '@/lib/types'
 
 export type EntityKind = 'task' | 'activity' | 'tracker' | 'tracker_entry'
 
@@ -48,10 +41,8 @@ export function formatValue(value: unknown): string {
 
 function trackerEntryDetail(entry: TrackerEntry, tracker?: Tracker): string {
   const base = formatValue(entry.value)
-  const unit =
-    tracker && tracker.input_type === 'number' && 'unit' in tracker.config
-      ? (tracker.config as { unit?: string }).unit
-      : undefined
+  // `config` is a discriminated union on `input_type`; narrow on the discriminant (no cast).
+  const unit = tracker?.config.input_type === 'number' ? tracker.config.unit : undefined
   return unit ? `${base} ${unit}` : base
 }
 
@@ -113,19 +104,6 @@ export function normalizeTrackerEntry(
   }
 }
 
-export function normalizeTracker(t: Tracker): NormalizedEntity {
-  return {
-    kind: 'tracker',
-    id: t.id,
-    sourceBulletId: t.source_bullet_id,
-    glyph: GLYPH.tracker,
-    glyphColorClass: 'text-ochre',
-    label: t.name,
-    detail: t.input_type.replace('_', ' '),
-    at: t.created_at,
-  }
-}
-
 /** Compose a one-line margin label: "— sleep · 5h", "○ run · 4 km". */
 export function marginLabel(e: NormalizedEntity): string {
   const name = e.label.toLowerCase()
@@ -156,7 +134,7 @@ export function suggestionLabel(s: Suggestion): string {
 
 /** A human summary of what a pending suggestion proposes, read defensively from its payload. */
 export function suggestionSummary(s: Suggestion, trackersById: Map<string, Tracker>): string {
-  const p = s.payload as SuggestionPayload
+  const p = s.payload
   switch (s.target_kind) {
     case 'task':
       return asString(p.title) ?? 'New task'

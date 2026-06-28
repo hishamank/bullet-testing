@@ -99,9 +99,10 @@ export function SuggestionRow({
     <div className="flex items-start gap-3 py-[9px]">
       <button
         type="button"
+        aria-pressed={row.staged}
         onClick={onToggleStage}
         disabled={busy}
-        aria-label={row.staged ? 'Staged — uncheck' : 'Stage to apply'}
+        aria-label={`${row.label}: ${row.summary} — stage to apply`}
         className={`mt-[1px] flex h-5 w-5 flex-none items-center justify-center rounded-[6px] text-[12px] transition-colors disabled:opacity-50 ${
           row.staged
             ? 'border-none bg-indigo text-white'
@@ -173,6 +174,8 @@ export function SuggestionRow({
         <button
           type="button"
           onClick={onToggleEdit}
+          aria-label="Edit due date and status"
+          aria-expanded={expanded}
           title="Edit"
           className="flex-none px-[2px] text-[14px] text-faint-3 hover:text-indigo"
         >
@@ -183,6 +186,7 @@ export function SuggestionRow({
         type="button"
         onClick={onDismiss}
         disabled={busy}
+        aria-label="Dismiss suggestion"
         title="Dismiss"
         className="flex-none px-[2px] text-[15px] text-faint-3 hover:text-rust disabled:opacity-50"
       >

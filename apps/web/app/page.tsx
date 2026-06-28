@@ -18,8 +18,15 @@ export default function StreamPage() {
   const { bullets, entitiesByBulletId, pendingByBulletId, isLoading, isError } = useJournalData()
   const [processing, setProcessing] = useState<Set<string>>(() => new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Fallback timers keyed by bullet id, so a settled/cleared bullet cancels its own timer.
+  const timers = useRef<Map<string, number>>(new Map())
 
   const clearProcessing = useCallback((id: string) => {
+    const timer = timers.current.get(id)
+    if (timer !== undefined) {
+      window.clearTimeout(timer)
+      timers.current.delete(id)
+    }
     setProcessing((prev) => {
       if (!prev.has(id)) return prev
       const next = new Set(prev)
@@ -28,20 +35,35 @@ export default function StreamPage() {
     })
   }, [])
 
-  // The worker tells us a bullet finished reading; drop its "reading…" state.
+  // The worker tells us a bullet finished reading; drop its "reading…" state. An error event may
+  // carry a null bulletId (the bullet was unreadable) — nothing to clear in that case.
   useExtractionEvents({
     onComplete: (e) => clearProcessing(e.bulletId),
-    onError: (e) => clearProcessing(e.bulletId),
+    onError: (e) => {
+      if (e.bulletId) clearProcessing(e.bulletId)
+    },
   })
 
   const markProcessing = useCallback(
     (id: string) => {
       setProcessing((prev) => new Set(prev).add(id))
       // Fallback in case no event arrives (e.g. the model is offline) — don't spin forever.
-      window.setTimeout(() => clearProcessing(id), 30_000)
+      timers.current.set(
+        id,
+        window.setTimeout(() => clearProcessing(id), 30_000),
+      )
     },
     [clearProcessing],
   )
+
+  // Cancel any outstanding fallback timers on unmount.
+  useEffect(() => {
+    const pending = timers.current
+    return () => {
+      for (const t of pending.values()) window.clearTimeout(t)
+      pending.clear()
+    }
+  }, [])
 
   // Keep the latest bullet in view as the stream grows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on stream length change

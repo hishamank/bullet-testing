@@ -20,15 +20,6 @@ export const GLYPH = {
   processing: '·',
 } as const
 
-export function glyphForKind(kind: TargetKind): string {
-  return GLYPH[kind] ?? GLYPH.note
-}
-
-/** Tailwind text-color class for a kind's glyph (tasks/activities indigo, trackers ochre). */
-export function glyphColorClass(kind: TargetKind): string {
-  return kind === 'tracker' || kind === 'tracker_entry' ? 'text-ochre' : 'text-indigo'
-}
-
 /** Human label shown before the em-dash in a review/overview row. */
 export const KIND_LABEL: Record<TargetKind, string> = {
   task: 'Task',

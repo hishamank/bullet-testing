@@ -88,6 +88,8 @@ export function shortDay(ms: number, now: number = Date.now()): string {
   return WEEKDAY_SHORT[new Date(ms).getDay()] ?? ''
 }
 
+// TODO(review): a past-due date renders as a bare "Jun 25" with no overdue affordance. Minor UX
+// follow-up — surface overdue-ness (label/colour) at the call sites. — see REVIEW-BACKLOG.md
 /** A due-date chip label: "Today" / "Tomorrow" / weekday within a week / "Jun 28". */
 export function dueLabel(ms: number, now: number = Date.now()): string {
   const diff = daysAgo(ms, now) // negative = future
