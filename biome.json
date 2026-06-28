@@ -6,7 +6,8 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true
+    "ignoreUnknown": true,
+    "includes": ["**", "!**/next-env.d.ts", "!**/.next"]
   },
   "formatter": {
     "enabled": true,
@@ -24,6 +25,12 @@
     "formatter": {
       "quoteStyle": "single",
       "semicolons": "asNeeded"
+    }
+  },
+  "css": {
+    "parser": {
+      "cssModules": true,
+      "tailwindDirectives": true
     }
   }
 }
