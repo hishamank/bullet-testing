@@ -43,3 +43,24 @@ first — the trade-off was already considered.
   `Suggestion` has non-null provenance plus defaulted `status`, `Task`/`Suggestion` default
   their `status`. For a small, fixed (7-entity) domain layer that downstream packages read
   constantly, explicit-per-entity schemas are clearer than a factory. Do not re-propose.
+
+## @bullet/db
+
+### Deferred
+
+- **`validatePayloadOrThrow` widens core's precise per-kind type** — `packages/db/src/apply.ts`
+  (`validatePayloadOrThrow`, the `return res.data as Record<string, unknown>` cast).
+  Finding: `validateSuggestionPayload(kind, payload)` (core) returns a per-kind-narrowed
+  `safeParse` result, but the wrapper immediately casts `res.data` to `Record<string, unknown>`,
+  erasing the typing core worked to provide. The reviewer noted the cast could disappear IF the
+  create/update paths were per-kind so each branch held the narrowed insert type.
+  Why deferred: the apply layer is genuinely polymorphic over `target_kind` (one `applySuggestion`
+  / `applyUpdate` body handles all kinds), and the `update` path reads keys off the payload by
+  string (`for (const key of ['status','title',…])`), so a union-narrowed type would have to be
+  re-narrowed per branch — the cast is the deliberate boundary that keeps that stringly-keyed path
+  honest in one place. The #3 `CREATE_BY_KIND` registry refactor was applied but it dispatches on
+  the already-erased `Record<string, unknown>` (the create functions re-parse `input` through their
+  own INSERT schema anyway), so it did NOT naturally thread a narrowed type back to this cast.
+  Removing the cast cleanly would require per-kind apply branches — churn out of proportion to the
+  one-line boundary. Left with an inline `TODO(review)` marker. Revisit if the apply paths ever go
+  per-kind for another reason.
