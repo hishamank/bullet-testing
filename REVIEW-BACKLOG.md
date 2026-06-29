@@ -135,3 +135,34 @@ PR #5 was a clean bill of health — nothing rejected. The one clean win (droppi
   expects — so it is standard rather than hand-rolled, and deleting it would diverge from what
   shadcn regenerates. Left in place with an inline `/* TODO(review) */` marker; do NOT delete.
   Revisit if/when a dark-mode trigger (theme provider or `dark` class) actually lands.
+
+### Deferred — PR #6 review (Margin Notebook UI)
+
+The PR #6 review was *approve with comments*, 0 must-fix. The should-fix items (typed-union casts,
+SSE type drift, `bullet-row` duplicate editor, batch partial-failure surfacing, icon-button a11y,
+dead surface) and the clean-win nits (redundant `as SuggestionPayload`, dead `Composer.mobile` prop,
+orphan fallback timers, the `inferRouterOutputs` substitution comment, the reduced-motion
+`biome-ignore`) were **applied**. The items below were deferred with inline `TODO(review)` markers.
+
+- **`useJournalData` fans out all six list queries on every screen** — `apps/web/lib/use-journal-data.ts`.
+  Timeline only needs bullets+entities; Review needs suggestions+bullets+trackers; both pull all six.
+  Why deferred: the reviewer rated it consider-only and well-mitigated — `httpBatchLink` collapses the
+  six into a single HTTP round-trip and the keys dedupe with `AppShell`'s `listPending`, so for a
+  single-user local app the simplicity is worth the cost. Revisit with per-screen query selection only
+  if a screen's read model ever gets expensive.
+
+- **Invalidate-the-world on every mutation and every SSE frame** — `apps/web/lib/use-extraction-events.ts`
+  (and each mutation's `onSuccess`). A `bullets.create` invalidates everything, then the ensuing
+  `extraction:complete` invalidates everything again moments later.
+  Why deferred: defensible and intentional for a local app; with `staleTime: 30s`, `invalidateQueries`
+  still force-refetches active observers, but the lists are cheap and batched. Revisit with scoped
+  query keys (`invalidateQueries({ queryKey })`) if a burst of completing bullets ever shows.
+
+- **Overdue tasks lose their urgency in `dueLabel`** — `apps/web/lib/format.ts`. A past-due date renders
+  as a bare `"Jun 25"` with no overdue affordance. Minor UX, not a bug; surface overdue-ness (label or
+  colour) at the call sites in a follow-up.
+
+- **(consider) A server-side `suggestions.acceptMany` batch mutation** would make "Accept all confident"
+  atomic rather than N client round-trips. The client now surfaces partial failure (which succeeded /
+  failed), which addresses the *silent* half-applied state; the atomic server mutation remains the
+  cleaner long-term fix but is a new `@bullet/server` procedure, out of scope for this web-only PR.
