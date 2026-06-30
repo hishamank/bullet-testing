@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "biome check .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@bullet/server": "workspace:*",
@@ -23,9 +24,14 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@bullet/agent": "workspace:*",
+    "@bullet/db": "workspace:*",
     "@tailwindcss/postcss": "^4.3.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "jsdom": "^29.1.1",
     "tailwindcss": "^4.3.1"
   }
 }
