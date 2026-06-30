@@ -30,11 +30,12 @@ export default function ReviewPage() {
   const accept = useMutation(trpc.suggestions.accept.mutationOptions())
   const reject = useMutation(trpc.suggestions.reject.mutationOptions())
   const edit = useMutation(trpc.suggestions.edit.mutationOptions())
+  const weeklyRun = useMutation(trpc.weekly.run.mutationOptions())
 
   const [staged, setStaged] = useState<Set<string>>(() => new Set())
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ text: string; tone: 'info' | 'error' } | null>(null)
 
   const byId = useMemo(() => indexBy(suggestions, (s) => s.id), [suggestions])
 
@@ -65,7 +66,10 @@ export default function ReviewPage() {
     try {
       await fn()
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Something went wrong — please try again.')
+      setNotice({
+        text: err instanceof Error ? err.message : 'Something went wrong — please try again.',
+        tone: 'error',
+      })
     } finally {
       setStaged(new Set())
       setExpandedId(null)
@@ -87,7 +91,10 @@ export default function ReviewPage() {
     if (rejected.length > 0) {
       const reason =
         rejected[0]?.reason instanceof Error ? rejected[0].reason.message : 'please try again'
-      setNotice(`${ids.length - rejected.length} ${verb}, ${rejected.length} failed — ${reason}`)
+      setNotice({
+        text: `${ids.length - rejected.length} ${verb}, ${rejected.length} failed — ${reason}`,
+        tone: 'error',
+      })
     }
   }
 
@@ -100,6 +107,20 @@ export default function ReviewPage() {
   const applyEdit = (id: string, payload: SuggestionPayload) =>
     run(async () => {
       await edit.mutateAsync({ id, payload })
+    })
+
+  // Manual weekly-review trigger: analyze + persist on the server, then the query invalidation in
+  // `run` refreshes listPending so any new tracker suggestions flow into the inbox below.
+  const runWeekly = () =>
+    run(async () => {
+      const found = await weeklyRun.mutateAsync()
+      setNotice({
+        text:
+          found.length > 0
+            ? `Found ${found.length} pattern${found.length === 1 ? '' : 's'} to review.`
+            : 'No new patterns yet — keep logging.',
+        tone: 'info',
+      })
     })
 
   const count = suggestions.length
@@ -119,28 +140,39 @@ export default function ReviewPage() {
               </span>
             )}
           </div>
-          {hasItems && (
-            <div className="flex items-center gap-[10px]">
-              <button
-                type="button"
-                disabled={working}
-                onClick={() => dismissIds(suggestions.map((s) => s.id))}
-                className="rounded-[20px] border border-line-cool px-[15px] py-2 font-ui text-[13px] text-muted-soft transition-colors hover:border-faint-3 disabled:opacity-50"
-              >
-                Dismiss all
-              </button>
-              <button
-                type="button"
-                disabled={working || (stagedIds.length === 0 && confidentIds.length === 0)}
-                onClick={() => acceptIds(stagedIds.length > 0 ? stagedIds : confidentIds)}
-                className="rounded-[20px] bg-indigo px-[17px] py-[9px] font-ui font-medium text-[13px] text-white transition-colors hover:bg-indigo-deep disabled:opacity-50"
-              >
-                {stagedIds.length > 0
-                  ? `Accept ${stagedIds.length} selected`
-                  : 'Accept all confident'}
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-[10px]">
+            {/* Always visible — running a weekly review is exactly what you do when the inbox is empty. */}
+            <button
+              type="button"
+              disabled={working}
+              onClick={() => runWeekly()}
+              className="rounded-[20px] border border-line-cool px-[15px] py-2 font-ui text-[13px] text-muted-soft transition-colors hover:border-faint-3 disabled:opacity-50"
+            >
+              Run weekly review
+            </button>
+            {hasItems && (
+              <>
+                <button
+                  type="button"
+                  disabled={working}
+                  onClick={() => dismissIds(suggestions.map((s) => s.id))}
+                  className="rounded-[20px] border border-line-cool px-[15px] py-2 font-ui text-[13px] text-muted-soft transition-colors hover:border-faint-3 disabled:opacity-50"
+                >
+                  Dismiss all
+                </button>
+                <button
+                  type="button"
+                  disabled={working || (stagedIds.length === 0 && confidentIds.length === 0)}
+                  onClick={() => acceptIds(stagedIds.length > 0 ? stagedIds : confidentIds)}
+                  className="rounded-[20px] bg-indigo px-[17px] py-[9px] font-ui font-medium text-[13px] text-white transition-colors hover:bg-indigo-deep disabled:opacity-50"
+                >
+                  {stagedIds.length > 0
+                    ? `Accept ${stagedIds.length} selected`
+                    : 'Accept all confident'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
         {hasItems && (
           <p className="mt-[9px] max-w-[760px] font-ui text-[12.5px] text-faint">
@@ -149,11 +181,16 @@ export default function ReviewPage() {
             Accepting re-checks against what's already tracked, so nothing duplicates.
           </p>
         )}
-        {notice && (
-          <p className="mt-[9px] font-ui text-[12.5px] text-rust" role="alert">
-            {notice}
-          </p>
-        )}
+        {notice &&
+          (notice.tone === 'error' ? (
+            <p className="mt-[9px] font-ui text-[12.5px] text-rust" role="alert">
+              {notice.text}
+            </p>
+          ) : (
+            <p className="mt-[9px] font-ui text-[12.5px] text-faint" role="status">
+              {notice.text}
+            </p>
+          ))}
       </div>
 
       {/* Body */}

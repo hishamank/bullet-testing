@@ -11,7 +11,7 @@
  */
 
 import type { Suggestion } from '@bullet/core'
-import { createSuggestion, listActivities } from '@bullet/db'
+import { createSuggestion, listActivities, listSuggestionsByStatus, listTrackers } from '@bullet/db'
 import type { AgentDeps } from '../deps'
 import { type ResolvedSuggestion, withProvenance } from '../resolution/resolve'
 
@@ -90,6 +90,34 @@ function groupUnlinkedActivities(deps: AgentDeps, ownerId: string): Map<string, 
 }
 
 /**
+ * Normalized tracker names already "claimed" for this owner, so `analyze` won't re-propose them.
+ * A name is claimed by ANY of:
+ *  - an active tracker DEFINITION (`listTrackers`) — the pattern is already tracked;
+ *  - a still-PENDING tracker-kind Suggestion — avoids DUPLICATE proposals on a re-run;
+ *  - a REJECTED tracker-kind Suggestion — the user explicitly said no, so a manual re-run must
+ *    NOT resurface it (rejecting only flips status to 'rejected'; it creates no tracker, so
+ *    without this the proposal would come back on the next "Run weekly review").
+ * Kept pure-read: it only queries via the repos and uses the SAME `normalizeName` the grouping
+ * does, so the two can never disagree on a name.
+ */
+function claimedTrackerNames(deps: AgentDeps, ownerId: string): Set<string> {
+  const claimed = new Set<string>()
+  for (const tracker of listTrackers(deps.db, ownerId)) {
+    claimed.add(normalizeName(tracker.name))
+  }
+  // Pending AND rejected tracker-kind suggestions both suppress a re-proposal (the latter so a
+  // user's explicit "no" sticks across runs).
+  for (const status of ['pending', 'rejected'] as const) {
+    for (const suggestion of listSuggestionsByStatus(deps.db, ownerId, status)) {
+      if (suggestion.target_kind !== 'tracker') continue
+      const name = suggestion.payload.name
+      if (typeof name === 'string') claimed.add(normalizeName(name))
+    }
+  }
+  return claimed
+}
+
+/**
  * Create a weekly analyzer bound to `deps`. The threshold is configurable (default 3).
  */
 export function createWeeklyAnalyzer(
@@ -100,9 +128,14 @@ export function createWeeklyAnalyzer(
 
   return {
     analyze(ownerId: string): WeeklyProposal[] {
+      // Idempotency guard: skip a name already backed by an active tracker, a pending tracker
+      // suggestion, or a rejected one — so a re-run proposes nothing new and never resurfaces a
+      // proposal the user already dismissed.
+      const claimed = claimedTrackerNames(deps, ownerId)
       const proposals: WeeklyProposal[] = []
       for (const [key, group] of groupUnlinkedActivities(deps, ownerId)) {
         if (group.count < threshold) continue
+        if (claimed.has(key)) continue
         proposals.push({
           target_kind: 'tracker',
           operation: 'create',
