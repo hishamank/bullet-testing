@@ -18,6 +18,7 @@ export const GLYPH = {
   migrated: '›',
   done: '✓',
   processing: '·',
+  error: '!',
 } as const
 
 /** Human label shown before the em-dash in a review/overview row. */

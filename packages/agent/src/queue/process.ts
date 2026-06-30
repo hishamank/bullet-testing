@@ -15,6 +15,7 @@ import { AgentError } from '../errors'
 import { extractCandidates } from '../extraction/extract'
 import { buildSnapshot } from '../extraction/snapshot'
 import { persistAndAutoApply } from '../persist'
+import { reprocessBullet } from '../reconcile/reconcile'
 import { resolveCandidates } from '../resolution/resolve'
 
 /** What processing one extraction job produced. */
@@ -48,6 +49,30 @@ export async function processExtractJob(deps: AgentDeps, job: Job): Promise<Proc
   const bulletId = bulletIdOf(job)
   if (!bulletId) {
     throw new AgentError('NOT_FOUND', `extract job ${job.id} has no payload.bulletId`)
+  }
+
+  // RETRY path: a reconcile job (enqueued by `bullets.reprocess`) re-runs extraction through
+  // `reprocessBullet`, which RETIRES stale pending suggestions and DEDUPES creates against the
+  // entities already applied for this bullet. Crucially, the worker is SERIAL and drains the queue
+  // FIFO, so a reconcile enqueued by a retry always runs AFTER any in-flight original job — making
+  // the retry idempotent in every ordering (a still-queued original, a partial-persist failure, or
+  // a fully-failed original): no duplicate suggestions and no duplicate auto-applied entities.
+  // `reprocessBullet` performs its own active-bullet NOT_FOUND guard.
+  if (job.payload?.reconcile === true) {
+    const r = await reprocessBullet(deps, bulletId)
+    deps.emitter.emit('extraction:complete', {
+      jobId: job.id,
+      bulletId,
+      suggestionIds: r.newSuggestionIds,
+      appliedIds: r.appliedIds,
+      failedAutoApplyIds: r.failedAutoApplyIds,
+    })
+    return {
+      suggestionIds: r.newSuggestionIds,
+      appliedIds: r.appliedIds,
+      failedAutoApplyIds: r.failedAutoApplyIds,
+      skipped: 0,
+    }
   }
 
   const bullet = getBulletById(deps.db, bulletId)

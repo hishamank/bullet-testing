@@ -93,6 +93,45 @@ describe('queue end-to-end', () => {
     expect(completed[0]?.appliedIds).toEqual([suggestions[0]?.id])
   })
 
+  test('reconcile retry is idempotent: re-running does NOT duplicate suggestions or entities', async () => {
+    const conn = createTestDb()
+    const user = createUser(conn.db, { name: 'U' })
+    const bullet = createBullet(conn.db, { owner_id: user.id, text: 'ran 5k this morning' })
+
+    // The SAME high-confidence activity is returned on BOTH passes (the handler is stable).
+    const deps = makeDeps(conn, {
+      chat: () =>
+        JSON.stringify({
+          candidates: [
+            {
+              kind: 'activity',
+              orientation: 'happened',
+              text: 'ran 5k this morning',
+              fields: { name: 'ran 5k' },
+              confidence: 0.95,
+            },
+          ],
+        }),
+    })
+    const worker = createExtractionWorker(deps)
+
+    // 1) Original extraction: one auto activity + its (accepted) suggestion.
+    enqueueExtraction(deps, bullet.id, user.id)
+    expect(await worker.drain()).toBe(1)
+    const suggestionsAfterFirst = listSuggestionsByBullet(conn.db, bullet.id).length
+    const activitiesAfterFirst = listActivities(conn.db, user.id).length
+    expect(suggestionsAfterFirst).toBe(1)
+    expect(activitiesAfterFirst).toBe(1)
+
+    // 2) RETRY routed as a RECONCILE job. `reprocessBullet` dedupes the create against the applied
+    //    activity → no new suggestion, no new activity. A blind re-enqueue would have doubled both.
+    enqueueExtraction(deps, bullet.id, user.id, { reconcile: true })
+    expect(await worker.drain()).toBe(1)
+
+    expect(listSuggestionsByBullet(conn.db, bullet.id).length).toBe(suggestionsAfterFirst)
+    expect(listActivities(conn.db, user.id).length).toBe(activitiesAfterFirst)
+  })
+
   test('auto-applies a tracker_entry append when a tracker matches', async () => {
     const conn = createTestDb()
     const user = createUser(conn.db, { name: 'U' })

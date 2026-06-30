@@ -50,6 +50,8 @@ export {
   type SnapshotTask,
   type SnapshotTracker,
 } from './extraction'
+// Ollama health probe (server boot preflight + tRPC query + web "model offline" banner).
+export { checkOllamaHealth, type OllamaHealth } from './health'
 // Ollama client (interface + HTTP impl + scripted fake).
 export {
   type ChatHandler,
@@ -75,6 +77,7 @@ export {
 // Queue (per-job pipeline, serial worker, enqueue helper).
 export {
   createExtractionWorker,
+  type EnqueueExtractionOpts,
   EXTRACT_BULLET_JOB,
   type ExtractionWorker,
   enqueueExtraction,
