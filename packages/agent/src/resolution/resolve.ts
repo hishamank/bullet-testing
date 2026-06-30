@@ -125,18 +125,22 @@ export function resolveCandidates(
   let skipped = 0
 
   for (const candidate of candidates) {
-    switch (candidate.orientation) {
+    // Small local models (e.g. gemma3:4b) sometimes WRAP field values one level deep under
+    // structured output — `value: { value: 3 }`, `name: { name: 'mood' }`. Flatten that single
+    // level ONCE here so every downstream reader works on primitives unchanged (see flattenFields).
+    const normalized: Candidate = { ...candidate, fields: flattenFields(candidate.fields) }
+    switch (normalized.orientation) {
       case 'happened': {
-        const resolved = resolveHappened(candidate, snapshot, config)
+        const resolved = resolveHappened(normalized, snapshot, config)
         suggestions.push(resolved)
         break
       }
       case 'future_oneoff': {
-        suggestions.push(resolveFutureOneoff(candidate, config))
+        suggestions.push(resolveFutureOneoff(normalized, config))
         break
       }
       case 'future_recurring': {
-        suggestions.push(resolveFutureRecurring(candidate, config))
+        suggestions.push(resolveFutureRecurring(normalized, config))
         break
       }
       case 'durable_fact': {
@@ -146,7 +150,7 @@ export function resolveCandidates(
       }
       default: {
         // Exhaustiveness guard; orientation is a closed union.
-        const never: never = candidate.orientation
+        const never: never = normalized.orientation
         throw new Error(`Unknown orientation: ${String(never)}`)
       }
     }
@@ -342,6 +346,56 @@ function resolveFutureRecurring(candidate: Candidate, config: AgentConfig): Reso
 }
 
 // --- field coercion helpers (the model's `fields` are loose; normalise defensively) ---
+
+/** The canonical inner keys a model uses when it wraps a field value in a single-key object. */
+const WRAPPER_INNER_KEYS = ['value', 'name', 'title', 'text'] as const
+
+/**
+ * Unwrap ONE level of the small-model "value wrapping" quirk on a single field value.
+ *
+ * Some local models (e.g. gemma3:4b) wrap field VALUES in an object even under structured output —
+ * `{ value: 3 }` instead of `3`, `{ name: 'mood' }` instead of `'mood'`. Downstream readers expect
+ * primitives, so a wrapped number silently corrupts (numberFieldOrNull sees an object → null →
+ * coerced to 0 → a scale tracker clamps to its min: a mood of 3 logs as 1). We undo exactly ONE
+ * level of that wrapping here:
+ *
+ *  - `null` / primitive / Array        → returned UNCHANGED (arrays are legitimate, e.g. the value
+ *                                        of a multi_select entry is a string[]).
+ *  - plain object with exactly ONE key → that key's value. This is intentionally broader than the
+ *    observed `value`/`name`/… wrapper keys: a single-key object is ALWAYS the model wrapping a
+ *    scalar (v1 field values are only ever primitives/arrays — no reader consumes object-valued
+ *    fields), so unwrapping any single-key wrapper is safe and robust to unseen wrapper keys.
+ *  - plain object containing one of {@link WRAPPER_INNER_KEYS} → the first such key's value.
+ *  - any other object (incl. empty `{}`) → returned UNCHANGED (the readers ignore non-primitives
+ *                                        and fall back to the text slice, exactly as today).
+ *
+ * One level ONLY — the observed nesting is one level deep; we never recurse arbitrarily.
+ */
+export function unwrapValue(v: unknown): unknown {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return v
+  const obj = v as Record<string, unknown>
+  const keys = Object.keys(obj)
+  const [only] = keys
+  if (keys.length === 1 && only !== undefined) return obj[only]
+  for (const k of WRAPPER_INNER_KEYS) {
+    if (k in obj) return obj[k]
+  }
+  return v
+}
+
+/**
+ * Normalise a candidate's loose `fields` by passing each top-level value through
+ * {@link unwrapValue}. Keys are unchanged; already-flat fields pass through untouched. Applied
+ * ONCE per candidate at the top of {@link resolveCandidates} so all downstream readers see
+ * primitives.
+ */
+export function flattenFields(fields: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(fields)) {
+    out[k] = unwrapValue(v)
+  }
+  return out
+}
 
 /** Read a string field by trying each key in order, falling back to `fallback`. */
 function stringField(fields: Record<string, unknown>, keys: string[], fallback: string): string {
