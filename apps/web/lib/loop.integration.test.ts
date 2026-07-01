@@ -12,7 +12,7 @@
  */
 
 import { AGENT_CONFIG_DEFAULTS, createScriptedOllamaClient, type OllamaScript } from '@bullet/agent'
-import { createTestDb } from '@bullet/db'
+import { createTestDb, listSuggestionsByStatus } from '@bullet/db'
 import { type AppRouter, createApp, createServerDeps, type ServerDeps } from '@bullet/server'
 import { createTRPCClient, httpBatchLink, type TRPCClient } from '@trpc/client'
 import { describe, expect, test } from 'vitest'
@@ -133,5 +133,13 @@ describe('core loop through the web tRPC client', () => {
     expect(activities[0]?.name).toBe('ran 5k')
     expect(activities[0]?.source_bullet_id).toBe(bullet.id)
     expect(await client.suggestions.listPending.query()).toHaveLength(0)
+
+    // Per CLAUDE.md §4.3, every extraction is a first-class Suggestion; an 'auto'-tier one
+    // self-applies, so the envelope must persist with status 'accepted' (not just the entity).
+    // The web client only exposes `listPending`, so read it straight from the harness's db.
+    const accepted = listSuggestionsByStatus(deps.db, deps.ownerId, 'accepted')
+    expect(accepted).toHaveLength(1)
+    expect(accepted[0]?.target_kind).toBe('activity')
+    expect(accepted[0]?.source_bullet_id).toBe(bullet.id)
   })
 })
