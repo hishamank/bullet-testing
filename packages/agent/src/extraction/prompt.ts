@@ -27,10 +27,13 @@ Each candidate also has an ORIENTATION (its time sense):
 Rules:
 - Split the bullet into ONE OR MORE candidates: a single bullet may contain several things ("ran 5k and felt great, remember to call mom").
 - When a candidate refers to an EXISTING tracker or open task in the provided state, set "referenceName" to that exact name/title so it can be appended/updated instead of duplicated.
-- Put the proposed raw fields in "fields" (e.g. { "value": 5 } for a tracker entry, { "title": "call mom" } for a task, { "name": "running", "input_type": "number" } for a tracker, { "name": "ran 5k" } for an activity).
+- "fields" MUST be FLAT: each value is a PRIMITIVE (string/number/boolean), or an ARRAY of primitives for a multi-select value — NEVER nest objects inside it.
+  CORRECT: { "title": "call mom" }            WRONG: { "title": { "name": "call mom" } }
+  CORRECT: { "name": "running", "value": 5 }   WRONG: { "name": { "name": "running" }, "value": { "value": 5 } }
+  Typical shapes: { "value": 5 } for a tracker entry, { "value": ["cough", "fatigue"] } for a multi-select entry, { "title": "call mom" } for a task, { "name": "running", "input_type": "number" } for a tracker, { "name": "ran 5k" } for an activity.
 - "text" is the slice of the bullet the candidate came from.
 - "confidence" is your certainty in this candidate, 0..1.
-- Output ONLY the JSON object matching the provided schema.`
+- Output ONLY the JSON object matching the provided schema. No Markdown code fences, no commentary, no text before or after.`
 
 /** Render the inlined snapshot as compact, model-readable text. */
 function renderSnapshot(snapshot: ExtractionSnapshot): string {

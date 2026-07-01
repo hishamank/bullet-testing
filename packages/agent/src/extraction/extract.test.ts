@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { AGENT_CONFIG_DEFAULTS } from '../config'
 import { createScriptedOllamaClient } from '../ollama/scripted'
-import { extractCandidates } from './extract'
+import { extractCandidates, extractJsonObject } from './extract'
 import { buildExtractionPrompt } from './prompt'
 import { extractionJsonSchema, extractionResponseSchema } from './schema'
 import type { ExtractionSnapshot } from './snapshot'
@@ -99,6 +99,126 @@ describe('extractCandidates', () => {
     })
     const err = await extractCandidates({ ollama, config }, 'x', EMPTY_SNAPSHOT).catch((e) => e)
     expect(err.code).toBe('EXTRACTION_INVALID')
+  })
+
+  const VALID_RESPONSE = JSON.stringify({
+    candidates: [
+      {
+        kind: 'task',
+        orientation: 'future_oneoff',
+        text: 'call mom',
+        fields: { title: 'call mom' },
+        confidence: 0.8,
+      },
+    ],
+  })
+
+  test('tolerates a response wrapped in a ```json code fence', async () => {
+    const ollama = createScriptedOllamaClient({
+      chat: () => `\`\`\`json\n${VALID_RESPONSE}\n\`\`\``,
+    })
+    const candidates = await extractCandidates({ ollama, config }, 'call mom', EMPTY_SNAPSHOT)
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({ kind: 'task', orientation: 'future_oneoff' })
+    // A single (successful) attempt — tolerant parsing did NOT trigger the repair retry.
+    expect(ollama.chatCalls).toHaveLength(1)
+  })
+
+  test('tolerates prose around the JSON object', async () => {
+    const ollama = createScriptedOllamaClient({
+      chat: () => `Sure! Here is the JSON:\n${VALID_RESPONSE}\nHope that helps.`,
+    })
+    const candidates = await extractCandidates({ ollama, config }, 'call mom', EMPTY_SNAPSHOT)
+    expect(candidates).toHaveLength(1)
+    expect(ollama.chatCalls).toHaveLength(1)
+  })
+
+  test('still parses pure clean JSON (regression)', async () => {
+    const ollama = createScriptedOllamaClient({ chat: () => VALID_RESPONSE })
+    const candidates = await extractCandidates({ ollama, config }, 'call mom', EMPTY_SNAPSHOT)
+    expect(candidates).toHaveLength(1)
+    expect(ollama.chatCalls).toHaveLength(1)
+  })
+
+  test('the repair retry re-sends the prior bad output plus a correction instruction', async () => {
+    const badContent = 'oops not json'
+    const ollama = createScriptedOllamaClient({
+      chatQueue: [badContent, VALID_RESPONSE],
+    })
+    const candidates = await extractCandidates({ ollama, config }, 'call mom', EMPTY_SNAPSHOT)
+    expect(candidates).toHaveLength(1)
+    expect(ollama.chatCalls).toHaveLength(2)
+
+    // The SECOND request is a repair: it still constrains decoding with the format schema, …
+    const repairMessages = ollama.chatCalls[1]?.messages ?? []
+    expect(ollama.chatCalls[1]?.format).toBe(extractionJsonSchema)
+    // … it echoes the model's prior bad output as an assistant turn, …
+    expect(repairMessages.some((m) => m.role === 'assistant' && m.content === badContent)).toBe(
+      true,
+    )
+    // … and it adds a user instruction to reply with ONLY corrected JSON (the repair signal).
+    expect(
+      repairMessages.some((m) => m.role === 'user' && /only the corrected json/i.test(m.content)),
+    ).toBe(true)
+    // The original system AND user/bullet prompt are still present (repair appends, never replaces).
+    expect(repairMessages.some((m) => m.role === 'system')).toBe(true)
+    expect(repairMessages.some((m) => m.role === 'user' && m.content.includes('call mom'))).toBe(
+      true,
+    )
+  })
+})
+
+describe('extractJsonObject (tolerant parsing helper)', () => {
+  test('returns a bare JSON object unchanged', () => {
+    expect(extractJsonObject('{"a":1}')).toBe('{"a":1}')
+  })
+
+  test('salvages the first object when trailing prose ends in a brace', () => {
+    // The old happy-path shortcut returned the whole string here (starts `{`, ends `}`) and parse
+    // failed; the scanner stops at the first balanced object, salvaging it instead.
+    expect(extractJsonObject('{"a":1} done}')).toBe('{"a":1}')
+  })
+
+  test('strips a ```json code fence', () => {
+    expect(extractJsonObject('```json\n{"a":1}\n```')).toBe('{"a":1}')
+  })
+
+  test('strips a bare ``` fence', () => {
+    expect(extractJsonObject('```\n{"a":1}\n```')).toBe('{"a":1}')
+  })
+
+  test('salvages the first balanced object from surrounding prose', () => {
+    expect(extractJsonObject('Here is the JSON: {"a":{"b":1}} thanks')).toBe('{"a":{"b":1}}')
+  })
+
+  test('ignores braces inside string literals', () => {
+    // Wrapped in prose so the input is NOT a bare object — this FORCES the scanner path (and its
+    // `inString` tracking) rather than any bare-object shortcut. If `inString` tracking were
+    // removed, the `}` inside the string literal would close the object early and this would fail.
+    expect(extractJsonObject('note: {"a":"}{"} end')).toBe('{"a":"}{"}')
+  })
+
+  test('handles an escaped backslash before the closing quote', () => {
+    // Prose-wrapped to force the scanner. Source '{"a":"\\\\"}' is the JSON {"a":"\\"} — one
+    // escaped backslash, then a real closing quote. The escape tracker must not let the backslash
+    // swallow that quote.
+    expect(extractJsonObject('note: {"a":"\\\\"} end')).toBe('{"a":"\\\\"}')
+  })
+
+  test('handles an escaped quote inside a string', () => {
+    // Prose-wrapped to force the scanner. Source '{"a":"\\""}' is {"a":"\""} — the escaped quote
+    // stays inside the string literal. If the escape tracking were broken, the escaped `"` would
+    // toggle `inString` early, the closing `}` would be seen as in-string, and this would return
+    // undefined instead of the object.
+    expect(extractJsonObject('note: {"a":"\\""} end')).toBe('{"a":"\\""}')
+  })
+
+  test('returns undefined for a truncated/unbalanced object (no throw, no hang)', () => {
+    expect(extractJsonObject('{"a":1')).toBeUndefined()
+  })
+
+  test('returns undefined when there is no object', () => {
+    expect(extractJsonObject('not json at all')).toBeUndefined()
   })
 })
 
