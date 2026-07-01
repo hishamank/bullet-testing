@@ -14,7 +14,7 @@
  * Env: OLLAMA_BASE_URL, OLLAMA_LIVE_MODEL (defaults: http://localhost:11434, gemma3:4b).
  */
 
-import { createBullet, createTask, createTestDb, createTracker, createUser } from '@bullet/db'
+import { createTask, createTestDb, createTracker, createUser } from '@bullet/db'
 import { loadAgentConfig } from '../src/config'
 import { extractCandidates } from '../src/extraction/extract'
 import { buildSnapshot } from '../src/extraction/snapshot'
@@ -78,7 +78,6 @@ async function main() {
     const user = createUser(db, { name: 'eval' })
     c.seed?.(db, user.id)
     const snapshot = buildSnapshot({ db }, user.id)
-    createBullet(db, { owner_id: user.id, text: c.bullet })
 
     const t0 = Date.now()
     let candidates: Awaited<ReturnType<typeof extractCandidates>>

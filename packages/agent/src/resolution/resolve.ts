@@ -378,7 +378,7 @@ export function unwrapValue(v: unknown): unknown {
   const [only] = keys
   if (keys.length === 1 && only !== undefined) return obj[only]
   for (const k of WRAPPER_INNER_KEYS) {
-    if (k in obj) return obj[k]
+    if (Object.hasOwn(obj, k)) return obj[k]
   }
   return v
 }
