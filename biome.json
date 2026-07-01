@@ -32,5 +32,35 @@
       "cssModules": true,
       "tailwindDirectives": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@bullet/db": "web must talk to the server via the tRPC client only (CLAUDE.md); tests may import these via the test-file override.",
+                  "@bullet/agent": "web must talk to the server via the tRPC client only (CLAUDE.md); tests may import these via the test-file override."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/**/*.test.ts", "apps/web/**/*.test.tsx", "apps/web/vitest.config.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    }
+  ]
 }
