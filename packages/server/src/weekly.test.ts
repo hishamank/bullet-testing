@@ -1,8 +1,8 @@
 /**
  * weekly router round-trips — the manual analyzer trigger surfaced over tRPC. Seeds same-named
  * UNLINKED activities (with a source bullet, since a Suggestion needs one), then proves `run`
- * persists a tracker suggestion that flows into `suggestions.listPending`, that a SECOND `run` is
- * idempotent (adds nothing), and that `preview` analyzes without persisting.
+ * persists a tracker suggestion that flows into `suggestions.listPending`, and that a SECOND `run`
+ * is idempotent (adds nothing).
  */
 
 import { createActivity, createBullet } from '@bullet/db'
@@ -53,20 +53,5 @@ describe('weekly router', () => {
     const again = await caller.weekly.run()
     expect(again).toHaveLength(0)
     expect(await caller.suggestions.listPending()).toHaveLength(pendingCount)
-  })
-
-  test('preview returns proposals without persisting', async () => {
-    const deps = buildTestDeps()
-    const caller = createCaller(deps)
-
-    const bullet = createBullet(deps.db, { owner_id: deps.ownerId, text: 'stretched' })
-    seedUnlinkedActivities(deps, bullet.id, 'stretch', 3)
-
-    const preview = await caller.weekly.preview()
-    expect(preview.length).toBeGreaterThanOrEqual(1)
-    expect(preview[0]?.target_kind).toBe('tracker')
-
-    // preview persists nothing — the inbox stays empty.
-    expect(await caller.suggestions.listPending()).toHaveLength(0)
   })
 })

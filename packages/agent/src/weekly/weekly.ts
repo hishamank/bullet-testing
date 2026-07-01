@@ -109,6 +109,9 @@ function claimedTrackerNames(deps: AgentDeps, ownerId: string): Set<string> {
   // user's explicit "no" sticks across runs).
   for (const status of ['pending', 'rejected'] as const) {
     for (const suggestion of listSuggestionsByStatus(deps.db, ownerId, status)) {
+      // Claims ANY tracker-kind suggestion regardless of `operation` — moot in v1 (tracker
+      // suggestions are create-only); flagged so a future tracker-`update` path doesn't silently
+      // start suppressing proposals.
       if (suggestion.target_kind !== 'tracker') continue
       const name = suggestion.payload.name
       if (typeof name === 'string') claimed.add(normalizeName(name))
@@ -119,6 +122,10 @@ function claimedTrackerNames(deps: AgentDeps, ownerId: string): Set<string> {
 
 /**
  * Create a weekly analyzer bound to `deps`. The threshold is configurable (default 3).
+ *
+ * NOTE: analyze+persist is NOT atomic across a run — fine for the single-user MANUAL trigger
+ * (`analyze` is a pure read; the UI disables the button while running); a future scheduler or
+ * multi-user path should wrap the two in one transaction.
  */
 export function createWeeklyAnalyzer(
   deps: AgentDeps,
