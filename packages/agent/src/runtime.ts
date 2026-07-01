@@ -14,7 +14,7 @@ import type { AgentConfig } from './config'
 import type { AgentDeps } from './deps'
 import { type AgentEmitter, createAgentEmitter } from './events'
 import type { OllamaClient } from './ollama/types'
-import { enqueueExtraction } from './queue/enqueue'
+import { type EnqueueExtractionOpts, enqueueExtraction } from './queue/enqueue'
 import { type ProcessResult, processExtractJob } from './queue/process'
 import { createExtractionWorker, type ExtractionWorker } from './queue/worker'
 import { type ReconcileResult, reprocessBullet } from './reconcile/reconcile'
@@ -39,8 +39,12 @@ export interface AgentRuntime {
   worker: ExtractionWorker
   /** The weekly-analysis stub. */
   weekly: WeeklyAnalyzer
-  /** Enqueue an extraction job for a freshly-created bullet. */
-  enqueueExtraction(bulletId: string, ownerId: string): ReturnType<typeof enqueueExtraction>
+  /** Enqueue an extraction job for a freshly-created bullet (or a reconcile retry via `opts`). */
+  enqueueExtraction(
+    bulletId: string,
+    ownerId: string,
+    opts?: EnqueueExtractionOpts,
+  ): ReturnType<typeof enqueueExtraction>
   /** Process a specific job synchronously (rarely needed directly; the worker normally drives). */
   processExtractJob(job: Parameters<typeof processExtractJob>[1]): Promise<ProcessResult>
   /** Re-run extraction for an edited bullet, reconciling against applied entities (§4.7). */
@@ -65,7 +69,8 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     emitter,
     worker,
     weekly,
-    enqueueExtraction: (bulletId, ownerId) => enqueueExtraction(deps, bulletId, ownerId),
+    enqueueExtraction: (bulletId, ownerId, opts) =>
+      enqueueExtraction(deps, bulletId, ownerId, opts),
     processExtractJob: (job) => processExtractJob(deps, job),
     reprocessBullet: (bulletId) => reprocessBullet(deps, bulletId),
   }

@@ -7,6 +7,7 @@
  */
 
 import { pathToFileURL } from 'node:url'
+import { checkOllamaHealth } from '@bullet/agent'
 import { serve } from '@hono/node-server'
 import { createApp } from './app'
 import { loadServerConfig } from './config'
@@ -50,6 +51,29 @@ export async function startServer(
 
   const url = `http://localhost:${boundPort}`
   console.log(`[@bullet/server] listening on ${url} (db: ${config.databasePath})`)
+
+  // Boot preflight: probe Ollama and WARN loudly (but NON-FATALLY) when the model isn't ready.
+  // FIRE-AND-FORGET (do NOT await): `HttpOllamaClient.listModels()` has no fetch timeout, so a host
+  // that accepts TCP but never answers would hang the await — and this runs BEFORE `startServer`
+  // resolves and BEFORE SIGINT/SIGTERM are wired, so a hung probe would leave the signal handlers
+  // uninstalled and Ctrl+C would skip graceful shutdown. The probe never touches the db, so running
+  // it detached is safe. Local-first — the user may start Ollama (or pull the model) later; this
+  // never throws/exits, and the web banner + per-bullet retry recover once the model is back. The
+  // warning prints (asynchronously) just below the "listening" line.
+  void checkOllamaHealth(deps)
+    .then((health) => {
+      if (!health.reachable) {
+        console.warn(
+          `[@bullet/server] WARNING: Ollama not reachable at ${deps.config.baseUrl} — bullets will fail until it's running` +
+            (health.error ? ` (${health.error})` : ''),
+        )
+      } else if (!health.liveModelAvailable) {
+        console.warn(
+          `[@bullet/server] WARNING: Ollama is up but model '${health.liveModel}' not found — run \`ollama pull ${health.liveModel}\``,
+        )
+      }
+    })
+    .catch(() => {})
 
   let stopped = false
   const stop = async (): Promise<void> => {

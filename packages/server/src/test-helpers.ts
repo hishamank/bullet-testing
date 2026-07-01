@@ -19,7 +19,10 @@ export function buildTestDeps(
   config: AgentConfig = AGENT_CONFIG_DEFAULTS,
 ): ServerDeps {
   const { db, sqlite } = createTestDb()
-  const ollama = createScriptedOllamaClient(script)
+  // Default the scripted model list to the configured live model so the server boot preflight stays
+  // quiet in tests (no spurious "model not found" warnings). A test that exercises health passes its
+  // own `models` and overrides this via the spread.
+  const ollama = createScriptedOllamaClient({ models: [{ name: config.liveModel }], ...script })
   // Thread the raw handle through so a test exercising the standalone shutdown path can assert the
   // db is actually closed by `stop()` (the real server keeps it for the same reason).
   return createServerDeps({ db, ollama, config, sqlite })

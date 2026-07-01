@@ -9,6 +9,7 @@ import {
   getJobById,
   getTaskById,
   listActivities,
+  listJobsByStatus,
   listSuggestionsByBullet,
   listTasks,
   listTrackerEntries,
@@ -91,6 +92,109 @@ describe('queue end-to-end', () => {
     expect(completed[0]?.bulletId).toBe(bullet.id)
     expect(completed[0]?.suggestionIds).toEqual([suggestions[0]?.id])
     expect(completed[0]?.appliedIds).toEqual([suggestions[0]?.id])
+  })
+
+  test('reconcile retry is idempotent: re-running does NOT duplicate suggestions or entities', async () => {
+    const conn = createTestDb()
+    const user = createUser(conn.db, { name: 'U' })
+    const bullet = createBullet(conn.db, { owner_id: user.id, text: 'ran 5k this morning' })
+
+    // The SAME high-confidence activity is returned on BOTH passes (the handler is stable).
+    const deps = makeDeps(conn, {
+      chat: () =>
+        JSON.stringify({
+          candidates: [
+            {
+              kind: 'activity',
+              orientation: 'happened',
+              text: 'ran 5k this morning',
+              fields: { name: 'ran 5k' },
+              confidence: 0.95,
+            },
+          ],
+        }),
+    })
+    const worker = createExtractionWorker(deps)
+
+    // 1) Original extraction: one auto activity + its (accepted) suggestion.
+    enqueueExtraction(deps, bullet.id, user.id)
+    expect(await worker.drain()).toBe(1)
+    const suggestionsAfterFirst = listSuggestionsByBullet(conn.db, bullet.id).length
+    const activitiesAfterFirst = listActivities(conn.db, user.id).length
+    expect(suggestionsAfterFirst).toBe(1)
+    expect(activitiesAfterFirst).toBe(1)
+
+    // 2) RETRY routed as a RECONCILE job. `reprocessBullet` dedupes the create against the applied
+    //    activity → no new suggestion, no new activity. A blind re-enqueue would have doubled both.
+    enqueueExtraction(deps, bullet.id, user.id, { reconcile: true })
+    expect(await worker.drain()).toBe(1)
+
+    expect(listSuggestionsByBullet(conn.db, bullet.id).length).toBe(suggestionsAfterFirst)
+    expect(listActivities(conn.db, user.id).length).toBe(activitiesAfterFirst)
+  })
+
+  test('failed original → reconcile retry recovers: exactly ONE suggestion + entity, no duplication (B1)', async () => {
+    const conn = createTestDb()
+    const user = createUser(conn.db, { name: 'U' })
+    const bullet = createBullet(conn.db, { owner_id: user.id, text: 'ran 5k this morning' })
+
+    // Model the single-GPU model being OFFLINE for the first job, then coming BACK for the retry.
+    // While `reachable` is false the scripted chat THROWS (Ollama unreachable → `fetch failed`).
+    // That thrown error is NOT internally retried (extractCandidates only retries parse/validation
+    // failures, so a thrown chat error propagates immediately), so the first extract job makes a
+    // single failing chat call and fails outright — persisting nothing. Flipping `reachable` true
+    // before the reconcile retry lets its extraction succeed. Using a phase flag (rather than a
+    // fixed call count) keeps the test robust: the whole first job fails regardless of how many
+    // attempts it makes, and the retry always succeeds.
+    let reachable = false
+    const deps = makeDeps(conn, {
+      chat: () => {
+        if (!reachable) throw new Error('fetch failed')
+        return JSON.stringify({
+          candidates: [
+            {
+              kind: 'activity',
+              orientation: 'happened',
+              text: 'ran 5k this morning',
+              fields: { name: 'ran 5k' },
+              confidence: 0.95,
+            },
+          ],
+        })
+      },
+    })
+    const worker = createExtractionWorker(deps)
+
+    // 1) FIRST extraction FAILS (Ollama unreachable). The job is marked failed and — crucially —
+    //    NOTHING is persisted for the bullet: no suggestions, no entities.
+    const failedJob = enqueueExtraction(deps, bullet.id, user.id)
+    expect(await worker.drain()).toBe(1)
+    expect(getJobById(conn.db, failedJob.id)?.status).toBe('failed')
+    expect(listJobsByStatus(conn.db, 'failed')).toHaveLength(1)
+    expect(listSuggestionsByBullet(conn.db, bullet.id)).toHaveLength(0)
+    expect(listActivities(conn.db, user.id)).toHaveLength(0)
+
+    // 2) The model is back. The RETRY is routed as a RECONCILE job (`bullets.reprocess`'s path).
+    //    Because the failed original persisted nothing, reconcile has nothing to dedupe against and
+    //    creates the entity exactly ONCE — recovery yields EXACTLY ONE suggestion (auto-applied)
+    //    and EXACTLY ONE activity. A blind (non-reconcile) retry would have been fine here too, but
+    //    this proves the real retry path recovers cleanly with no duplication.
+    reachable = true
+    enqueueExtraction(deps, bullet.id, user.id, { reconcile: true })
+    expect(await worker.drain()).toBe(1)
+
+    // Exactly one suggestion exists for the bullet — the one that SHOULD exist, auto-applied.
+    const suggestions = listSuggestionsByBullet(conn.db, bullet.id)
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]?.tier).toBe('auto')
+    expect(suggestions[0]?.status).toBe('accepted')
+    expect(suggestions[0]?.source_bullet_id).toBe(bullet.id)
+
+    // Exactly one activity was created — no duplicate from the failed-then-retried run.
+    const activities = listActivities(conn.db, user.id)
+    expect(activities).toHaveLength(1)
+    expect(activities[0]?.name).toBe('ran 5k')
+    expect(activities[0]?.source_bullet_id).toBe(bullet.id)
   })
 
   test('auto-applies a tracker_entry append when a tracker matches', async () => {

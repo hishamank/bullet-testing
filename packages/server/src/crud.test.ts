@@ -13,6 +13,46 @@ describe('system router', () => {
     expect(typeof health.now).toBe('number')
     expect(await caller.system.echo({ message: 'hi' })).toEqual({ message: 'hi' })
   })
+
+  test('ollamaHealth reports reachable + the live model present', async () => {
+    // The scripted client's `models` drives listModels — the default config live model is gemma3:4b.
+    const caller = createCaller(buildTestDeps({ models: [{ name: 'gemma3:4b' }] }))
+    const health = await caller.system.ollamaHealth()
+    expect(health).toEqual({
+      reachable: true,
+      models: ['gemma3:4b'],
+      liveModelAvailable: true,
+      liveModel: 'gemma3:4b',
+    })
+  })
+
+  test('ollamaHealth reports the live model absent when it is not pulled', async () => {
+    const caller = createCaller(buildTestDeps({ models: [{ name: 'llama3' }] }))
+    const health = await caller.system.ollamaHealth()
+    expect(health.reachable).toBe(true)
+    expect(health.liveModelAvailable).toBe(false)
+  })
+})
+
+describe('bullets.reprocess (per-bullet retry)', () => {
+  test('re-enqueues an extraction job for an existing bullet', async () => {
+    const caller = createCaller(buildTestDeps())
+    const bullet = await caller.bullets.create({ text: 'ran 5k' })
+
+    const job = await caller.bullets.reprocess({ id: bullet.id })
+    expect(job.type).toBe('extract_bullet')
+    // The retry enqueues a RECONCILE job (idempotent re-run), not a blind first-pass extraction.
+    expect(job.payload).toMatchObject({ bulletId: bullet.id, reconcile: true })
+    expect(job.status).toBe('queued')
+  })
+
+  test('reprocess of an unknown id throws NOT_FOUND', async () => {
+    const caller = createCaller(buildTestDeps())
+    const missingId = '00000000-0000-4000-8000-000000000000'
+    await expect(caller.bullets.reprocess({ id: missingId })).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+  })
 })
 
 describe('tasks CRUD round-trip', () => {

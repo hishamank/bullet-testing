@@ -32,7 +32,31 @@ export const bulletsRouter = router({
     return bullet
   }),
 
-  /** Edit a bullet's text, then re-run extraction reconciling against applied entities (§4.7). */
+  /**
+   * Re-enqueue extraction for a bullet — the per-bullet RETRY after a failed/slow job (e.g. Ollama
+   * was offline or backed up). The retry enqueues a RECONCILE job (`{ reconcile: true }`); the
+   * serial FIFO worker runs it AFTER any in-flight original, and `reprocessBullet` retires stale
+   * pending suggestions + dedupes creates against already-applied entities. So retrying is
+   * IDEMPOTENT regardless of whether the original failed, partially persisted, or is still queued —
+   * no duplicate suggestions/entities. (`bullets.update` is the path for EDITED text; this re-runs
+   * the SAME text.)
+   */
+  reprocess: publicProcedure.input(byIdInput).mutation(({ ctx, input }) => {
+    // Missing OR soft-deleted → NOT_FOUND (matching get/update; a deleted bullet can't be retried).
+    if (getBulletById(ctx.db, input.id)?.state !== 'active')
+      throw new TRPCError({ code: 'NOT_FOUND', message: `bullet ${input.id} not found` })
+    return ctx.runtime.enqueueExtraction(input.id, ctx.ownerId, { reconcile: true })
+  }),
+
+  /**
+   * Edit a bullet's text, then re-run extraction reconciling against applied entities (§4.7).
+   *
+   * ASYMMETRY (tracked decision, deferred): `reprocess` (retry) enqueues onto the serial worker,
+   * but `update` (edit) runs `reprocessBullet` SYNCHRONOUSLY in-request — an inference that can run
+   * CONCURRENTLY with the worker, bypassing the single-GPU-slot serialization. This is pre-existing
+   * and intentionally NOT changed here; unifying edit onto the queue (so all inference is serial) is
+   * a follow-up. Kept synchronous for now because callers await the reconcile result inline.
+   */
   update: publicProcedure.input(bulletUpdateInput).mutation(async ({ ctx, input }) => {
     const bullet = updateBullet(ctx.db, input.id, { text: input.text })
     if (!bullet) throw new TRPCError({ code: 'NOT_FOUND', message: `bullet ${input.id} not found` })

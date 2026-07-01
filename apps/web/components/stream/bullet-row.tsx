@@ -7,6 +7,8 @@
  *  - while the worker is reading a just-logged bullet → a pulsing "·" and "reading…"
  *  - once entities land → the representative glyph + each applied entity as a muted margin label
  *  - pending suggestions → a "N to review" pill that jumps to the Review inbox
+ *  - a FAILED extraction (model offline) → a rust "!" + "couldn't process" + a "retry" affordance
+ *    (so a failure is never silent), wired to `bullets.reprocess`.
  *
  * Editing a bullet calls `bullets.update`, which re-runs extraction and reconciles (§4.7).
  */
@@ -25,16 +27,29 @@ interface Props {
   entities: NormalizedEntity[]
   pendingCount: number
   processing: boolean
+  /** A failed extraction's message (the worker errored, e.g. the model was offline). */
+  error?: string
+  /** Called after a successful re-enqueue so the parent can re-mark the bullet processing. */
+  onReprocess?: (bulletId: string) => void
 }
 
-function resolveGlyph(entities: NormalizedEntity[], processing: boolean) {
+function resolveGlyph(entities: NormalizedEntity[], processing: boolean, errored: boolean) {
   if (processing && entities.length === 0)
     return { glyph: GLYPH.processing, colorClass: 'text-faint-4', pulse: true }
   if (entities.length > 0) return { ...bulletGlyph(entities), pulse: false }
+  // A failed extraction with nothing applied → the loud rust error glyph.
+  if (errored) return { glyph: GLYPH.error, colorClass: 'text-rust', pulse: false }
   return { glyph: GLYPH.note, colorClass: 'text-faint-3', pulse: false }
 }
 
-export function BulletRow({ bullet, entities, pendingCount, processing }: Props) {
+export function BulletRow({
+  bullet,
+  entities,
+  pendingCount,
+  processing,
+  error,
+  onReprocess,
+}: Props) {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
@@ -49,7 +64,17 @@ export function BulletRow({ bullet, entities, pendingCount, processing }: Props)
     }),
   )
 
-  const { glyph, colorClass, pulse } = resolveGlyph(entities, processing)
+  // Per-bullet RETRY after a failed extraction. Re-enqueues the SAME text (the server treats this
+  // as safe: a "fetch failed" job persisted nothing); the parent re-marks the bullet processing.
+  const reprocess = useMutation(
+    trpc.bullets.reprocess.mutationOptions({
+      onSuccess: () => onReprocess?.(bullet.id),
+    }),
+  )
+
+  // The error affordance only shows when there's nothing applied to show instead.
+  const showError = !!error && entities.length === 0 && !processing
+  const { glyph, colorClass, pulse } = resolveGlyph(entities, processing, showError)
   const labels = entities.map((e) => ({ id: e.id, text: marginLabel(e) }))
 
   function saveEdit() {
@@ -122,6 +147,20 @@ export function BulletRow({ bullet, entities, pendingCount, processing }: Props)
       <span className="font-data text-[11px] text-faint-2">{formatTime(bullet.created_at)}</span>
       {processing && entities.length === 0 ? (
         <span className="animate-dotpulse font-data text-[12px] text-faint-4">reading…</span>
+      ) : showError ? (
+        <span className="flex flex-col items-end gap-[2px] max-md:items-start">
+          <span className="font-data text-[12px] text-rust" title={error}>
+            couldn't process
+          </span>
+          <button
+            type="button"
+            onClick={() => reprocess.mutate({ id: bullet.id })}
+            disabled={reprocess.isPending}
+            className="font-data text-[12px] text-rust hover:underline"
+          >
+            {reprocess.isPending ? 'retrying…' : 'retry'}
+          </button>
+        </span>
       ) : (
         labels.map((l) => (
           <span key={l.id} className="font-data text-[13px] text-faint-2">
