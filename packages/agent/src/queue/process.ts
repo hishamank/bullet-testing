@@ -59,6 +59,10 @@ export async function processExtractJob(deps: AgentDeps, job: Job): Promise<Proc
   // a fully-failed original): no duplicate suggestions and no duplicate auto-applied entities.
   // `reprocessBullet` performs its own active-bullet NOT_FOUND guard.
   if (job.payload?.reconcile === true) {
+    // NOTE: in the "original ran first" ordering, `reprocessBullet` REJECTS the original's pending
+    // suggestions and RECREATES fresh ones, so each retry accumulates one `rejected` row per prior
+    // pending suggestion (the net count of live suggestions stays stable — this is the reconcile
+    // strategy of §4.7, not a leak).
     const r = await reprocessBullet(deps, bulletId)
     deps.emitter.emit('extraction:complete', {
       jobId: job.id,
@@ -71,6 +75,8 @@ export async function processExtractJob(deps: AgentDeps, job: Job): Promise<Proc
       suggestionIds: r.newSuggestionIds,
       appliedIds: r.appliedIds,
       failedAutoApplyIds: r.failedAutoApplyIds,
+      // `skipped: 0` is a PLACEHOLDER — reconcile does not compute a skipped (durable_fact /
+      // out-of-scope) count, unlike the first-pass path below which returns the real tally.
       skipped: 0,
     }
   }
