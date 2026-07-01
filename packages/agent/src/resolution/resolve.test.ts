@@ -13,7 +13,13 @@ import { AGENT_CONFIG_DEFAULTS } from '../config'
 import type { Candidate } from '../extraction/schema'
 import type { ExtractionSnapshot } from '../extraction/snapshot'
 import { buildSnapshot } from '../extraction/snapshot'
-import { type ResolvedSuggestion, resolveCandidates, withProvenance } from './resolve'
+import {
+  flattenFields,
+  type ResolvedSuggestion,
+  resolveCandidates,
+  unwrapValue,
+  withProvenance,
+} from './resolve'
 
 const config = AGENT_CONFIG_DEFAULTS
 const EMPTY: ExtractionSnapshot = { trackers: [], openTasks: [] }
@@ -364,6 +370,182 @@ describe('confidence combination', () => {
     // A perfect match score (1) combined with model confidence 1 stays 1; the blend is the mean.
     expect(first(suggestions).confidence).toBeGreaterThan(0.5)
     expect(first(suggestions).confidence).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('model-nesting normalisation (small models wrap field values one level deep)', () => {
+  const scaleSnapshot: ExtractionSnapshot = {
+    trackers: [
+      {
+        id: 'tracker-1',
+        name: 'mood',
+        input_type: 'scale',
+        config: { input_type: 'scale', min: 1, max: 10 },
+      },
+    ],
+    openTasks: [],
+  }
+
+  test('nested { value: { value: 3 } } logs a mood of 3 — NOT clamped to the min (1)', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'mood is like a 3',
+          referenceName: 'mood',
+          // The gemma3:4b quirk: the value is wrapped in a single-key object.
+          fields: { value: { value: 3 } },
+        }),
+      ],
+      scaleSnapshot,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('tracker_entry')
+    expect(s.operation).toBe('append')
+    expect(s.target_id).toBe('tracker-1')
+    // Before the fix the wrapped value read as null → coerced to 0 → clamped to the scale min (1).
+    expect(s.payload.value).toBe(3)
+  })
+
+  test('nested name { name: { name: "mood" } } unwraps so the string is read', () => {
+    // No tracker match here → activity create; the unwrapped name must surface as the activity name.
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'some raw bullet text',
+          fields: { name: { name: 'wandered around' } },
+        }),
+      ],
+      EMPTY,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('activity')
+    expect(s.operation).toBe('create')
+    // The unwrapped name is read, NOT the raw bullet text fallback.
+    expect(s.payload.name).toBe('wandered around')
+  })
+
+  test('"drank 3 coffees" — nested { value: { value: 3 } } with NO tracker → activity quantity 3', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'drank 3 coffees',
+          fields: { name: { name: 'drank coffee' }, value: { value: 3 } },
+        }),
+      ],
+      EMPTY,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('activity')
+    expect(s.operation).toBe('create')
+    expect(s.payload.name).toBe('drank coffee')
+    // Quantity is read from the unwrapped `value`; before the fix it was lost (null).
+    expect(s.payload.quantity).toBe(3)
+  })
+
+  test('REGRESSION: already-flat fields are unchanged by normalisation', () => {
+    // Flat scalar passes through.
+    const flat = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'mood was 5',
+          referenceName: 'mood',
+          fields: { value: 5 },
+        }),
+      ],
+      scaleSnapshot,
+      config,
+    )
+    expect(first(flat.suggestions).payload.value).toBe(5)
+
+    // multi_select ARRAY value passes through untouched (arrays are legitimate, never unwrapped).
+    const multiSnapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 'tracker-2',
+          name: 'symptoms',
+          input_type: 'multi_select',
+          config: { input_type: 'multi_select', options: ['a', 'b'] },
+        },
+      ],
+      openTasks: [],
+    }
+    const multi = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'had a and b',
+          referenceName: 'symptoms',
+          fields: { value: ['a', 'b'] },
+        }),
+      ],
+      multiSnapshot,
+      config,
+    )
+    expect(first(multi.suggestions).payload.value).toEqual(['a', 'b'])
+  })
+
+  test('empty-object value { title: {} } is left as-is → readers fall back to the text slice', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          kind: 'task',
+          orientation: 'future_oneoff',
+          text: 'buy milk tomorrow',
+          fields: { title: {} },
+        }),
+      ],
+      EMPTY,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('task')
+    // The empty object is not a string → stringField falls back to the bullet text, exactly as today.
+    expect(s.payload.title).toBe('buy milk tomorrow')
+  })
+
+  describe('unwrapValue / flattenFields units', () => {
+    test('unwrapValue: single-key object → inner value', () => {
+      expect(unwrapValue({ value: 3 })).toBe(3)
+      expect(unwrapValue({ name: 'mood' })).toBe('mood')
+      // Intentionally broad: a single-key object with a NON-canonical key still unwraps (any
+      // single-key object is the model wrapping a scalar; v1 has no object-valued fields).
+      expect(unwrapValue({ amount: 5 })).toBe(5)
+    })
+
+    test('unwrapValue: multi-key object → first canonical inner key wins', () => {
+      expect(unwrapValue({ value: 7, unit: 'cups' })).toBe(7)
+      expect(unwrapValue({ title: 'x', extra: 1 })).toBe('x')
+    })
+
+    test('unwrapValue: primitives, null, and arrays pass through unchanged', () => {
+      expect(unwrapValue(3)).toBe(3)
+      expect(unwrapValue('hi')).toBe('hi')
+      expect(unwrapValue(true)).toBe(true)
+      expect(unwrapValue(null)).toBeNull()
+      expect(unwrapValue(['a', 'b'])).toEqual(['a', 'b'])
+    })
+
+    test('unwrapValue: empty object and non-canonical multi-key object pass through unchanged', () => {
+      expect(unwrapValue({})).toEqual({})
+      expect(unwrapValue({ foo: 1, bar: 2 })).toEqual({ foo: 1, bar: 2 })
+    })
+
+    test('flattenFields: unwraps each value, keys unchanged, flat values intact', () => {
+      expect(flattenFields({ name: { name: 'mood' }, value: { value: 3 }, unit: 'cups' })).toEqual({
+        name: 'mood',
+        value: 3,
+        unit: 'cups',
+      })
+      // Arrays and already-flat scalars are untouched.
+      expect(flattenFields({ value: ['a', 'b'], n: 5 })).toEqual({ value: ['a', 'b'], n: 5 })
+    })
   })
 })
 
