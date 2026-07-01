@@ -18,6 +18,7 @@ import { systemRouter } from './system'
 import { tasksRouter } from './tasks'
 import { trackerEntriesRouter } from './trackerEntries'
 import { trackersRouter } from './trackers'
+import { weeklyRouter } from './weekly'
 
 export const appRouter = router({
   system: systemRouter,
@@ -27,6 +28,7 @@ export const appRouter = router({
   trackers: trackersRouter,
   trackerEntries: trackerEntriesRouter,
   activities: activitiesRouter,
+  weekly: weeklyRouter,
 })
 
 /** The router TYPE the web client imports for end-to-end type-safety. */
