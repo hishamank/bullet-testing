@@ -81,9 +81,9 @@ function firstBalancedObject(text: string): string | undefined {
  */
 export function extractJsonObject(raw: string): string | undefined {
   const stripped = stripCodeFence(raw)
-  // Happy path: the cleaned text is already a bare JSON object.
-  if (stripped.startsWith('{') && stripped.endsWith('}')) return stripped
-  // Otherwise salvage the first balanced { … } object embedded in any surrounding prose.
+  // Always run the balanced-brace scanner: it round-trips a bare object AND salvages the first
+  // balanced { … } object embedded in any surrounding prose (leading OR trailing), while tracking
+  // string literals so braces inside strings do not affect nesting.
   return firstBalancedObject(stripped)
 }
 

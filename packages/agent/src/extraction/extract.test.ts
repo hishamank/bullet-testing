@@ -173,6 +173,12 @@ describe('extractJsonObject (tolerant parsing helper)', () => {
     expect(extractJsonObject('{"a":1}')).toBe('{"a":1}')
   })
 
+  test('salvages the first object when trailing prose ends in a brace', () => {
+    // The old happy-path shortcut returned the whole string here (starts `{`, ends `}`) and parse
+    // failed; the scanner stops at the first balanced object, salvaging it instead.
+    expect(extractJsonObject('{"a":1} done}')).toBe('{"a":1}')
+  })
+
   test('strips a ```json code fence', () => {
     expect(extractJsonObject('```json\n{"a":1}\n```')).toBe('{"a":1}')
   })
@@ -186,18 +192,25 @@ describe('extractJsonObject (tolerant parsing helper)', () => {
   })
 
   test('ignores braces inside string literals', () => {
-    expect(extractJsonObject('{"a":"}{"}')).toBe('{"a":"}{"}')
+    // Wrapped in prose so the input is NOT a bare object — this FORCES the scanner path (and its
+    // `inString` tracking) rather than any bare-object shortcut. If `inString` tracking were
+    // removed, the `}` inside the string literal would close the object early and this would fail.
+    expect(extractJsonObject('note: {"a":"}{"} end')).toBe('{"a":"}{"}')
   })
 
   test('handles an escaped backslash before the closing quote', () => {
-    // Source '{"a":"\\\\"}' is the 9-char JSON {"a":"\\"} — one escaped backslash, then a real
-    // closing quote. The escape tracker must not let the backslash swallow that quote.
-    expect(extractJsonObject('{"a":"\\\\"}')).toBe('{"a":"\\\\"}')
+    // Prose-wrapped to force the scanner. Source '{"a":"\\\\"}' is the JSON {"a":"\\"} — one
+    // escaped backslash, then a real closing quote. The escape tracker must not let the backslash
+    // swallow that quote.
+    expect(extractJsonObject('note: {"a":"\\\\"} end')).toBe('{"a":"\\\\"}')
   })
 
   test('handles an escaped quote inside a string', () => {
-    // Source '{"a":"\\""}' is {"a":"\""} — the escaped quote stays inside the string literal.
-    expect(extractJsonObject('{"a":"\\""}')).toBe('{"a":"\\""}')
+    // Prose-wrapped to force the scanner. Source '{"a":"\\""}' is {"a":"\""} — the escaped quote
+    // stays inside the string literal. If the escape tracking were broken, the escaped `"` would
+    // toggle `inString` early, the closing `}` would be seen as in-string, and this would return
+    // undefined instead of the object.
+    expect(extractJsonObject('note: {"a":"\\""} end')).toBe('{"a":"\\""}')
   })
 
   test('returns undefined for a truncated/unbalanced object (no throw, no hang)', () => {
