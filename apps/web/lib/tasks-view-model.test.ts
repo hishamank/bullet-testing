@@ -18,6 +18,7 @@ import {
   PRIORITY_CHIPS,
   STATUS_CHIPS,
   taskFormValues,
+  taskWritePayload,
 } from '@/lib/tasks-view-model'
 import type { Task } from '@/lib/types'
 
@@ -150,6 +151,12 @@ describe('dueDisplay', () => {
     expect(d?.overdue).toBe(false)
     expect(d?.className).toBe('text-faint')
   })
+
+  test('a migrated task (consciously carried forward) is not "overdue" either', () => {
+    const d = dueDisplay(makeTask({ status: 'migrated', due_at: NOW - 2 * DAY }), NOW)
+    expect(d?.overdue).toBe(false)
+    expect(d?.className).toBe('text-faint')
+  })
 })
 
 // --- grouping + counts ----------------------------------------------------------------------
@@ -202,6 +209,25 @@ describe('task form helpers', () => {
     })
     expect(taskFormValues(makeTask({ notes: null })).notes).toBe('')
     expect(EMPTY_TASK_FORM.status).toBe('todo')
+  })
+
+  test('taskWritePayload trims the title, empties blank notes to null, keeps the rest', () => {
+    expect(
+      taskWritePayload({
+        title: '  Pay rent  ',
+        status: 'in_progress',
+        due_at: 123,
+        priority: 'P1',
+        notes: '   ',
+      }),
+    ).toEqual({
+      title: 'Pay rent',
+      status: 'in_progress',
+      due_at: 123,
+      priority: 'P1',
+      notes: null,
+    })
+    expect(taskWritePayload({ ...EMPTY_TASK_FORM, title: 'x', notes: 'keep' }).notes).toBe('keep')
   })
 
   test('status + priority chip sets are complete and ordered', () => {

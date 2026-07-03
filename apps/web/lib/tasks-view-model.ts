@@ -49,11 +49,16 @@ export interface EnrichedTask {
   showReopen: boolean
 }
 
-/** Format a task's `due_at` for the list — "due Fri" normally, "overdue · 2 days ago" when late. */
+/**
+ * Format a task's `due_at` for the list — "due Fri" normally, "overdue · 2 days ago" when late.
+ * Only *un-carried* work (todo / in_progress) reads as overdue: a Migrated task was consciously
+ * carried forward, so it's never a failure (CLAUDE.md §4 — migrated is first-class, not a lapse).
+ */
 export function dueDisplay(task: Task, now: number = Date.now()): DueDisplay | null {
   if (task.due_at == null) return null
   const behind = daysAgo(task.due_at, now) // >0 = in the past
-  if (isOpen(task.status) && behind > 0) {
+  const overdueEligible = task.status === 'todo' || task.status === 'in_progress'
+  if (overdueEligible && behind > 0) {
     const ago = behind === 1 ? '1 day ago' : `${behind} days ago`
     return { label: `overdue · ${ago}`, className: 'text-rust', overdue: true }
   }
@@ -150,6 +155,26 @@ export function taskFormValues(task: Task): TaskFormValues {
 /** A title with content is the only requirement to create or save. */
 export function canSubmitTask(values: TaskFormValues): boolean {
   return values.title.trim().length > 0
+}
+
+/** The client-writable fields sent to `tasks.create` / `tasks.update` (empty notes → null). */
+export interface TaskWritePayload {
+  title: string
+  status: TaskStatus
+  due_at: number | null
+  priority: TaskPriority | null
+  notes: string | null
+}
+
+/** Normalize a form draft into the create/update payload — trims the title, empties notes to null. */
+export function taskWritePayload(values: TaskFormValues): TaskWritePayload {
+  return {
+    title: values.title.trim(),
+    status: values.status,
+    due_at: values.due_at,
+    priority: values.priority,
+    notes: values.notes.trim() || null,
+  }
 }
 
 /** The status chips, in the form's order (To do · In progress · Done · Migrated · Cancelled). */

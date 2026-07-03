@@ -20,6 +20,7 @@ import {
   openTaskCount,
   type TaskFormValues,
   taskFormValues,
+  taskWritePayload,
 } from '@/lib/tasks-view-model'
 import { useTRPC } from '@/lib/trpc'
 import type { TaskStatus } from '@/lib/types'
@@ -119,27 +120,22 @@ export default function TasksPage() {
   const backToList = () => {
     setView('list')
     setEditingId(null)
+    setNotice(null)
   }
 
-  const toNullable = (notes: string) => notes.trim() || null
-
+  // Create vs. update is decided by the same `editingTask` the form's mode is drawn from — one
+  // source of truth, so the UI mode and the mutation can never disagree.
   const submitForm = (values: TaskFormValues) =>
     run(async () => {
-      const payload = {
-        title: values.title.trim(),
-        status: values.status,
-        due_at: values.due_at,
-        priority: values.priority,
-        notes: toNullable(values.notes),
-      }
-      if (editingId) await update.mutateAsync({ id: editingId, ...payload })
+      const payload = taskWritePayload(values)
+      if (editingTask) await update.mutateAsync({ id: editingTask.id, ...payload })
       else await create.mutateAsync(payload)
       backToList()
     })
 
   const deleteEditing = () => {
-    if (!editingId) return
-    const id = editingId
+    if (!editingTask) return
+    const id = editingTask.id
     return run(async () => {
       await del.mutateAsync({ id })
       backToList()
@@ -153,6 +149,24 @@ export default function TasksPage() {
 
   // --- render -------------------------------------------------------------------------------
 
+  // The form comes first so a connectivity error (incl. one raised by a failed submit's refetch)
+  // never yanks the user out of a half-typed task — the error surfaces on the form instead.
+  if (view === 'form') {
+    return (
+      <TaskForm
+        heading={editingTask ? 'Edit task' : 'New task'}
+        submitLabel={editingTask ? 'Save changes' : 'Create task'}
+        initial={editingTask ? taskFormValues(editingTask) : EMPTY_TASK_FORM}
+        isEdit={!!editingTask}
+        busy={busy}
+        notice={notice}
+        onSubmit={submitForm}
+        onCancel={backToList}
+        onDelete={editingTask ? deleteEditing : undefined}
+      />
+    )
+  }
+
   if (isError) {
     return (
       <EmptyState
@@ -163,28 +177,16 @@ export default function TasksPage() {
     )
   }
 
-  if (view === 'form') {
-    return (
-      <TaskForm
-        heading={editingTask ? 'Edit task' : 'New task'}
-        submitLabel={editingTask ? 'Save changes' : 'Create task'}
-        initial={editingTask ? taskFormValues(editingTask) : EMPTY_TASK_FORM}
-        isEdit={!!editingTask}
-        busy={busy}
-        onSubmit={submitForm}
-        onCancel={backToList}
-        onDelete={editingTask ? deleteEditing : undefined}
-      />
-    )
-  }
-
   const hasTasks = tasks.length > 0
 
   if (!hasTasks) {
     return (
       <div className="flex h-full flex-col">
+        <div className="flex-none border-line border-b px-10 pt-[26px] pb-4 max-md:px-5">
+          <h2 className="font-display text-[27px] text-ink">Tasks</h2>
+        </div>
         {isLoading ? (
-          <div className="flex h-full items-center justify-center font-ui text-[14px] text-faint">
+          <div className="flex flex-1 items-center justify-center font-ui text-[14px] text-faint">
             Gathering your tasks…
           </div>
         ) : (

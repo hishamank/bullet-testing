@@ -66,6 +66,7 @@ export function TaskForm({
   initial,
   isEdit,
   busy,
+  notice,
   onSubmit,
   onCancel,
   onDelete,
@@ -75,6 +76,8 @@ export function TaskForm({
   initial: TaskFormValues
   isEdit: boolean
   busy: boolean
+  /** A submit error to surface on the form (the mutation kept the user here). */
+  notice?: string | null
   onSubmit: (values: TaskFormValues) => void
   onCancel: () => void
   /** Present only in edit mode — a quiet, confirm-guarded soft-delete. */
@@ -82,6 +85,9 @@ export function TaskForm({
 }) {
   const [values, setValues] = useState<TaskFormValues>(initial)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Track the chosen due preset directly, so highlighting never mis-resolves when two presets
+  // land on the same day (e.g. "Tomorrow" and "This week" both = Friday on a Thursday).
+  const [dueKey, setDueKey] = useState<string | null>(() => matchDueChip(initial.due_at))
   const titleRef = useRef<HTMLInputElement>(null)
   const titleId = useId()
   const notesId = useId()
@@ -94,8 +100,12 @@ export function TaskForm({
   const set = <K extends keyof TaskFormValues>(key: K, val: TaskFormValues[K]) =>
     setValues((v) => ({ ...v, [key]: val }))
 
+  const pickDue = (key: string, ms: number | null) => {
+    setDueKey(key)
+    set('due_at', ms)
+  }
+
   const canSubmit = canSubmitTask(values) && !busy
-  const dueKey = matchDueChip(values.due_at)
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -162,7 +172,7 @@ export function TaskForm({
                     <Chip
                       key={c.key}
                       selected={dueKey === c.key}
-                      onClick={() => set('due_at', c.ms)}
+                      onClick={() => pickDue(c.key, c.ms)}
                     >
                       {c.label}
                     </Chip>
@@ -198,6 +208,12 @@ export function TaskForm({
               className="w-full resize-y rounded-[9px] border border-line-warm bg-panel px-[13px] py-[11px] font-ui text-[14px] text-ink leading-relaxed placeholder:text-faint-3 focus:border-indigo focus:outline-none"
             />
           </div>
+
+          {notice && (
+            <p className="mt-3 text-right font-ui text-[12.5px] text-rust" role="alert">
+              {notice}
+            </p>
+          )}
 
           <div className="mt-[18px] flex items-center justify-end gap-3">
             {isEdit &&
