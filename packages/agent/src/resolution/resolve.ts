@@ -130,6 +130,11 @@ function capToSuggest(tier: SuggestionTier): SuggestionTier {
  * {@link assignTier} result when the match is STRONG, but capped at 'suggest' when the match is
  * only BORDERLINE — the user confirms an uncertain link, we never auto-apply it. Implemented as an
  * explicit min(assignTier, 'suggest') for the borderline band.
+ *
+ * `valueBearing` is threaded into {@link assignTier} so the value-record cap composes with the
+ * borderline cap: a STRONG-linked tracker_entry is still capped to 'suggest' by the value rule
+ * (unless `config.autoApplyValueRecords`), while a borderline link is capped regardless. Either cap
+ * alone forces 'suggest'.
  */
 function tierForLink(
   kind: TargetKind,
@@ -137,8 +142,9 @@ function tierForLink(
   confidence: number,
   matchScore: number,
   config: AgentConfig,
+  valueBearing: boolean,
 ): SuggestionTier {
-  const tier = assignTier(kind, operation, confidence, config)
+  const tier = assignTier(kind, operation, confidence, config, { valueBearing })
   return matchScore >= STRONG_MATCH ? tier : capToSuggest(tier)
 }
 
@@ -228,6 +234,13 @@ function resolveHappened(
   // tracker and we fell through) → create an UNLINKED activity (activity-first). We deliberately do
   // NOT link the activity to a sub-borderline or value-rejected tracker: we preserve the data, not
   // a guessed link. A confident-enough tracker link is already handled above as a tracker_entry.
+  //
+  // INTENDED value-rule interaction for a STRONG-but-categorical-invalid match (e.g. a single_select
+  // value not in the option set): appendTrackerEntry returned null, so the invalid categorical value
+  // is DROPPED (never written). The data degrades to a value-LESS unlinked activity (its `value`
+  // wasn't a quantity, so `quantity` reads null) that is therefore auto-eligible again. This is
+  // consistent with the value rule: no WRONG value is ever silently written — only a value-less
+  // record can auto-apply.
   return createActivity(candidate, config)
 }
 
@@ -264,9 +277,10 @@ function appendTrackerEntry(
     target_id: trackerHit.item.id,
     payload,
     confidence,
-    // tracker_entry append is a record — eligible for auto when confident AND the match is STRONG;
-    // a borderline match caps the tier at 'suggest' so the user confirms the link.
-    tier: tierForLink('tracker_entry', 'append', confidence, trackerHit.score, config),
+    // A tracker_entry IS a logged value → value-bearing: capped at 'suggest' by default (never a
+    // silent auto value) unless `config.autoApplyValueRecords`. On top of that, a borderline match
+    // caps the tier at 'suggest' too. Both caps compose inside {@link tierForLink}.
+    tier: tierForLink('tracker_entry', 'append', confidence, trackerHit.score, config, true),
   }
 }
 
@@ -297,9 +311,9 @@ function markTaskDone(
     target_id: task.id,
     payload,
     confidence,
-    // A task mark-done is an instance update — eligible for auto when confident AND the match is
-    // STRONG; a borderline match caps the tier at 'suggest' so the user confirms the link.
-    tier: tierForLink('task', 'update', confidence, taskHit.score, config),
+    // A task mark-done carries NO value (a status flip) → not value-bearing: eligible for auto when
+    // confident AND the match is STRONG; a borderline match caps the tier at 'suggest'.
+    tier: tierForLink('task', 'update', confidence, taskHit.score, config, false),
   }
 }
 
@@ -312,12 +326,16 @@ function markTaskDone(
  */
 function createActivity(candidate: Candidate, config: AgentConfig): ResolvedSuggestion {
   const name = stringField(candidate.fields, ['name', 'title'], candidate.text)
+  // A quantity makes the activity VALUE-BEARING (e.g. "drank 3 coffees") → the tier is capped to
+  // 'suggest' by default (a value is never auto-applied silently). A quantity-less activity ("went
+  // for a walk") is value-less and stays auto-eligible.
+  const quantity = numberFieldOrNull(candidate.fields, ['quantity', 'value'])
   const payload: SuggestionPayload = {
     name,
     occurred_at: timestampField(candidate.fields, ['occurred_at', 'logged_at'], Date.now()),
     tracker_id: null,
     notes: stringFieldOrNull(candidate.fields, ['notes']),
-    quantity: numberFieldOrNull(candidate.fields, ['quantity', 'value']),
+    quantity,
     unit: stringFieldOrNull(candidate.fields, ['unit']),
   }
   const confidence = clamp01(candidate.confidence)
@@ -327,7 +345,7 @@ function createActivity(candidate: Candidate, config: AgentConfig): ResolvedSugg
     target_id: null,
     payload,
     confidence,
-    tier: assignTier('activity', 'create', confidence, config),
+    tier: assignTier('activity', 'create', confidence, config, { valueBearing: quantity != null }),
   }
 }
 
