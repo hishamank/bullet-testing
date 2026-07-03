@@ -7,11 +7,12 @@
  * and independent of the bullet/owner.
  *
  * Routing by orientation:
- *  - happened:
- *      • strong tracker match  → append a tracker_entry under that tracker.
- *      • strong open-task match → update that task to status 'done' ("mutate an instance").
- *      • otherwise             → create an activity (linked to a confident tracker, else
- *                                UNLINKED — "activity-first", never drop the data).
+ *  - happened (a DETERMINISTIC three-way link decision on the matcher score — see the thresholds):
+ *      • STRONG tracker match     → append a tracker_entry under that tracker (may auto).
+ *      • STRONG open-task match   → update that task to status 'done' ("mutate an instance").
+ *      • BORDERLINE tracker/task  → still LINK, but the tier is capped to 'suggest' (user confirms).
+ *      • otherwise (sub-borderline, or a matched tracker that rejected the value) → create an
+ *                                  UNLINKED activity ("activity-first", never drop the data).
  *  - future_oneoff   → create a task.
  *  - future_recurring → create a tracker DEFINITION.
  *  - durable_fact    → SKIPPED (Note is out of v1 scope) — counted, never persisted.
@@ -97,14 +98,48 @@ export function withProvenance(
 }
 
 /**
- * Above this normalised fuse score (1 = perfect) we treat a match as a CONFIDENT link and
- * append/update against it rather than create a new entity.
+ * Deterministic three-way link thresholds on the matcher's normalised score (1 = perfect). The
+ * RESOLVER decides linking (CLAUDE.md §4.4: the LLM proposes, the resolver decides) — never the
+ * model's `referenceName` alone:
+ *
+ *  - score ≥ STRONG_MATCH                    → LINK confidently (tracker_entry append / task
+ *    mark-done) at the normal tier from {@link assignTier} (may auto-apply when confident).
+ *  - BORDERLINE_MATCH ≤ score < STRONG_MATCH → LINK, but FORCE the tier down to at most 'suggest':
+ *    a borderline link is plausible, not certain, so the USER confirms it — never auto (see
+ *    {@link tierForLink}).
+ *  - score < BORDERLINE_MATCH                → NO link → activity-first (UNLINKED); never lose data.
+ *
+ * Chosen against the matcher's real score distribution: exact + token/prefix containment matches
+ * score ≥ 0.9 (STRONG); single-character typos land ≈ 0.67–0.8 (BORDERLINE); unrelated strings 0.
  */
-const MATCH_LINK_THRESHOLD = 0.6
+const STRONG_MATCH = 0.85
+const BORDERLINE_MATCH = 0.55
 
 /** Combine model confidence with a match score into one explainable number (their mean). */
 function combine(modelConfidence: number, matchScore: number): number {
   return (modelConfidence + matchScore) / 2
+}
+
+/** Lower a tier to at most 'suggest' (auto → suggest; suggest/ask unchanged) — the borderline cap. */
+function capToSuggest(tier: SuggestionTier): SuggestionTier {
+  return tier === 'auto' ? 'suggest' : tier
+}
+
+/**
+ * The tier for a LINKED suggestion (tracker_entry append / task mark-done): the normal
+ * {@link assignTier} result when the match is STRONG, but capped at 'suggest' when the match is
+ * only BORDERLINE — the user confirms an uncertain link, we never auto-apply it. Implemented as an
+ * explicit min(assignTier, 'suggest') for the borderline band.
+ */
+function tierForLink(
+  kind: TargetKind,
+  operation: SuggestionOperation,
+  confidence: number,
+  matchScore: number,
+  config: AgentConfig,
+): SuggestionTier {
+  const tier = assignTier(kind, operation, confidence, config)
+  return matchScore >= STRONG_MATCH ? tier : capToSuggest(tier)
 }
 
 /** Clamp to [0, 1] (defensive — the model is constrained but we never trust it blindly). */
@@ -168,40 +203,32 @@ function resolveHappened(
   const trackerHit = matchTracker(candidate, snapshot.trackers)
   const taskHit = matchOpenTask(candidate, snapshot.openTasks)
 
-  // Prefer whichever existing thing matches more strongly (and clears the link threshold).
+  // Prefer whichever existing thing matches more strongly (and clears the BORDERLINE gate).
   const trackerScore = trackerHit?.score ?? 0
   const taskScore = taskHit?.score ?? 0
 
-  // A quantified reading + strong tracker match → append a tracker_entry — BUT only if the
-  // value can be made valid for the tracker's config. If not (e.g. a single_select value outside
-  // the option set), we do NOT emit a broken entry: we fall through to activity-first below so
-  // the data is preserved as an UNLINKED activity create rather than lost.
-  const trackerMatched =
-    !!trackerHit && trackerScore >= MATCH_LINK_THRESHOLD && trackerScore >= taskScore
-  if (trackerHit && trackerMatched) {
+  // A quantified reading + a tracker match that clears BORDERLINE and is at least as strong as any
+  // open-task match → append a tracker_entry — BUT only if the value can be made valid for the
+  // tracker's config. If not (e.g. a single_select value outside the option set), we do NOT emit a
+  // broken entry: we fall through to activity-first below so the data is preserved as an UNLINKED
+  // activity create rather than lost. Borderline matches are honoured as links here but have their
+  // tier capped to 'suggest' inside {@link appendTrackerEntry} (the user confirms the link).
+  if (trackerHit && trackerScore >= BORDERLINE_MATCH && trackerScore >= taskScore) {
     const entry = appendTrackerEntry(candidate, trackerHit, config)
     if (entry) return entry
   }
 
-  // A strong OPEN-TASK match → mark that task done (mutate an existing instance).
-  if (taskHit && taskScore >= MATCH_LINK_THRESHOLD) {
+  // An OPEN-TASK match that clears BORDERLINE → mark that task done (mutate an existing instance);
+  // its tier is likewise capped to 'suggest' when the match is only borderline.
+  if (taskHit && taskScore >= BORDERLINE_MATCH) {
     return markTaskDone(candidate, taskHit, config)
   }
 
-  // Otherwise an action with no confident match → create an activity. Decide the tracker link
-  // ONCE here and pass an already-resolved id to createActivity (no second threshold check):
-  //  - present-but-weak match  → leave UNLINKED (activity-first; never guess a link we are not
-  //    confident about).
-  //  - matched STRONGLY but the append fell through (its value was invalid for that tracker's
-  //    config, so `trackerMatched` is true yet we reached here) → ALSO leave unlinked: linking to
-  //    a tracker that rejected the value would be misleading; we preserve the data, not the bad link.
-  // So the link survives ONLY when the tracker hit cleared the threshold AND was not the
-  // strong-but-value-invalid case — i.e. exactly when `trackerMatched` is false but the hit is strong.
-  const linkedTrackerId =
-    !trackerMatched && trackerHit && trackerScore >= MATCH_LINK_THRESHOLD
-      ? trackerHit.item.id
-      : null
-  return createActivity(candidate, linkedTrackerId, config)
+  // No match that clears BORDERLINE (or a tracker matched but its value was invalid for that
+  // tracker and we fell through) → create an UNLINKED activity (activity-first). We deliberately do
+  // NOT link the activity to a sub-borderline or value-rejected tracker: we preserve the data, not
+  // a guessed link. A confident-enough tracker link is already handled above as a tracker_entry.
+  return createActivity(candidate, config)
 }
 
 /**
@@ -237,8 +264,9 @@ function appendTrackerEntry(
     target_id: trackerHit.item.id,
     payload,
     confidence,
-    // tracker_entry append is a record — eligible for auto when confident.
-    tier: assignTier('tracker_entry', 'append', confidence, config),
+    // tracker_entry append is a record — eligible for auto when confident AND the match is STRONG;
+    // a borderline match caps the tier at 'suggest' so the user confirms the link.
+    tier: tierForLink('tracker_entry', 'append', confidence, trackerHit.score, config),
   }
 }
 
@@ -269,26 +297,25 @@ function markTaskDone(
     target_id: task.id,
     payload,
     confidence,
-    // A task mark-done is an instance update — eligible for auto when confident.
-    tier: assignTier('task', 'update', confidence, config),
+    // A task mark-done is an instance update — eligible for auto when confident AND the match is
+    // STRONG; a borderline match caps the tier at 'suggest' so the user confirms the link.
+    tier: tierForLink('task', 'update', confidence, taskHit.score, config),
   }
 }
 
 /**
- * happened + no confident match → create an activity. The link decision is made ONCE by the
- * caller (`resolveHappened`); this function just records the already-resolved `linkedTrackerId`
- * (null = unlinked, activity-first).
+ * happened + no confident-enough match → create an UNLINKED activity (activity-first). In the
+ * three-way link model (see {@link resolveHappened}) a confident tracker match is already routed to
+ * a tracker_entry append, so an activity here is always unlinked: we preserve the data, never guess
+ * a link. `tracker_id` is therefore `null` (the domain permits linked activities; the resolver just
+ * never mints one from an uncertain match).
  */
-function createActivity(
-  candidate: Candidate,
-  linkedTrackerId: string | null,
-  config: AgentConfig,
-): ResolvedSuggestion {
+function createActivity(candidate: Candidate, config: AgentConfig): ResolvedSuggestion {
   const name = stringField(candidate.fields, ['name', 'title'], candidate.text)
   const payload: SuggestionPayload = {
     name,
     occurred_at: timestampField(candidate.fields, ['occurred_at', 'logged_at'], Date.now()),
-    tracker_id: linkedTrackerId,
+    tracker_id: null,
     notes: stringFieldOrNull(candidate.fields, ['notes']),
     quantity: numberFieldOrNull(candidate.fields, ['quantity', 'value']),
     unit: stringFieldOrNull(candidate.fields, ['unit']),

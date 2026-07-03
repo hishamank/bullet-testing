@@ -178,6 +178,171 @@ describe('orientation routing', () => {
   })
 })
 
+describe('deterministic resolution — links WITHOUT depending on referenceName (§4.4)', () => {
+  const moodScale: ExtractionSnapshot = {
+    trackers: [
+      {
+        id: 'tracker-mood',
+        name: 'mood',
+        input_type: 'scale',
+        config: { input_type: 'scale', min: 1, max: 10 },
+      },
+    ],
+    openTasks: [],
+  }
+
+  test('REGRESSION (the eval bug): a mood tracker_entry links with NO referenceName', () => {
+    // The small model dropped `referenceName` stochastically; the resolver must match on the
+    // EXTRACTED name in `fields` and still append a tracker_entry — not fall back to an activity.
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'feeling pretty low today, mood is like a 3',
+          fields: { name: 'mood', value: 3 },
+          // NOTE: no referenceName on purpose.
+        }),
+      ],
+      moodScale,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('tracker_entry')
+    expect(s.operation).toBe('append')
+    expect(s.target_id).toBe('tracker-mood')
+    expect(s.payload.value).toBe(3)
+  })
+
+  test('inflection/casing: "Mood"/"moods" match a "mood" tracker; "run" matches a "running" one', () => {
+    for (const name of ['Mood', 'moods']) {
+      const { suggestions } = resolveCandidates(
+        [candidate({ orientation: 'happened', text: `${name} today`, fields: { name, value: 5 } })],
+        moodScale,
+        config,
+      )
+      const s = first(suggestions)
+      expect(s.target_kind).toBe('tracker_entry')
+      expect(s.operation).toBe('append')
+      expect(s.target_id).toBe('tracker-mood')
+    }
+
+    // "run" ↔ "running" (prefix-related tokens) → append against the running tracker.
+    const runSnapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 'tracker-run',
+          name: 'running',
+          input_type: 'number',
+          config: { input_type: 'number' },
+        },
+      ],
+      openTasks: [],
+    }
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'went for a run',
+          fields: { name: 'run', value: 5 },
+        }),
+      ],
+      runSnapshot,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('tracker_entry')
+    expect(s.operation).toBe('append')
+    expect(s.target_id).toBe('tracker-run')
+  })
+
+  test('mutate-instance: "called the dentist" (no referenceName) marks the open task done', () => {
+    const snapshot: ExtractionSnapshot = {
+      trackers: [],
+      openTasks: [
+        {
+          id: 'task-1',
+          title: 'call the dentist',
+          status: 'todo',
+          notes: null,
+          due_at: null,
+          priority: null,
+        },
+      ],
+    }
+    const { suggestions } = resolveCandidates(
+      // No referenceName, no fields — only the raw span "called the dentist".
+      [candidate({ orientation: 'happened', text: 'called the dentist' })],
+      snapshot,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('task')
+    expect(s.operation).toBe('update')
+    expect(s.target_id).toBe('task-1')
+    expect(s.payload.status).toBe('done')
+  })
+
+  test('no match stays UNLINKED: an unrelated happened candidate + a non-matching tracker', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'went for a walk in the park',
+          fields: { name: 'walk' },
+        }),
+      ],
+      moodScale, // only a "mood" tracker exists — "walk" does not match it
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('activity')
+    expect(s.operation).toBe('create')
+    expect(s.target_id).toBeNull()
+    expect(s.payload.tracker_id).toBeNull()
+    expect(s.payload.name).toBe('walk')
+  })
+
+  test('BORDERLINE match links but the tier is FORCED to "suggest" (never auto)', () => {
+    // "tird" is a one-char typo of "tired": the matcher scores it ≈ 0.75 — inside the borderline
+    // band [BORDERLINE_MATCH, STRONG_MATCH). It STILL links, but the tier must be capped to
+    // 'suggest' even though the combined confidence (mean of 1.0 and ~0.75 ≈ 0.875 ≥ autoThreshold)
+    // would otherwise make it 'auto'.
+    const snapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 'tracker-tired',
+          name: 'tired',
+          input_type: 'scale',
+          config: { input_type: 'scale', min: 1, max: 10 },
+        },
+      ],
+      openTasks: [],
+    }
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'feeling pretty tird today',
+          confidence: 1,
+          fields: { name: 'tird', value: 7 },
+        }),
+      ],
+      snapshot,
+      config,
+    )
+    const s = first(suggestions)
+    // It still LINKS (tracker_entry append on the tired tracker)…
+    expect(s.target_kind).toBe('tracker_entry')
+    expect(s.operation).toBe('append')
+    expect(s.target_id).toBe('tracker-tired')
+    expect(s.payload.value).toBe(7)
+    // …the combined confidence is auto-eligible, proving the cap (not a low-confidence 'ask') did it…
+    expect(s.confidence).toBeGreaterThanOrEqual(config.autoThreshold)
+    // …but the borderline match forces the tier down to 'suggest'.
+    expect(s.tier).toBe('suggest')
+  })
+})
+
 describe('tracker_entry value validation against the tracker config', () => {
   test('a scale entry above max is CLAMPED to max', () => {
     const snapshot: ExtractionSnapshot = {
