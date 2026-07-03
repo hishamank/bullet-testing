@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Instrument+Serif:ital@0;1&family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  input::placeholder, textarea::placeholder { color:#B6B3A8; }
+  input:focus, textarea:focus { outline:none; border-color:#3E4D6B !important; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</helmet>
+
+<div style="min-width:100%; min-height:100vh; width:max-content; box-sizing:border-box; padding:48px; background:#E5E3DC; font-family:'Spline Sans', sans-serif;">
+
+  <div style="max-width:1180px; margin:0 0 38px 0;">
+    <div style="font-family:'Spline Sans Mono', monospace; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#8C887E;">Prompt 4 · Tasks — the payoff · Margin Notebook system</div>
+    <h1 style="font-family:'Instrument Serif', serif; font-weight:400; font-size:44px; line-height:1.05; margin:10px 0 10px; color:#26251F;">Everything you said you'd do, grouped by where it stands.</h1>
+    <p style="max-width:780px; margin:0; font-size:15px; line-height:1.6; color:#5C594F;">A personal journal isn't a team backlog, so there's no drag-around board here — just a quiet, status-grouped list you read top to bottom. <b style="font-weight:500;">Migrated</b> is a first-class state, marked <span style="font-family:'Spline Sans Mono',monospace; color:#3E4D6B;">›</span> — a task you deliberately carried forward, never a failure. Everything's live: <b style="font-weight:500;">complete</b>, <b style="font-weight:500;">migrate</b>, or open a task, follow any <span style="font-family:'Spline Sans Mono',monospace; color:#A6A398;">↳ from your journal</span> back to the bullet that made it, and add one by hand with the same form Review uses.</p>
+  </div>
+
+  <!-- ============================ THE LIVE APP ============================ -->
+  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">The Tasks page — live app, desktop &amp; mobile</div>
+  <div style="display:flex; gap:48px; align-items:flex-start; margin-bottom:64px;">
+
+    <!-- DESKTOP WINDOW -->
+    <div style="flex:none; width:1180px;">
+      <div style="background:#100F0C; border-radius:14px; box-shadow:0 40px 80px -30px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.1);">
+        <div style="height:42px; display:flex; align-items:center; padding:0 16px; border-bottom:1px solid rgba(255,255,255,.05);">
+          <div style="display:flex; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:#ED6A5E;"></span><span style="width:12px; height:12px; border-radius:50%; background:#F4BF50;"></span><span style="width:12px; height:12px; border-radius:50%; background:#61C554;"></span></div>
+          <div style="flex:1; text-align:center; font-family:'Spline Sans Mono',monospace; font-size:12px; color:#8A877E; letter-spacing:.04em;">Journal</div>
+          <div style="width:54px;"></div>
+        </div>
+
+        <div style="background:#F6F5F1; border-radius:0 0 14px 14px; height:900px; display:flex; overflow:hidden;">
+
+          <!-- LEFT RAIL -->
+          <div style="flex:none; width:214px; border-right:1px solid #ECEAE2; padding:24px 16px 18px; display:flex; flex-direction:column; gap:4px;">
+            <div style="padding:0 12px 22px;">
+              <div style="font-family:'Instrument Serif',serif; font-size:23px; color:#23232A; line-height:1;">Margin</div>
+              <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:#B0AEA4; margin-top:4px;">Notebook</div>
+            </div>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">◆</span>Overview</button>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">≡</span>Timeline</button>
+            <div style="position:relative; display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:#EEF1F6; border:none; border-radius:9px; padding:9px 12px; font-family:'Spline Sans',sans-serif; font-size:14px; color:#2F3C56; font-weight:500;">
+              <span style="position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:2px; background:#3E4D6B;"></span>
+              <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#3E4D6B; width:16px; text-align:center;">•</span>Tasks
+            </div>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">—</span>Trackers</button>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">○</span>Activities</button>
+            <div style="flex:1;"></div>
+            <div style="display:flex; align-items:center; justify-content:space-between; width:100%; background:#3E4D6B; border-radius:10px; padding:11px 13px;">
+              <span style="font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#fff; display:flex; align-items:center; gap:9px;"><span style="font-family:'Spline Sans Mono',monospace; font-size:12px;">◷</span>Review</span>
+              <span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#fff; background:rgba(255,255,255,.18); border-radius:10px; padding:1px 8px;">5</span>
+            </div>
+          </div>
+
+          <!-- CONTENT -->
+          <div style="flex:1; min-width:0; overflow-y:auto;">
+
+            <!-- LIST VIEW -->
+            <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:34px 44px 60px;">
+                <div style="max-width:820px;">
+                  <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:6px;">
+                    <div>
+                      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398;">{{ openCount }} open · {{ doneCount }} done this week</div>
+                      <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:34px; color:#23232A; margin:6px 0 0;">Tasks</h2>
+                    </div>
+                    <button onClick="{{ onNew }}" style="display:inline-flex; align-items:center; gap:8px; background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:13.5px; padding:10px 17px; border-radius:22px; cursor:pointer;" style-hover="background:#2F3C56;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px;">+</span>New task</button>
+                  </div>
+
+                  <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+                    <div style="margin-top:26px;">
+                      <button onClick="{{ g.onToggle }}" style="display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:none; border:none; cursor:pointer; padding:0 0 8px; border-bottom:1px solid #ECEAE2;">
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ g.glyphColor }}; width:16px; text-align:center;">{{ g.glyph }}</span>
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#6B685E;">{{ g.label }}</span>
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#B0AEA4;">{{ g.count }}</span>
+                        <span style="flex:1;"></span>
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#C0BEB4;">{{ g.chevron }}</span>
+                      </button>
+
+                      <sc-if value="{{ g.open }}" hint-placeholder-val="{{ true }}">
+                        <div>
+                          <sc-for list="{{ g.tasks }}" as="t" hint-placeholder-count="3">
+                            <div style="display:flex; gap:13px; padding:13px 2px; border-top:1px solid #F4F2EB;" style-hover="background:#FBFAF7;">
+                              <button onClick="{{ t.onGlyph }}" title="Open" style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:{{ t.glyphColor }}; width:16px; flex:none; text-align:center; margin-top:2px; background:none; border:none; cursor:pointer; padding:0;">{{ t.glyph }}</button>
+                              <div style="flex:1; min-width:0;">
+                                <div style="display:flex; align-items:baseline; gap:11px; flex-wrap:wrap;">
+                                  <sc-if value="{{ t.strike }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Newsreader',serif; font-size:18px; line-height:1.35; color:{{ t.titleColor }}; text-decoration:line-through; text-decoration-color:#C9C6BC;">{{ t.title }}</span></sc-if>
+                                  <sc-if value="{{ t.notStrike }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Newsreader',serif; font-size:18px; line-height:1.35; color:{{ t.titleColor }};">{{ t.title }}</span></sc-if>
+                                  <sc-if value="{{ t.hasPriority }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.04em; color:{{ t.prioColor }}; background:{{ t.prioBg }}; border-radius:5px; padding:2px 7px;">{{ t.prioLabel }}</span></sc-if>
+                                  <sc-if value="{{ t.hasDue }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:11.5px; color:{{ t.dueColor }};">{{ t.dueLabel }}</span></sc-if>
+                                  <sc-if value="{{ t.isMigrated }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex; align-items:center; gap:5px; white-space:nowrap; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#3E4D6B; background:#E9EDF4; border-radius:5px; padding:2px 8px;">› {{ t.migratedNote }}</span></sc-if>
+                                </div>
+
+                                <sc-if value="{{ t.isManual }}" hint-placeholder-val="{{ false }}">
+                                  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#B0AEA4; margin-top:5px;">✎ added by hand</div>
+                                </sc-if>
+                                <sc-if value="{{ t.provRow }}" hint-placeholder-val="{{ true }}">
+                                  <button onClick="{{ t.onExpand }}" style="background:none; border:none; padding:0; margin-top:5px; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; display:inline-flex; align-items:center; gap:5px;" style-hover="color:#3E4D6B;">{{ t.expandLabel }}</button>
+                                </sc-if>
+
+                                <sc-if value="{{ t.expandOpen }}" hint-placeholder-val="{{ false }}">
+                                  <div style="margin-top:9px; background:#FBFAF7; border:1px solid #ECEAE2; border-left:2px solid #C7CEDB; border-radius:0 10px 10px 0; padding:12px 15px; max-width:560px;">
+                                    <sc-if value="{{ t.showQuote }}" hint-placeholder-val="{{ true }}">
+                                      <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.06em; color:#B0AEA4; margin-bottom:5px;">{{ t.srcDay }} · {{ t.srcTime }}</div>
+                                      <div style="font-family:'Newsreader',serif; font-style:italic; font-size:15px; line-height:1.5; color:#6B685E;">“{{ t.src }}”</div>
+                                    </sc-if>
+                                    <sc-if value="{{ t.showNotesInExpand }}" hint-placeholder-val="{{ false }}">
+                                      <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin:11px 0 5px;">Notes</div>
+                                      <div style="font-family:'Spline Sans',sans-serif; font-size:13.5px; line-height:1.55; color:#5C594F;">{{ t.notes }}</div>
+                                    </sc-if>
+                                    <sc-if value="{{ t.showQuote }}" hint-placeholder-val="{{ true }}"><div style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#3E4D6B; margin-top:10px;">Open in Timeline →</div></sc-if>
+                                  </div>
+                                </sc-if>
+                              </div>
+
+                              <div style="flex:none; display:flex; gap:2px; align-items:flex-start; margin-top:1px;">
+                                <sc-if value="{{ t.showComplete }}" hint-placeholder-val="{{ true }}"><button onClick="{{ t.onComplete }}" title="Complete" style="width:28px; height:28px; border-radius:8px; background:none; border:none; cursor:pointer; color:#B7B4AA; font-size:14px;" style-hover="background:#E7EEE6; color:#5E7C66;">✓</button></sc-if>
+                                <sc-if value="{{ t.showMigrate }}" hint-placeholder-val="{{ true }}"><button onClick="{{ t.onMigrate }}" title="Migrate — carry forward" style="width:28px; height:28px; border-radius:8px; background:none; border:none; cursor:pointer; color:#B7B4AA; font-family:'Spline Sans Mono',monospace; font-size:17px;" style-hover="background:#E9EDF4; color:#3E4D6B;">›</button></sc-if>
+                                <sc-if value="{{ t.showReopen }}" hint-placeholder-val="{{ false }}"><button onClick="{{ t.onReopen }}" title="Reopen" style="width:28px; height:28px; border-radius:8px; background:none; border:none; cursor:pointer; color:#B7B4AA; font-size:14px;" style-hover="background:#EFEDE6; color:#5C594F;">↺</button></sc-if>
+                                <button onClick="{{ t.onEdit }}" title="Edit" style="width:28px; height:28px; border-radius:8px; background:none; border:none; cursor:pointer; color:#B7B4AA; font-size:13px;" style-hover="background:#EFEDE6; color:#3E4D6B;">✎</button>
+                              </div>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- FORM VIEW (desktop) -->
+            <sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:34px 44px 44px;">
+                <div style="max-width:620px;">
+                  <button onClick="{{ onCancel }}" style="background:none; border:none; padding:0; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; display:inline-flex; align-items:center; gap:6px; margin-bottom:16px;" style-hover="color:#3E4D6B;">← back to tasks</button>
+                  <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                    <span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#3E4D6B;">•</span>
+                    <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:30px; color:#23232A; margin:0;">{{ formHeading }}</h2>
+                    <span style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:#B0AEA4; background:#EFEDE6; border-radius:5px; padding:3px 8px;">by hand</span>
+                  </div>
+                  <p style="font-family:'Newsreader',serif; font-size:15px; color:#6B685E; margin:0 0 22px;">The same form Review fills in for you — here it's yours to write.</p>
+
+                  <div style="background:#fff; border:1px solid #ECEAE2; border-radius:14px; padding:22px 24px 24px; box-shadow:0 2px 12px -8px rgba(0,0,0,.14);">
+                    <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Title</label>
+                    <input value="{{ formTitle }}" onChange="{{ onTitle }}" placeholder="What needs doing?" style="width:100%; font-family:'Newsreader',serif; font-size:20px; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:9px; padding:11px 13px; margin-bottom:20px;">
+
+                    <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Status</label>
+                    <div style="display:flex; gap:7px; flex-wrap:wrap; margin-bottom:20px;">
+                      <sc-for list="{{ statusChips }}" as="c" hint-placeholder-count="5">
+                        <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="display:inline-flex; align-items:center; gap:6px; font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;"><span style="font-family:'Spline Sans Mono',monospace;">{{ c.glyph }}</span>{{ c.label }}</button></sc-if>
+                        <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="display:inline-flex; align-items:center; gap:6px; font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;" style-hover="border-color:#3E4D6B;"><span style="font-family:'Spline Sans Mono',monospace; color:{{ c.glyphColor }};">{{ c.glyph }}</span>{{ c.label }}</button></sc-if>
+                      </sc-for>
+                    </div>
+
+                    <div style="display:flex; gap:32px; flex-wrap:wrap; margin-bottom:20px;">
+                      <div>
+                        <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Due</label>
+                        <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                          <sc-for list="{{ dueChips }}" as="c" hint-placeholder-count="4">
+                            <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;">{{ c.label }}</button></sc-if>
+                            <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;" style-hover="border-color:#3E4D6B;">{{ c.label }}</button></sc-if>
+                          </sc-for>
+                        </div>
+                      </div>
+                      <div>
+                        <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Priority</label>
+                        <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                          <sc-for list="{{ prioChips }}" as="c" hint-placeholder-count="5">
+                            <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;">{{ c.label }}</button></sc-if>
+                            <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;" style-hover="border-color:#3E4D6B;">{{ c.label }}</button></sc-if>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </div>
+
+                    <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Notes</label>
+                    <textarea value="{{ formNotes }}" onChange="{{ onNotes }}" placeholder="Anything else worth remembering?" rows="3" style="width:100%; font-family:'Spline Sans',sans-serif; font-size:14px; line-height:1.5; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:9px; padding:11px 13px; resize:vertical;"></textarea>
+                  </div>
+
+                  <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:18px;">
+                    <button onClick="{{ onCancel }}" style="background:none; border:none; font-family:'Spline Sans',sans-serif; font-size:14px; color:#9A988F; cursor:pointer; padding:9px 8px;" style-hover="color:#5C594F;">Cancel</button>
+                    <sc-if value="{{ canCreate }}" hint-placeholder-val="{{ false }}"><button onClick="{{ onCreate }}" style="background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:11px 22px; border-radius:23px; cursor:pointer;" style-hover="background:#2F3C56;">{{ createLabel }}</button></sc-if>
+                    <sc-if value="{{ cannotCreate }}" hint-placeholder-val="{{ true }}"><span style="background:#E4E2D9; color:#B0AEA4; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:11px 22px; border-radius:23px;">{{ createLabel }}</span></sc-if>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOBILE -->
+    <div style="flex:none; width:392px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">Mobile · same list, folded</div>
+      <div style="background:#0F0F12; border-radius:46px; padding:9px; box-shadow:0 34px 64px -22px rgba(0,0,0,.4), 0 0 0 1px rgba(0,0,0,.12);">
+        <div style="background:#F6F5F1; border-radius:38px; overflow:hidden; height:812px; display:flex; flex-direction:column;">
+          <div style="flex:none; display:flex; justify-content:space-between; align-items:center; padding:14px 26px 4px;">
+            <span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#23232A; font-weight:500;">9:41</span>
+            <span style="font-size:11px; color:#9A988F;">●●● &nbsp;⌃ &nbsp;◐</span>
+          </div>
+          <div style="flex:none; display:flex; align-items:center; justify-content:space-between; padding:6px 22px 10px;">
+            <span style="font-family:'Instrument Serif',serif; font-size:25px; color:#23232A;">Tasks</span>
+            <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}"><button onClick="{{ onNew }}" style="display:inline-flex; align-items:center; gap:6px; background:#3E4D6B; border:none; border-radius:16px; padding:6px 12px; cursor:pointer;"><span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#fff;">+ New</span></button></sc-if>
+          </div>
+
+          <div style="flex:1; overflow-y:auto; padding:4px 20px 18px;">
+            <!-- MOBILE LIST -->
+            <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+                  <div style="margin-top:16px;">
+                    <button onClick="{{ g.onToggle }}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:none; border:none; cursor:pointer; padding:0 0 7px; border-bottom:1px solid #ECEAE2;">
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:{{ g.glyphColor }}; width:14px; text-align:center;">{{ g.glyph }}</span>
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#6B685E;">{{ g.label }}</span>
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#B0AEA4;">{{ g.count }}</span>
+                      <span style="flex:1;"></span>
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#C0BEB4;">{{ g.chevron }}</span>
+                    </button>
+                    <sc-if value="{{ g.open }}" hint-placeholder-val="{{ true }}">
+                      <div>
+                        <sc-for list="{{ g.tasks }}" as="t" hint-placeholder-count="3">
+                          <div style="display:flex; gap:10px; padding:11px 0; border-top:1px solid #F4F2EB;">
+                            <button onClick="{{ t.onComplete }}" title="Complete" style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ t.glyphColor }}; width:15px; flex:none; text-align:center; margin-top:2px; background:none; border:none; cursor:pointer; padding:0;">{{ t.glyph }}</button>
+                            <div style="flex:1; min-width:0;">
+                              <sc-if value="{{ t.strike }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.35; color:{{ t.titleColor }}; text-decoration:line-through; text-decoration-color:#C9C6BC;">{{ t.title }}</span></sc-if>
+                              <sc-if value="{{ t.notStrike }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.35; color:{{ t.titleColor }};">{{ t.title }}</span></sc-if>
+                              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:4px;">
+                                <sc-if value="{{ t.hasPriority }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; color:{{ t.prioColor }}; background:{{ t.prioBg }}; border-radius:4px; padding:2px 6px;">{{ t.prioLabel }}</span></sc-if>
+                                <sc-if value="{{ t.hasDue }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:{{ t.dueColor }};">{{ t.dueLabel }}</span></sc-if>
+                                <sc-if value="{{ t.isMigrated }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#3E4D6B;">› {{ t.migratedNote }}</span></sc-if>
+                              </div>
+                              <sc-if value="{{ t.provRow }}" hint-placeholder-val="{{ true }}"><button onClick="{{ t.onExpand }}" style="background:none; border:none; padding:0; margin-top:5px; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:10px; color:#A6A398;">{{ t.expandLabel }}</button></sc-if>
+                              <sc-if value="{{ t.isManual }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#B0AEA4; margin-top:4px;">✎ added by hand</div></sc-if>
+                              <sc-if value="{{ t.expandOpen }}" hint-placeholder-val="{{ false }}">
+                                <div style="margin-top:8px; background:#FBFAF7; border:1px solid #ECEAE2; border-left:2px solid #C7CEDB; border-radius:0 9px 9px 0; padding:10px 12px;">
+                                  <sc-if value="{{ t.showQuote }}" hint-placeholder-val="{{ true }}"><div style="font-family:'Newsreader',serif; font-style:italic; font-size:14px; line-height:1.5; color:#6B685E;">“{{ t.src }}”</div></sc-if>
+                                  <sc-if value="{{ t.showNotesInExpand }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Spline Sans',sans-serif; font-size:12.5px; line-height:1.5; color:#5C594F; margin-top:6px;">{{ t.notes }}</div></sc-if>
+                                </div>
+                              </sc-if>
+                            </div>
+                            <sc-if value="{{ t.showMigrate }}" hint-placeholder-val="{{ true }}"><button onClick="{{ t.onMigrate }}" title="Migrate" style="flex:none; width:26px; height:26px; border-radius:7px; background:none; border:none; cursor:pointer; color:#B7B4AA; font-family:'Spline Sans Mono',monospace; font-size:16px;">›</button></sc-if>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <!-- MOBILE FORM -->
+            <sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <button onClick="{{ onCancel }}" style="background:none; border:none; padding:0; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; margin-bottom:12px;">← back</button>
+                <div style="font-family:'Instrument Serif',serif; font-size:24px; color:#23232A; margin-bottom:14px;">{{ formHeading }}</div>
+                <input value="{{ formTitle }}" onChange="{{ onTitle }}" placeholder="What needs doing?" style="width:100%; font-family:'Newsreader',serif; font-size:18px; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:9px; padding:10px 12px; margin-bottom:16px;">
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:7px;">Status</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">
+                  <sc-for list="{{ statusChips }}" as="c" hint-placeholder-count="5">
+                    <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;">{{ c.label }}</button></sc-if>
+                    <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;">{{ c.label }}</button></sc-if>
+                  </sc-for>
+                </div>
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:7px;">Due</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">
+                  <sc-for list="{{ dueChips }}" as="c" hint-placeholder-count="4">
+                    <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;">{{ c.label }}</button></sc-if>
+                    <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;">{{ c.label }}</button></sc-if>
+                  </sc-for>
+                </div>
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:7px;">Priority</div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px;">
+                  <sc-for list="{{ prioChips }}" as="c" hint-placeholder-count="5">
+                    <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;">{{ c.label }}</button></sc-if>
+                    <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12px; padding:5px 11px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;">{{ c.label }}</button></sc-if>
+                  </sc-for>
+                </div>
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:7px;">Notes</div>
+                <textarea value="{{ formNotes }}" onChange="{{ onNotes }}" placeholder="Anything else worth remembering?" rows="3" style="width:100%; font-family:'Spline Sans',sans-serif; font-size:13.5px; line-height:1.5; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:9px; padding:10px 12px; resize:vertical; margin-bottom:16px;"></textarea>
+                <sc-if value="{{ canCreate }}" hint-placeholder-val="{{ false }}"><button onClick="{{ onCreate }}" style="width:100%; background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:12px; border-radius:23px; cursor:pointer;">{{ createLabel }}</button></sc-if>
+                <sc-if value="{{ cannotCreate }}" hint-placeholder-val="{{ true }}"><div style="width:100%; text-align:center; background:#E4E2D9; color:#B0AEA4; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:12px; border-radius:23px;">{{ createLabel }}</div></sc-if>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- BOTTOM TAB BAR -->
+          <div style="flex:none; display:flex; justify-content:space-around; align-items:center; padding:9px 8px 24px; border-top:1px solid #ECEAE2; background:#FBFAF7;">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">◆</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Overview</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">≡</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Timeline</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#3E4D6B;">•</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#3E4D6B; font-weight:500;">Tasks</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">—</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Trackers</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">○</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Activities</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ SHOWCASE: FORM + EMPTY ============================ -->
+  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">The task form &amp; the empty state, up close</div>
+  <div style="display:flex; gap:48px; align-items:flex-start;">
+
+    <!-- FORM CARD -->
+    <div style="flex:none; width:620px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.08em; color:#9A988F; margin-bottom:8px;">A · The task form — empty, created by hand (shared with Review's edit)</div>
+      <div style="background:#F6F5F1; border:1px solid #E2E0D7; border-radius:6px; box-shadow:0 18px 44px -28px rgba(0,0,0,.32); padding:32px 34px 34px;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+          <span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#3E4D6B;">•</span>
+          <span style="font-family:'Instrument Serif',serif; font-size:28px; color:#23232A;">New task</span>
+          <span style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:#B0AEA4; background:#EFEDE6; border-radius:5px; padding:3px 8px;">by hand</span>
+        </div>
+        <p style="font-family:'Newsreader',serif; font-size:15px; color:#6B685E; margin:0 0 20px;">In Review this arrives pre-filled by the agent. Empty, it's the same fields, yours to write.</p>
+
+        <div style="background:#fff; border:1px solid #ECEAE2; border-radius:14px; padding:22px 24px 24px;">
+          <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Title</label>
+          <input value="{{ formTitle }}" onChange="{{ onTitle }}" placeholder="What needs doing?" style="width:100%; font-family:'Newsreader',serif; font-size:20px; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:9px; padding:11px 13px; margin-bottom:20px;">
+          <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Status</label>
+          <div style="display:flex; gap:7px; flex-wrap:wrap; margin-bottom:20px;">
+            <sc-for list="{{ statusChips }}" as="c" hint-placeholder-count="5">
+              <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="display:inline-flex; align-items:center; gap:6px; font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;"><span style="font-family:'Spline Sans Mono',monospace;">{{ c.glyph }}</span>{{ c.label }}</button></sc-if>
+              <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="display:inline-flex; align-items:center; gap:6px; font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;" style-hover="border-color:#3E4D6B;"><span style="font-family:'Spline Sans Mono',monospace; color:{{ c.glyphColor }};">{{ c.glyph }}</span>{{ c.label }}</button></sc-if>
+            </sc-for>
+          </div>
+          <div style="display:flex; gap:32px; flex-wrap:wrap; margin-bottom:20px;">
+            <div>
+              <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Due</label>
+              <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                <sc-for list="{{ dueChips }}" as="c" hint-placeholder-count="4">
+                  <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;">{{ c.label }}</button></sc-if>
+                  <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;" style-hover="border-color:#3E4D6B;">{{ c.label }}</button></sc-if>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Priority</label>
+              <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                <sc-for list="{{ prioChips }}" as="c" hint-placeholder-count="5">
+                  <sc-if value="{{ c.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #3E4D6B; background:#3E4D6B; color:#fff; cursor:pointer;">{{ c.label }}</button></sc-if>
+                  <sc-if value="{{ c.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onClick }}" style="font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:6px 12px; border-radius:8px; border:1px solid #DDDBD2; background:#fff; color:#5C594F; cursor:pointer;" style-hover="border-color:#3E4D6B;">{{ c.label }}</button></sc-if>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Notes</label>
+          <textarea value="{{ formNotes }}" onChange="{{ onNotes }}" placeholder="Anything else worth remembering?" rows="3" style="width:100%; font-family:'Spline Sans',sans-serif; font-size:14px; line-height:1.5; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:9px; padding:11px 13px; resize:vertical;"></textarea>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:18px;">
+          <button onClick="{{ onCancel }}" style="background:none; border:none; font-family:'Spline Sans',sans-serif; font-size:14px; color:#9A988F; cursor:pointer; padding:9px 8px;" style-hover="color:#5C594F;">Cancel</button>
+          <sc-if value="{{ canCreate }}" hint-placeholder-val="{{ false }}"><button onClick="{{ onCreate }}" style="background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:11px 22px; border-radius:23px; cursor:pointer;">{{ createLabel }}</button></sc-if>
+          <sc-if value="{{ cannotCreate }}" hint-placeholder-val="{{ true }}"><span style="background:#E4E2D9; color:#B0AEA4; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:11px 22px; border-radius:23px;">{{ createLabel }}</span></sc-if>
+        </div>
+      </div>
+    </div>
+
+    <!-- EMPTY STATE CARD -->
+    <div style="flex:none; width:512px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.08em; color:#9A988F; margin-bottom:8px;">B · Empty — a new user, no tasks yet</div>
+      <div style="background:#100F0C; border-radius:14px; box-shadow:0 18px 44px -28px rgba(0,0,0,.4);">
+        <div style="height:42px; display:flex; align-items:center; padding:0 16px; border-bottom:1px solid rgba(255,255,255,.05);">
+          <div style="display:flex; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:#ED6A5E;"></span><span style="width:12px; height:12px; border-radius:50%; background:#F4BF50;"></span><span style="width:12px; height:12px; border-radius:50%; background:#61C554;"></span></div>
+          <div style="flex:1; text-align:center; font-family:'Spline Sans Mono',monospace; font-size:12px; color:#8A877E;">Journal</div>
+          <div style="width:54px;"></div>
+        </div>
+        <div style="background:#F6F5F1; border-radius:0 0 14px 14px; height:560px; display:flex; flex-direction:column;">
+          <div style="flex:none; padding:24px 34px 16px; border-bottom:1px solid #ECEAE2;">
+            <span style="font-family:'Instrument Serif',serif; font-size:27px; color:#23232A;">Tasks</span>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px;">
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:20px; letter-spacing:.32em; color:#3E4D6B; margin-bottom:20px;">•&nbsp;&nbsp;/&nbsp;&nbsp;›</div>
+            <div style="font-family:'Instrument Serif',serif; font-size:31px; color:#23232A; margin-bottom:10px;">Nothing to do yet — and that's fine.</div>
+            <p style="font-family:'Newsreader',serif; font-size:16.5px; line-height:1.55; color:#6B685E; margin:0 0 24px; max-width:360px;">Tasks don't start here — they surface from what you write. Empty your head in the stream, and anything that needs doing will show up, ready for you to confirm.</p>
+            <button style="display:inline-flex; align-items:center; gap:9px; background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:12px 22px; border-radius:24px; cursor:pointer;" style-hover="background:#2F3C56;"><span style="font-family:'Spline Sans Mono',monospace; font-size:13px;">✎</span>Open the stream</button>
+            <button onClick="{{ onNew }}" style="background:none; border:none; margin-top:14px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:13px; color:#9A988F;" style-hover="color:#3E4D6B;">or add one by hand →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1980,&quot;height&quot;:1560},&quot;showProvenance&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;showPriority&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;startDoneCollapsed&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const base = ['todo','inprogress','migrated','cancelled'];
+    const openGroups = (props && props.startDoneCollapsed === false) ? base.concat(['done']) : base;
+    this.state = {
+      view: 'list',
+      openGroups,
+      openTask: null,
+      form: { title:'', status:'todo', due:null, priority:null, notes:'' },
+      editingId: null,
+      tasks: [
+        { id:'t1', title:'Call the dentist about the filling', status:'todo', due:'Wed', dueOverdue:true, overdueLabel:'2 days ago', priority:1, notes:'Ask about the temporary filling from March — it feels loose again.', srcDay:'Today', srcTime:'09:46', src:'Skipped lunch, squeezed in a 30-minute run, and I really need to call the dentist about that filling — Friday at the latest.' },
+        { id:'t2', title:'Email Dana about the lease', status:'todo', due:'Fri', priority:2, srcDay:'Mon', srcTime:'09:10', src:'Need to email Dana about the lease before Friday.' },
+        { id:'t3', title:'Get mum a birthday gift', status:'todo', due:'Jun 28', priority:3, srcDay:'Mon', srcTime:'09:10', src:"Mum's birthday is on the 28th — get a gift." },
+        { id:'t4', title:'Renew the parking permit', status:'todo', manual:true },
+        { id:'t5', title:'Follow up with QA on the export', status:'inprogress', priority:2, srcDay:'Today', srcTime:'10:12', src:'Standup — ship the export fix, follow up with QA, and book the team lunch.' },
+        { id:'t6', title:'Draft the retro notes', status:'inprogress', manual:true },
+        { id:'t7', title:'Book the team lunch', status:'migrated', migratedCount:2, priority:3, srcDay:'Mon', srcTime:'10:12', src:'Standup — ship the export fix, follow up with QA, and book the team lunch.' },
+        { id:'t8', title:'Start the tax paperwork', status:'migrated', migratedCount:4, priority:2, manual:true, notes:'Gather the receipts folder first — it makes the rest quick.' },
+        { id:'t9', title:'Ship the export fix', status:'done', doneDate:'Today', srcDay:'Today', srcTime:'10:12', src:'Standup — ship the export fix, follow up with QA, and book the team lunch.' },
+        { id:'t10', title:'Send the invoice', status:'done', doneDate:'Fri', srcDay:'Fri', srcTime:'13:20', src:'Send the invoice, and reply to the landlord.' },
+        { id:'t11', title:'Reply to the landlord', status:'done', doneDate:'Fri', srcDay:'Fri', srcTime:'13:20', src:'Send the invoice, and reply to the landlord.' },
+        { id:'t12', title:'Water the plants', status:'done', doneDate:'Sun', srcDay:'Sun', srcTime:'12:30', src:'Renew the parking permit, and water the plants.' },
+        { id:'t13', title:'Confirm the dentist reminder', status:'done', doneDate:'Thu', manual:true },
+        { id:'t14', title:'Pay the electricity bill', status:'done', doneDate:'Wed', manual:true },
+        { id:'t15', title:'Chase the refund', status:'cancelled', srcDay:'last week', srcTime:'', src:'Still waiting on that refund — chase it if it hasn\u2019t landed.', notes:'Resolved itself — the refund came through.' }
+      ]
+    };
+  }
+
+  statusMeta = {
+    todo:       { label:'To do',       glyph:'•', color:'#3E4D6B' },
+    inprogress: { label:'In progress', glyph:'/', color:'#3E4D6B' },
+    migrated:   { label:'Migrated',    glyph:'›', color:'#3E4D6B' },
+    done:       { label:'Done',        glyph:'✓', color:'#5E7C66' },
+    cancelled:  { label:'Cancelled',   glyph:'✕', color:'#B0AEA4' }
+  };
+  prioMeta = {
+    1: { label:'P1', color:'#C2503A', bg:'#F6E7E2' },
+    2: { label:'P2', color:'#A8792F', bg:'#F3EBD9' },
+    3: { label:'P3', color:'#7A776D', bg:'#EFEDE6' },
+    4: { label:'P4', color:'#A6A398', bg:'#F1EFE9' }
+  };
+  order = ['todo','inprogress','migrated','done','cancelled'];
+
+  toggleGroup(k){ this.setState(s => ({ openGroups: s.openGroups.includes(k) ? s.openGroups.filter(x=>x!==k) : [...s.openGroups, k] })); }
+  toggleTask(id){ this.setState(s => ({ openTask: s.openTask === id ? null : id })); }
+  setStatus(id, status){ this.setState(s => ({ tasks: s.tasks.map(t => t.id===id ? { ...t, status, doneDate: status==='done' ? 'Today' : t.doneDate } : t) })); }
+  migrate(id){ this.setState(s => ({ tasks: s.tasks.map(t => t.id===id ? { ...t, status:'migrated', migratedCount:(t.migratedCount||0)+1 } : t) })); }
+
+  openNew(){ this.setState({ view:'form', editingId:null, form:{ title:'', status:'todo', due:null, priority:null, notes:'' } }); }
+  editTask(id){
+    const t = this.state.tasks.find(x=>x.id===id);
+    if(!t) return;
+    this.setState({ view:'form', editingId:id, form:{ title:t.title, status:t.status, due:t.due||null, priority:t.priority||null, notes:t.notes||'' } });
+  }
+  cancelForm(){ this.setState({ view:'list', editingId:null }); }
+  setForm(field, val){ this.setState(s => ({ form: { ...s.form, [field]: val } })); }
+  createTask(){
+    const f = this.state.form;
+    if(!f.title || !f.title.trim()) return;
+    this.setState(s => {
+      if(s.editingId){
+        return { tasks: s.tasks.map(t => t.id===s.editingId ? { ...t, title:f.title.trim(), status:f.status, due:f.due, dueOverdue:false, priority:f.priority, notes:f.notes } : t), view:'list', editingId:null, form:{ title:'', status:'todo', due:null, priority:null, notes:'' } };
+      }
+      const nt = { id:'m'+Date.now(), title:f.title.trim(), status:f.status, due:f.due, priority:f.priority, notes:f.notes, manual:true, migratedCount:0 };
+      const idx = s.tasks.findIndex(t => t.status===f.status);
+      const tasks = s.tasks.slice();
+      if(idx>=0) tasks.splice(idx, 0, nt); else tasks.push(nt);
+      return { tasks, view:'list', editingId:null, form:{ title:'', status:'todo', due:null, priority:null, notes:'' } };
+    });
+  }
+
+  enrich(t){
+    const sm = this.statusMeta[t.status];
+    const strike = t.status==='done' || t.status==='cancelled';
+    const extracted = t.manual !== true;
+    const hasNotes = !!(t.notes && t.notes.length);
+    let hasDue=false, dueLabel='', dueColor='#9A988F';
+    if(t.due){ hasDue=true; if(t.dueOverdue){ dueLabel='overdue · '+t.overdueLabel; dueColor='#C2503A'; } else { dueLabel='due '+t.due; } }
+    const showPrio = this.props.showPriority !== false;
+    let hasPriority=false, prioLabel='', prioColor='', prioBg='';
+    if(t.priority && showPrio){ const pm=this.prioMeta[t.priority]; hasPriority=true; prioLabel=pm.label; prioColor=pm.color; prioBg=pm.bg; }
+    const provOn = this.props.showProvenance !== false;
+    const migratedNote = t.status==='migrated' ? ('carried forward '+(t.migratedCount||1)+'×') : '';
+    const provRow = provOn && (extracted || hasNotes);
+    const expandLabel = extracted ? ('↳ from your journal · '+t.srcDay+(t.srcTime?(' '+t.srcTime):'')) : 'notes';
+    return {
+      ...t,
+      glyph: sm.glyph, glyphColor: sm.color,
+      strike, notStrike: !strike, titleColor: strike ? '#A6A398' : '#23232A',
+      hasDue, dueLabel, dueColor,
+      hasPriority, prioLabel, prioColor, prioBg,
+      isMigrated: t.status==='migrated', migratedNote,
+      isManual: t.manual === true,
+      provRow, expandLabel,
+      expandOpen: this.state.openTask === t.id,
+      showQuote: extracted, showNotesInExpand: hasNotes,
+      showComplete: t.status!=='done' && t.status!=='cancelled',
+      showMigrate: t.status==='todo' || t.status==='inprogress',
+      showReopen: t.status==='done' || t.status==='cancelled',
+      onGlyph: () => this.toggleTask(t.id),
+      onExpand: () => this.toggleTask(t.id),
+      onComplete: () => this.setStatus(t.id, 'done'),
+      onMigrate: () => this.migrate(t.id),
+      onReopen: () => this.setStatus(t.id, 'todo'),
+      onEdit: () => this.editTask(t.id)
+    };
+  }
+
+  chips(field, opts){
+    return opts.map(o => ({ label:o.label, glyph:o.glyph||'', glyphColor:o.glyphColor||'#A6A398', sel:this.state.form[field]===o.val, notSel:this.state.form[field]!==o.val, onClick:()=>this.setForm(field, o.val) }));
+  }
+
+  renderVals(){
+    const groups = this.order.map(k => {
+      const sm = this.statusMeta[k];
+      const list = this.state.tasks.filter(t => t.status===k).map(t => this.enrich(t));
+      const open = this.state.openGroups.includes(k);
+      return { key:k, label:sm.label, glyph:sm.glyph, glyphColor:sm.color, count:list.length, open, chevron: open ? '▾' : '▸', onToggle:()=>this.toggleGroup(k), tasks:list };
+    }).filter(g => g.count > 0);
+
+    const openCount = this.state.tasks.filter(t => ['todo','inprogress','migrated'].includes(t.status)).length;
+    const doneCount = this.state.tasks.filter(t => t.status==='done').length;
+    const f = this.state.form;
+    const canCreate = !!(f.title && f.title.trim());
+
+    return {
+      isList: this.state.view==='list',
+      isForm: this.state.view==='form',
+      groups, openCount, doneCount,
+      onNew: () => this.openNew(),
+      onCancel: () => this.cancelForm(),
+      onCreate: () => this.createTask(),
+      formHeading: this.state.editingId ? 'Edit task' : 'New task',
+      createLabel: this.state.editingId ? 'Save changes' : 'Create task',
+      canCreate, cannotCreate: !canCreate,
+      formTitle: f.title, formNotes: f.notes,
+      onTitle: (e) => this.setForm('title', e.target.value),
+      onNotes: (e) => this.setForm('notes', e.target.value),
+      statusChips: this.chips('status', [
+        { label:'To do', val:'todo', glyph:'•', glyphColor:'#3E4D6B' },
+        { label:'In progress', val:'inprogress', glyph:'/', glyphColor:'#3E4D6B' },
+        { label:'Done', val:'done', glyph:'✓', glyphColor:'#5E7C66' },
+        { label:'Migrated', val:'migrated', glyph:'›', glyphColor:'#3E4D6B' },
+        { label:'Cancelled', val:'cancelled', glyph:'✕', glyphColor:'#B0AEA4' }
+      ]),
+      dueChips: this.chips('due', [
+        { label:'Today', val:'Today' }, { label:'Tomorrow', val:'Tomorrow' }, { label:'This week', val:'This week' }, { label:'None', val:null }
+      ]),
+      prioChips: this.chips('priority', [
+        { label:'P1', val:1 }, { label:'P2', val:2 }, { label:'P3', val:3 }, { label:'P4', val:4 }, { label:'None', val:null }
+      ])
+    };
+  }
+}
+</script>
+</body>
+</html>

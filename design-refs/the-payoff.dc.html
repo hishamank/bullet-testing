@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Instrument+Serif:ital@0;1&family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</helmet>
+
+<div style="min-width:100%; min-height:100vh; width:max-content; box-sizing:border-box; padding:48px; background:#E5E3DC; font-family:'Spline Sans', sans-serif;">
+
+  <div style="max-width:1180px; margin:0 0 38px 0;">
+    <div style="font-family:'Spline Sans Mono', monospace; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#8C887E;">Prompt 3 · The payoff — Margin Notebook system</div>
+    <h1 style="font-family:'Instrument Serif', serif; font-weight:400; font-size:44px; line-height:1.05; margin:10px 0 10px; color:#26251F;">Watch the structure surface from the stream.</h1>
+    <p style="max-width:760px; margin:0; font-size:15px; line-height:1.6; color:#5C594F;">Where you see what the journaling becomes. A calm <b style="font-weight:500;">Overview</b>, a per-day <b style="font-weight:500;">Timeline</b> that weaves bullets and extracted items into a daily story, and quiet navigation between them. Every entity keeps a thread back to the bullet that created it. The nav is live — click between sections; click any <span style="font-family:'Spline Sans Mono',monospace; color:#A6A398;">↳ from your journal</span> to follow the thread.</p>
+  </div>
+
+  <!-- ============================ THE LIVE APP ============================ -->
+  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">Direction A · The dashboard — live app, desktop &amp; mobile</div>
+  <div style="display:flex; gap:48px; align-items:flex-start; margin-bottom:64px;">
+
+    <!-- DESKTOP WINDOW -->
+    <div style="flex:none; width:1180px;">
+      <div style="background:#100F0C; border-radius:14px; box-shadow:0 40px 80px -30px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.1);">
+        <div style="height:42px; display:flex; align-items:center; padding:0 16px; border-bottom:1px solid rgba(255,255,255,.05);">
+          <div style="display:flex; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:#ED6A5E;"></span><span style="width:12px; height:12px; border-radius:50%; background:#F4BF50;"></span><span style="width:12px; height:12px; border-radius:50%; background:#61C554;"></span></div>
+          <div style="flex:1; text-align:center; font-family:'Spline Sans Mono',monospace; font-size:12px; color:#8A877E; letter-spacing:.04em;">Journal</div>
+          <div style="width:54px;"></div>
+        </div>
+
+        <div style="background:#F6F5F1; border-radius:0 0 14px 14px; height:880px; display:flex; overflow:hidden;">
+
+          <!-- LEFT RAIL -->
+          <div style="flex:none; width:214px; border-right:1px solid #ECEAE2; padding:24px 16px 18px; display:flex; flex-direction:column; gap:4px;">
+            <div style="padding:0 12px 22px;">
+              <div style="font-family:'Instrument Serif',serif; font-size:23px; color:#23232A; line-height:1;">Margin</div>
+              <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:#B0AEA4; margin-top:4px;">Notebook</div>
+            </div>
+            <sc-for list="{{ navD }}" as="n" hint-placeholder-count="5">
+              <sc-if value="{{ n.active }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ n.onClick }}" style="position:relative; display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:#EEF1F6; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#2F3C56; font-weight:500;">
+                  <span style="position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:2px; background:#3E4D6B;"></span>
+                  <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#3E4D6B; width:16px; text-align:center;">{{ n.glyph }}</span>{{ n.label }}
+                </button>
+              </sc-if>
+              <sc-if value="{{ n.inactive }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ n.onClick }}" style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;">
+                  <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">{{ n.glyph }}</span>{{ n.label }}
+                </button>
+              </sc-if>
+            </sc-for>
+            <div style="flex:1;"></div>
+            <button onClick="{{ openReviewD }}" style="display:flex; align-items:center; justify-content:space-between; width:100%; background:#3E4D6B; border:none; border-radius:10px; padding:11px 13px; cursor:pointer;" style-hover="background:#2F3C56;">
+              <span style="font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#fff; display:flex; align-items:center; gap:9px;"><span style="font-family:'Spline Sans Mono',monospace; font-size:12px;">◷</span>Review</span>
+              <span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#fff; background:rgba(255,255,255,.18); border-radius:10px; padding:1px 8px;">{{ reviewCount }}</span>
+            </button>
+          </div>
+
+          <!-- CONTENT -->
+          <div style="flex:1; min-width:0; overflow-y:auto;">
+
+            <!-- OVERVIEW -->
+            <sc-if value="{{ isOverviewD }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:34px 44px 44px;">
+                <div style="max-width:940px;">
+                  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:24px;">
+                    <div>
+                      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398;">Tuesday · 22 June</div>
+                      <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:34px; color:#23232A; margin:6px 0 0;">Good morning, Sam.</h2>
+                    </div>
+                  </div>
+                  <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.55; color:#6B685E; max-width:560px; margin:14px 0 26px;">A rough night, but the run helped. One task due Friday, three trackers already logged before nine.</p>
+
+                  <!-- review nudge -->
+                  <button onClick="{{ openReviewD }}" style="display:flex; align-items:center; justify-content:space-between; width:100%; background:#EEF1F6; border:1px solid #DCE2EC; border-radius:12px; padding:14px 18px; cursor:pointer; margin-bottom:30px;" style-hover="border-color:#3E4D6B;">
+                    <span style="display:flex; align-items:center; gap:13px;">
+                      <span style="display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:50%; background:#3E4D6B; color:#fff; font-family:'Spline Sans Mono',monospace; font-size:13px;">{{ reviewCount }}</span>
+                      <span style="font-family:'Spline Sans',sans-serif; font-size:14.5px; color:#2F3C56;">suggestions waiting in your Review inbox</span>
+                    </span>
+                    <span style="font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#3E4D6B;">Open →</span>
+                  </button>
+
+                  <!-- trackers -->
+                  <div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398; margin-bottom:12px;">This week</div>
+                  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:34px;">
+
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:15px 16px 13px; box-shadow:0 2px 12px -9px rgba(0,0,0,.18);">
+                      <div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Mood</span><span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#5E7C66;">↑</span></div>
+                      <div style="display:flex; align-items:baseline; gap:5px; margin:7px 0 11px;"><span style="font-family:'Instrument Serif',serif; font-size:28px; color:#23232A; line-height:1;">{{ moodVal }}</span><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#B0AEA4;">/ 5</span></div>
+                      <svg viewBox="0 0 200 40" preserveAspectRatio="none" style="width:100%; height:38px; display:block; overflow:visible;"><polyline points="{{ moodPts }}" fill="none" stroke="#3E4D6B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+                      <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#9A988F; margin-top:9px;">{{ moodNote }}</div>
+                    </div>
+
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:15px 16px 13px; box-shadow:0 2px 12px -9px rgba(0,0,0,.18);">
+                      <div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Coffee</span><span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#5E7C66;">↓</span></div>
+                      <div style="display:flex; align-items:baseline; gap:5px; margin:7px 0 11px;"><span style="font-family:'Instrument Serif',serif; font-size:28px; color:#23232A; line-height:1;">{{ coffeeVal }}</span><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#B0AEA4;">/ day</span></div>
+                      <svg viewBox="0 0 200 40" preserveAspectRatio="none" style="width:100%; height:38px; display:block;"><sc-for list="{{ coffeeBars }}" as="b" hint-placeholder-count="14"><rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="1.2" fill="{{ b.fill }}"></rect></sc-for></svg>
+                      <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#9A988F; margin-top:9px;">{{ coffeeNote }}</div>
+                    </div>
+
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:15px 16px 13px; box-shadow:0 2px 12px -9px rgba(0,0,0,.18);">
+                      <div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Sleep</span><span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#5E7C66;">↑</span></div>
+                      <div style="display:flex; align-items:baseline; gap:5px; margin:7px 0 11px;"><span style="font-family:'Instrument Serif',serif; font-size:28px; color:#23232A; line-height:1;">{{ sleepVal }}</span><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#B0AEA4;">avg</span></div>
+                      <svg viewBox="0 0 200 40" preserveAspectRatio="none" style="width:100%; height:38px; display:block; overflow:visible;"><polyline points="{{ sleepPts }}" fill="none" stroke="#5E7C66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+                      <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#9A988F; margin-top:9px;">{{ sleepNote }}</div>
+                    </div>
+
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:15px 16px 13px; box-shadow:0 2px 12px -9px rgba(0,0,0,.18);">
+                      <div style="display:flex; justify-content:space-between; align-items:baseline;"><span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Running</span><span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#5E7C66;">○</span></div>
+                      <div style="display:flex; align-items:baseline; gap:5px; margin:7px 0 13px;"><span style="font-family:'Instrument Serif',serif; font-size:28px; color:#23232A; line-height:1;">{{ runVal }}</span><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#B0AEA4;">streak</span></div>
+                      <div style="display:flex; gap:3px; height:38px; align-items:flex-end; padding-bottom:8px;"><sc-for list="{{ runDots }}" as="d" hint-placeholder-count="14"><sc-if value="{{ d.on }}" hint-placeholder-val="{{ true }}"><span style="flex:1; height:11px; border-radius:2px; background:#5E7C66;"></span></sc-if><sc-if value="{{ d.off }}" hint-placeholder-val="{{ true }}"><span style="flex:1; height:11px; border-radius:2px; background:#E4E2D9;"></span></sc-if></sc-for></div>
+                      <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#9A988F; margin-top:9px;">{{ runNote }}</div>
+                    </div>
+                  </div>
+
+                  <!-- two columns -->
+                  <div style="display:grid; grid-template-columns:1.08fr 1fr; gap:40px;">
+                    <div>
+                      <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-family:'Instrument Serif',serif; font-size:22px; color:#23232A;">Today</span>
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398;">{{ openTaskCount }} open</span>
+                      </div>
+                      <sc-for list="{{ todayTasks }}" as="b" hint-placeholder-count="4">
+                        <div style="display:flex; gap:12px; padding:13px 0; border-top:1px solid #F0EEE7;">
+                          <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ b.glyphColor }}; width:15px; flex:none; text-align:center; margin-top:3px;">{{ b.glyph }}</span>
+                          <div style="flex:1; min-width:0;">
+                            <div style="display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;">
+                              <sc-if value="{{ b.isDone }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Newsreader',serif; font-size:17px; color:#A6A398; text-decoration:line-through;">{{ b.title }}</span></sc-if>
+                              <sc-if value="{{ b.notDone }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Newsreader',serif; font-size:17px; color:#23232A;">{{ b.title }}</span></sc-if>
+                              <span style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:{{ b.statusColor }}; background:{{ b.statusBg }}; border-radius:5px; padding:2px 7px;">{{ b.statusText }}</span>
+                              <sc-if value="{{ b.hasDue }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#9A988F;">due {{ b.due }}</span></sc-if>
+                            </div>
+                            <sc-if value="{{ b.isMigrated }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Spline Sans',sans-serif; font-size:11.5px; color:#3E4D6B; margin-top:4px;">↪ carried forward {{ b.migratedTimes }} — still here, still yours</div></sc-if>
+                            <sc-if value="{{ provEnabled }}" hint-placeholder-val="{{ true }}">
+                              <button onClick="{{ b.onClick }}" style="background:none; border:none; padding:0; margin-top:6px; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; display:inline-flex; align-items:center; gap:5px;" style-hover="color:#3E4D6B;">↳ from your journal · {{ b.srcDay }} {{ b.srcTime }}</button>
+                              <sc-if value="{{ b.provOpen }}" hint-placeholder-val="{{ false }}">
+                                <div style="margin-top:9px; background:#FBFAF7; border:1px solid #ECEAE2; border-left:2px solid #C7CEDB; border-radius:0 10px 10px 0; padding:11px 14px;">
+                                  <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.06em; color:#B0AEA4; margin-bottom:5px;">{{ b.srcDay }} · {{ b.srcTime }}</div>
+                                  <div style="font-family:'Newsreader',serif; font-style:italic; font-size:15px; line-height:1.5; color:#6B685E;">“{{ b.src }}”</div>
+                                  <button onClick="{{ goTimelineD }}" style="background:none; border:none; padding:0; margin-top:9px; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#3E4D6B;" style-hover="text-decoration:underline;">Open in Timeline →</button>
+                                </div>
+                              </sc-if>
+                            </sc-if>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+
+                    <div>
+                      <div style="font-family:'Instrument Serif',serif; font-size:22px; color:#23232A; margin-bottom:4px;">Recently logged</div>
+                      <sc-for list="{{ recent }}" as="b" hint-placeholder-count="4">
+                        <div style="display:flex; gap:12px; padding:13px 0; border-top:1px solid #F0EEE7;">
+                          <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:#3E4D6B; width:15px; flex:none; text-align:center; margin-top:2px;">{{ b.glyph }}</span>
+                          <div style="flex:1; min-width:0;">
+                            <div style="display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;">
+                              <span style="font-family:'Spline Sans',sans-serif; font-size:14.5px; color:#23232A;"><b style="font-weight:600;">{{ b.label }}</b> · {{ b.detail }}</span>
+                              <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#9A988F;">{{ b.day }} {{ b.time }}</span>
+                            </div>
+                            <sc-if value="{{ provEnabled }}" hint-placeholder-val="{{ true }}">
+                              <button onClick="{{ b.onClick }}" style="background:none; border:none; padding:0; margin-top:5px; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; display:inline-flex; align-items:center; gap:5px;" style-hover="color:#3E4D6B;">↳ from your journal</button>
+                              <sc-if value="{{ b.provOpen }}" hint-placeholder-val="{{ false }}">
+                                <div style="margin-top:9px; background:#FBFAF7; border:1px solid #ECEAE2; border-left:2px solid #C7CEDB; border-radius:0 10px 10px 0; padding:11px 14px;">
+                                  <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.06em; color:#B0AEA4; margin-bottom:5px;">{{ b.day }} · {{ b.time }}</div>
+                                  <div style="font-family:'Newsreader',serif; font-style:italic; font-size:15px; line-height:1.5; color:#6B685E;">“{{ b.src }}”</div>
+                                  <button onClick="{{ goTimelineD }}" style="background:none; border:none; padding:0; margin-top:9px; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#3E4D6B;" style-hover="text-decoration:underline;">Open in Timeline →</button>
+                                </div>
+                              </sc-if>
+                            </sc-if>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- TIMELINE -->
+            <sc-if value="{{ isTimelineD }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:34px 44px 44px;">
+                <div style="max-width:880px;">
+                  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398;">Your journal, by day</div>
+                  <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:34px; color:#23232A; margin:6px 0 4px;">Timeline</h2>
+                  <p style="font-family:'Newsreader',serif; font-size:16px; line-height:1.55; color:#6B685E; max-width:540px; margin:0 0 14px;">Each day, your bullets and everything the agent pulled from them — woven back together. Tap a day to open it.</p>
+
+                  <sc-for list="{{ days }}" as="d" hint-placeholder-count="5">
+                    <div style="border-top:1px solid #ECEAE2; padding:20px 0;">
+                      <button onClick="{{ d.onToggle }}" style="display:flex; width:100%; align-items:center; justify-content:space-between; background:none; border:none; cursor:pointer; text-align:left; padding:0; gap:18px;">
+                        <span style="display:flex; align-items:baseline; gap:11px; flex:none;">
+                          <span style="font-family:'Instrument Serif',serif; font-size:24px; color:#23232A;">{{ d.name }}</span>
+                          <sc-if value="{{ d.hasRel }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#3E4D6B; background:#EEF1F6; border-radius:5px; padding:2px 7px;">{{ d.rel }}</span></sc-if>
+                          <span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#B0AEA4;">{{ d.date }}</span>
+                        </span>
+                        <span style="display:flex; align-items:center; gap:16px; min-width:0;">
+                          <span style="display:flex; gap:15px; flex-wrap:wrap; justify-content:flex-end;">
+                            <sc-for list="{{ d.summary }}" as="p" hint-placeholder-count="3">
+                              <span style="font-family:'Spline Sans',sans-serif; font-size:13px; color:#6B685E; display:inline-flex; align-items:baseline; gap:6px; white-space:nowrap;"><span style="font-family:'Spline Sans Mono',monospace; color:{{ p.c }};">{{ p.g }}</span>{{ p.t }}</span>
+                            </sc-for>
+                          </span>
+                          <span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#C0BEB4; flex:none; width:12px;">{{ d.chevron }}</span>
+                        </span>
+                      </button>
+                      <sc-if value="{{ d.open }}" hint-placeholder-val="{{ true }}">
+                        <div style="margin-top:16px;">
+                          <sc-for list="{{ d.bullets }}" as="b" hint-placeholder-count="4">
+                            <div style="display:grid; grid-template-columns:62px 1fr; column-gap:22px; padding:9px 0;">
+                              <div style="text-align:right; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; padding-top:6px;">{{ b.time }}</div>
+                              <div style="border-left:1px solid #ECEAE2; padding-left:22px;">
+                                <div style="display:flex; align-items:baseline; gap:0;">
+                                  <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ b.gc }}; width:24px; flex:none; margin-left:-24px; text-align:center; background:#F6F5F1;">{{ b.g }}</span>
+                                  <span style="font-family:'Newsreader',serif; font-size:18px; line-height:1.5; color:#23232A;">{{ b.text }}</span>
+                                </div>
+                                <div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:9px;">
+                                  <sc-for list="{{ b.chips }}" as="c" hint-placeholder-count="2">
+                                    <span style="display:inline-flex; align-items:center; gap:6px; font-family:'Spline Sans',sans-serif; font-size:12px; color:#5C594F; background:#fff; border:1px solid #ECEAE2; border-radius:8px; padding:3px 10px; white-space:nowrap;"><span style="font-family:'Spline Sans Mono',monospace; color:{{ c.c }};">{{ c.g }}</span>{{ c.t }}</span>
+                                  </sc-for>
+                                </div>
+                              </div>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- SOON -->
+            <sc-if value="{{ isSoonD }}" hint-placeholder-val="{{ false }}">
+              <div style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px;">
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:22px; letter-spacing:.34em; color:#C7CEDB;">{{ soonGlyphD }}</div>
+                <div style="font-family:'Instrument Serif',serif; font-size:32px; color:#23232A; margin:18px 0 10px;">{{ soonTitleD }}</div>
+                <p style="font-family:'Newsreader',serif; font-size:17px; line-height:1.6; color:#6B685E; max-width:420px; margin:0;">{{ soonBodyD }}</p>
+              </div>
+            </sc-if>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOBILE -->
+    <div style="flex:none; width:392px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">Mobile · same data, folded nav</div>
+      <div style="background:#0F0F12; border-radius:46px; padding:9px; box-shadow:0 34px 64px -22px rgba(0,0,0,.4), 0 0 0 1px rgba(0,0,0,.12);">
+        <div style="background:#F6F5F1; border-radius:38px; overflow:hidden; height:788px; display:flex; flex-direction:column;">
+          <div style="flex:none; display:flex; justify-content:space-between; align-items:center; padding:14px 26px 4px;">
+            <span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#23232A; font-weight:500;">9:41</span>
+            <span style="font-size:11px; color:#9A988F;">●●● &nbsp;⌃ &nbsp;◐</span>
+          </div>
+          <div style="flex:none; display:flex; align-items:center; justify-content:space-between; padding:6px 22px 10px;">
+            <span style="font-family:'Instrument Serif',serif; font-size:25px; color:#23232A;">{{ mTitle }}</span>
+            <button onClick="{{ openReviewM }}" style="display:inline-flex; align-items:center; gap:6px; background:#3E4D6B; border:none; border-radius:16px; padding:5px 11px; cursor:pointer;">
+              <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#fff;">◷ {{ reviewCount }}</span>
+            </button>
+          </div>
+
+          <div style="flex:1; overflow-y:auto; padding:6px 20px 18px;">
+
+            <!-- MOBILE OVERVIEW -->
+            <sc-if value="{{ isOverviewM }}" hint-placeholder-val="{{ false }}">
+              <div>
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:14px;">Tuesday · 22 June</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:11px; margin-bottom:20px;">
+                  <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:12px 13px;">
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Mood</div>
+                    <div style="font-family:'Instrument Serif',serif; font-size:24px; color:#23232A; margin:3px 0 7px;">{{ moodVal }}</div>
+                    <svg viewBox="0 0 200 40" preserveAspectRatio="none" style="width:100%; height:30px; display:block; overflow:visible;"><polyline points="{{ moodPts }}" fill="none" stroke="#3E4D6B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+                  </div>
+                  <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:12px 13px;">
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Coffee</div>
+                    <div style="font-family:'Instrument Serif',serif; font-size:24px; color:#23232A; margin:3px 0 7px;">{{ coffeeVal }}</div>
+                    <svg viewBox="0 0 200 40" preserveAspectRatio="none" style="width:100%; height:30px; display:block;"><sc-for list="{{ coffeeBars }}" as="b" hint-placeholder-count="14"><rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="1.2" fill="{{ b.fill }}"></rect></sc-for></svg>
+                  </div>
+                  <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:12px 13px;">
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Sleep</div>
+                    <div style="font-family:'Instrument Serif',serif; font-size:24px; color:#23232A; margin:3px 0 7px;">{{ sleepVal }}</div>
+                    <svg viewBox="0 0 200 40" preserveAspectRatio="none" style="width:100%; height:30px; display:block; overflow:visible;"><polyline points="{{ sleepPts }}" fill="none" stroke="#5E7C66" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+                  </div>
+                  <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:12px 13px;">
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Running</div>
+                    <div style="font-family:'Instrument Serif',serif; font-size:24px; color:#23232A; margin:3px 0 9px;">{{ runVal }}</div>
+                    <div style="display:flex; gap:3px; align-items:flex-end; height:30px; padding-bottom:6px;"><sc-for list="{{ runDots }}" as="d" hint-placeholder-count="14"><sc-if value="{{ d.on }}" hint-placeholder-val="{{ true }}"><span style="flex:1; height:11px; border-radius:2px; background:#5E7C66;"></span></sc-if><sc-if value="{{ d.off }}" hint-placeholder-val="{{ true }}"><span style="flex:1; height:11px; border-radius:2px; background:#E4E2D9;"></span></sc-if></sc-for></div>
+                  </div>
+                </div>
+
+                <div style="font-family:'Instrument Serif',serif; font-size:20px; color:#23232A; margin-bottom:2px;">Today</div>
+                <sc-for list="{{ todayTasks }}" as="b" hint-placeholder-count="3">
+                  <div style="display:flex; gap:10px; padding:11px 0; border-top:1px solid #F0EEE7;">
+                    <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:{{ b.glyphColor }}; width:14px; flex:none; text-align:center; margin-top:2px;">{{ b.glyph }}</span>
+                    <div style="flex:1; min-width:0;">
+                      <sc-if value="{{ b.isDone }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Newsreader',serif; font-size:15.5px; color:#A6A398; text-decoration:line-through;">{{ b.title }}</span></sc-if>
+                      <sc-if value="{{ b.notDone }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Newsreader',serif; font-size:15.5px; color:#23232A;">{{ b.title }}</span></sc-if>
+                      <div style="display:flex; align-items:center; gap:8px; margin-top:3px;">
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; color:{{ b.statusColor }}; background:{{ b.statusBg }}; border-radius:5px; padding:2px 6px;">{{ b.statusText }}</span>
+                        <sc-if value="{{ b.hasDue }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#9A988F;">due {{ b.due }}</span></sc-if>
+                      </div>
+                    </div>
+                  </div>
+                </sc-for>
+
+                <div style="font-family:'Instrument Serif',serif; font-size:20px; color:#23232A; margin:22px 0 2px;">Recently</div>
+                <sc-for list="{{ recent }}" as="b" hint-placeholder-count="3">
+                  <div style="display:flex; gap:10px; padding:10px 0; border-top:1px solid #F0EEE7;">
+                    <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#3E4D6B; width:14px; flex:none; text-align:center; margin-top:1px;">{{ b.glyph }}</span>
+                    <div style="flex:1; min-width:0; display:flex; align-items:baseline; justify-content:space-between; gap:8px;">
+                      <span style="font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#23232A;"><b style="font-weight:600;">{{ b.label }}</b> · {{ b.detail }}</span>
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#9A988F; flex:none;">{{ b.day }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <!-- MOBILE TIMELINE -->
+            <sc-if value="{{ isTimelineM }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <sc-for list="{{ days }}" as="d" hint-placeholder-count="4">
+                  <div style="border-top:1px solid #ECEAE2; padding:16px 0;">
+                    <button onClick="{{ d.onToggle }}" style="display:flex; width:100%; align-items:baseline; justify-content:space-between; background:none; border:none; cursor:pointer; text-align:left; padding:0; gap:10px;">
+                      <span style="display:flex; align-items:baseline; gap:8px;"><span style="font-family:'Instrument Serif',serif; font-size:20px; color:#23232A;">{{ d.name }}</span><sc-if value="{{ d.hasRel }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:#3E4D6B;">{{ d.rel }}</span></sc-if></span>
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#C0BEB4;">{{ d.chevron }}</span>
+                    </button>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:7px;">
+                      <sc-for list="{{ d.summary }}" as="p" hint-placeholder-count="3">
+                        <span style="font-family:'Spline Sans',sans-serif; font-size:12px; color:#6B685E; display:inline-flex; align-items:baseline; gap:5px;"><span style="font-family:'Spline Sans Mono',monospace; color:{{ p.c }};">{{ p.g }}</span>{{ p.t }}</span>
+                      </sc-for>
+                    </div>
+                    <sc-if value="{{ d.open }}" hint-placeholder-val="{{ true }}">
+                      <div style="margin-top:13px; border-left:1px solid #ECEAE2; padding-left:16px; display:flex; flex-direction:column; gap:13px;">
+                        <sc-for list="{{ d.bullets }}" as="b" hint-placeholder-count="3">
+                          <div>
+                            <div style="display:flex; align-items:baseline; gap:0;">
+                              <span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:{{ b.gc }}; width:20px; flex:none; margin-left:-20px; text-align:center; background:#F6F5F1;">{{ b.g }}</span>
+                              <span style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.45; color:#23232A;">{{ b.text }}</span>
+                            </div>
+                            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
+                              <sc-for list="{{ b.chips }}" as="c" hint-placeholder-count="2">
+                                <span style="display:inline-flex; align-items:center; gap:5px; font-family:'Spline Sans',sans-serif; font-size:11px; color:#5C594F; background:#fff; border:1px solid #ECEAE2; border-radius:7px; padding:2px 8px; white-space:nowrap;"><span style="font-family:'Spline Sans Mono',monospace; color:{{ c.c }};">{{ c.g }}</span>{{ c.t }}</span>
+                              </sc-for>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <!-- MOBILE SOON -->
+            <sc-if value="{{ isSoonM }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px 20px; height:90%;">
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:18px; letter-spacing:.3em; color:#C7CEDB;">{{ soonGlyphM }}</div>
+                <div style="font-family:'Instrument Serif',serif; font-size:26px; color:#23232A; margin:14px 0 8px;">{{ soonTitleM }}</div>
+                <p style="font-family:'Newsreader',serif; font-size:15px; line-height:1.55; color:#6B685E; margin:0;">{{ soonBodyM }}</p>
+              </div>
+            </sc-if>
+
+          </div>
+
+          <!-- BOTTOM TAB BAR -->
+          <div style="flex:none; display:flex; justify-content:space-around; align-items:center; padding:9px 8px 24px; border-top:1px solid #ECEAE2; background:#FBFAF7;">
+            <sc-for list="{{ navM }}" as="n" hint-placeholder-count="5">
+              <button onClick="{{ n.onClick }}" style="display:flex; flex-direction:column; align-items:center; gap:3px; background:none; border:none; cursor:pointer; padding:4px 6px; flex:1;">
+                <sc-if value="{{ n.active }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#3E4D6B;">{{ n.glyph }}</span>
+                  <span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#3E4D6B; font-weight:500;">{{ n.label }}</span>
+                </sc-if>
+                <sc-if value="{{ n.inactive }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">{{ n.glyph }}</span>
+                  <span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">{{ n.label }}</span>
+                </sc-if>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ OVERVIEW VARIATIONS ============================ -->
+  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">Overview — two more layouts for the same glance</div>
+  <div style="display:flex; gap:48px; align-items:flex-start;">
+
+    <!-- VAR B: DAILY BRIEF -->
+    <div style="flex:none; width:560px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.08em; color:#9A988F; margin-bottom:8px;">B · Daily brief — a morning page</div>
+      <div style="background:#F6F5F1; border:1px solid #E2E0D7; border-radius:6px; box-shadow:0 18px 44px -28px rgba(0,0,0,.32); padding:38px 44px 40px; min-height:560px;">
+        <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398;">Tuesday · 22 June</div>
+        <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:32px; color:#23232A; margin:8px 0 16px;">Good morning, Sam.</h2>
+        <p style="font-family:'Newsreader',serif; font-size:19px; line-height:1.62; color:#3A382F; margin:0 0 22px;">You slept about five hours and woke wired, but a 4 km run along the canal cleared your head. Coffee's down to two a day this week, and you're on a four-day running streak. One thing's waiting on you: <span style="border-bottom:1.5px solid #C7CEDB;">email Dana about the lease</span>, due Friday.</p>
+        <div style="display:flex; flex-wrap:wrap; gap:9px; padding:18px 0 22px; border-top:1px solid #E2E0D7; border-bottom:1px solid #E2E0D7;">
+          <span style="font-family:'Spline Sans Mono',monospace; font-size:12.5px; color:#5C594F;"><span style="color:#B0843B;">—</span> mood 3.9</span><span style="color:#D7D4CA;">·</span>
+          <span style="font-family:'Spline Sans Mono',monospace; font-size:12.5px; color:#5C594F;"><span style="color:#B0843B;">—</span> coffee 2.3</span><span style="color:#D7D4CA;">·</span>
+          <span style="font-family:'Spline Sans Mono',monospace; font-size:12.5px; color:#5C594F;"><span style="color:#B0843B;">—</span> slept 6.5h</span><span style="color:#D7D4CA;">·</span>
+          <span style="font-family:'Spline Sans Mono',monospace; font-size:12.5px; color:#5C594F;"><span style="color:#3E4D6B;">○</span> 4-day run streak</span>
+        </div>
+        <div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin:22px 0 10px;">On your plate</div>
+        <div style="display:flex; gap:10px; padding:9px 0; align-items:baseline;"><span style="font-family:'Spline Sans Mono',monospace; color:#3E4D6B; width:14px;">•</span><span style="font-family:'Newsreader',serif; font-size:17px; color:#23232A;">Email Dana about the lease</span><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#9A988F; margin-left:auto;">Fri</span></div>
+        <div style="display:flex; gap:10px; padding:9px 0; align-items:baseline;"><span style="font-family:'Spline Sans Mono',monospace; color:#3E4D6B; width:14px;">•</span><span style="font-family:'Newsreader',serif; font-size:17px; color:#23232A;">Call the dentist</span><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#9A988F; margin-left:auto;">Fri</span></div>
+        <div style="display:flex; gap:10px; padding:9px 0; align-items:baseline;"><span style="font-family:'Spline Sans Mono',monospace; color:#3E4D6B; width:14px;">›</span><span style="font-family:'Newsreader',serif; font-size:17px; color:#3E4D6B;">Book the team lunch</span><span style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#3E4D6B; margin-left:auto;">migrated</span></div>
+        <div style="font-family:'Spline Sans',sans-serif; font-size:13px; color:#9A988F; margin-top:20px;">5 suggestions waiting in Review →</div>
+      </div>
+    </div>
+
+    <!-- VAR C: FOCUS -->
+    <div style="flex:none; width:560px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.08em; color:#9A988F; margin-bottom:8px;">C · Focus — one thing, then the numbers</div>
+      <div style="background:#F6F5F1; border:1px solid #E2E0D7; border-radius:6px; box-shadow:0 18px 44px -28px rgba(0,0,0,.32); padding:38px 40px 40px; min-height:560px;">
+        <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398; margin-bottom:14px;">Tuesday · 22 June · today's focus</div>
+        <div style="background:#100F0C; border-radius:16px; padding:30px 30px 28px; margin-bottom:26px;">
+          <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#8A877E; margin-bottom:12px;"><span style="color:#C7CEDB;">•</span> the one task</div>
+          <div style="font-family:'Instrument Serif',serif; font-size:30px; line-height:1.12; color:#F6F5F1;">Email Dana about the lease.</div>
+          <div style="display:flex; align-items:center; gap:12px; margin-top:18px;">
+            <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#9A988F; background:rgba(255,255,255,.08); border-radius:6px; padding:4px 9px;">due Friday</span>
+            <span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#9A988F;">↳ from Monday's bullet</span>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:11px; margin-bottom:24px;">
+          <div style="text-align:center;"><div style="font-family:'Instrument Serif',serif; font-size:26px; color:#23232A;">3.9</div><div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#A6A398; margin-top:2px;">mood</div></div>
+          <div style="text-align:center;"><div style="font-family:'Instrument Serif',serif; font-size:26px; color:#23232A;">2.3</div><div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#A6A398; margin-top:2px;">coffee</div></div>
+          <div style="text-align:center;"><div style="font-family:'Instrument Serif',serif; font-size:26px; color:#23232A;">6.5</div><div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#A6A398; margin-top:2px;">sleep</div></div>
+          <div style="text-align:center;"><div style="font-family:'Instrument Serif',serif; font-size:26px; color:#5E7C66;">4</div><div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#A6A398; margin-top:2px;">run streak</div></div>
+        </div>
+        <div style="display:flex; align-items:baseline; justify-content:space-between; padding-top:18px; border-top:1px solid #E2E0D7;">
+          <span style="font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#5C594F;">2 more tasks today</span>
+          <span style="font-family:'Spline Sans',sans-serif; font-size:13px; color:#3E4D6B;">5 in Review →</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1980,&quot;height&quot;:1400},&quot;defaultView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;overview&quot;,&quot;timeline&quot;,&quot;tasks&quot;,&quot;trackers&quot;,&quot;activities&quot;],&quot;default&quot;:&quot;overview&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;showProvenance&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const dv = (props && props.defaultView) || 'overview';
+    this.state = { vd: dv, vm: 'timeline', prov: null, openDays: ['d0', 'd1'] };
+  }
+
+  tasksData = [
+    { id:'t1', glyph:'•', glyphColor:'#3E4D6B', title:'Call the dentist about the filling', state:'todo', due:'Fri', srcDay:'Today', srcTime:'09:46', src:'Skipped lunch, squeezed in a 30-minute run, and I really need to call the dentist about that filling — Friday at the latest.' },
+    { id:'t2', glyph:'•', glyphColor:'#3E4D6B', title:'Email Dana about the lease', state:'todo', due:'Fri', srcDay:'Mon', srcTime:'09:10', src:'Need to email Dana about the lease before Friday.' },
+    { id:'t3', glyph:'›', glyphColor:'#3E4D6B', title:'Book the team lunch', state:'migrated', due:'', migratedTimes:'2 days', srcDay:'Mon', srcTime:'10:12', src:'Standup — ship the export fix, follow up with QA, and book the team lunch.' },
+    { id:'t4', glyph:'✓', glyphColor:'#5E7C66', title:'Ship the export fix', state:'done', due:'', srcDay:'Today', srcTime:'10:12', src:'Standup — ship the export fix, follow up with QA, and book the team lunch.' }
+  ];
+
+  activitiesData = [
+    { id:'a1', glyph:'○', label:'Run', detail:'4.0 km · 28 min', day:'Today', time:'09:07', src:'Ran 4k along the canal. Lungs ok, head much better.' },
+    { id:'a2', glyph:'○', label:'Yoga', detail:'45 min', day:'Yesterday', time:'18:05', src:'Did 45 min of yoga, then a short walk.' },
+    { id:'a3', glyph:'○', label:'Walk', detail:'short, evening', day:'Yesterday', time:'18:50', src:'Did 45 min of yoga, then a short walk.' },
+    { id:'a4', glyph:'○', label:'Run', detail:'5.0 km · 36 min', day:'Sun', time:'08:10', src:'Long slow 5k. Grey out, but glad I went.' }
+  ];
+
+  daysData = [
+    { id:'d0', name:'Tuesday', date:'22 June', rel:'Today',
+      summary:[{g:'•',c:'#3E4D6B',t:'3 tasks'},{g:'○',c:'#3E4D6B',t:'ran 4 km'},{g:'—',c:'#B0843B',t:'mood good'}],
+      bullets:[
+        { time:'08:51', g:'—', gc:'#B0843B', text:'Slept maybe five hours. Wired awake again around 2.', chips:[{g:'—',c:'#B0843B',t:'Sleep · 5h'}] },
+        { time:'08:53', g:'•', gc:'#3E4D6B', text:'Email Dana about the lease before Friday.', chips:[{g:'•',c:'#3E4D6B',t:'Task · Email Dana'}] },
+        { time:'09:07', g:'○', gc:'#3E4D6B', text:'Ran 4k along the canal. Lungs ok, head much better.', chips:[{g:'○',c:'#3E4D6B',t:'Run · 4 km'},{g:'—',c:'#B0843B',t:'Mood · good'}] },
+        { time:'09:20', g:'—', gc:'#B0843B', text:'Down to three cigarettes today. Quietly proud of that.', chips:[{g:'—',c:'#B0843B',t:'Cigarettes · 3'}] },
+        { time:'10:12', g:'•', gc:'#3E4D6B', text:'Standup — ship the export fix, follow up with QA, and book the team lunch.', chips:[{g:'•',c:'#3E4D6B',t:'Ship export fix'},{g:'•',c:'#3E4D6B',t:'Follow up QA'},{g:'›',c:'#3E4D6B',t:'Book lunch · migrated'}] }
+      ] },
+    { id:'d1', name:'Monday', date:'21 June', rel:'Yesterday',
+      summary:[{g:'○',c:'#3E4D6B',t:'yoga + walk'},{g:'—',c:'#B0843B',t:'weight 74.2'},{g:'•',c:'#3E4D6B',t:'1 task'}],
+      bullets:[
+        { time:'07:30', g:'—', gc:'#B0843B', text:'Weight 74.2 this morning.', chips:[{g:'—',c:'#B0843B',t:'Weight · 74.2 kg'}] },
+        { time:'09:10', g:'•', gc:'#3E4D6B', text:"Mum's birthday is on the 28th — get a gift.", chips:[{g:'•',c:'#3E4D6B',t:'Task · Birthday gift'}] },
+        { time:'18:05', g:'○', gc:'#3E4D6B', text:'Did 45 min of yoga, then a short walk.', chips:[{g:'○',c:'#3E4D6B',t:'Yoga · 45 min'},{g:'○',c:'#3E4D6B',t:'Walk'}] },
+        { time:'21:30', g:'—', gc:'#B0843B', text:'Tired but calmer. Mood a solid 4.', chips:[{g:'—',c:'#B0843B',t:'Mood · 4/5'}] }
+      ] },
+    { id:'d2', name:'Sunday', date:'20 June', rel:'',
+      summary:[{g:'○',c:'#3E4D6B',t:'ran 5 km'},{g:'—',c:'#B0843B',t:'mood 3/5'},{g:'•',c:'#3E4D6B',t:'2 tasks'}],
+      bullets:[
+        { time:'08:10', g:'○', gc:'#3E4D6B', text:'Long slow 5k. Grey out, but glad I went.', chips:[{g:'○',c:'#3E4D6B',t:'Run · 5 km'}] },
+        { time:'12:30', g:'•', gc:'#3E4D6B', text:'Renew the parking permit, and water the plants.', chips:[{g:'•',c:'#3E4D6B',t:'Renew permit'},{g:'•',c:'#3E4D6B',t:'Water plants'}] },
+        { time:'22:00', g:'—', gc:'#B0843B', text:'Flat sort of day. Mood maybe a 3.', chips:[{g:'—',c:'#B0843B',t:'Mood · 3/5'}] }
+      ] },
+    { id:'d3', name:'Saturday', date:'19 June', rel:'',
+      summary:[{g:'—',c:'#B0843B',t:'slept 7.5h'},{g:'—',c:'#B0843B',t:'mood 4/5'}],
+      bullets:[
+        { time:'09:40', g:'—', gc:'#B0843B', text:'Slept seven and a half hours — first proper night in a while.', chips:[{g:'—',c:'#B0843B',t:'Sleep · 7.5h'}] },
+        { time:'20:15', g:'—', gc:'#B0843B', text:'Good day, easy company. Mood a 4.', chips:[{g:'—',c:'#B0843B',t:'Mood · 4/5'}] }
+      ] },
+    { id:'d4', name:'Friday', date:'18 June', rel:'',
+      summary:[{g:'•',c:'#3E4D6B',t:'2 tasks'},{g:'○',c:'#3E4D6B',t:'walk'},{g:'—',c:'#B0843B',t:'coffee 4'}],
+      bullets:[
+        { time:'08:00', g:'—', gc:'#B0843B', text:'Four coffees before noon. Too many.', chips:[{g:'—',c:'#B0843B',t:'Caffeine · 4'}] },
+        { time:'13:20', g:'•', gc:'#3E4D6B', text:'Send the invoice, and reply to the landlord.', chips:[{g:'•',c:'#3E4D6B',t:'Send invoice'},{g:'•',c:'#3E4D6B',t:'Reply landlord'}] },
+        { time:'19:00', g:'○', gc:'#3E4D6B', text:'Evening walk to clear my head.', chips:[{g:'○',c:'#3E4D6B',t:'Walk · 25 min'}] }
+      ] }
+  ];
+
+  mood = [3,4,3,2,3,4,4,3,5,4,3,4,4,4];
+  coffee = [3,4,3,2,3,2,3,4,2,1,2,3,2,2];
+  sleep = [5.5,6,5,6.5,7,6,6.5,5.5,7.5,6.5,6,7,6.5,6.4];
+  run = [0,1,0,1,0,1,0,1,1,0,1,1,1,1];
+
+  setViewD(v){ this.setState({ vd: v }); }
+  setViewM(v){ this.setState({ vm: v }); }
+  toggleProv(id){ this.setState(s => ({ prov: s.prov === id ? null : id })); }
+  toggleDay(id){ this.setState(s => ({ openDays: s.openDays.includes(id) ? s.openDays.filter(x => x !== id) : [...s.openDays, id] })); }
+
+  points(vals, min, max){
+    const w=200,h=40,p=4,n=vals.length,r=(max-min)||1;
+    return vals.map((v,i)=>{ const x=p+(i/(n-1))*(w-2*p); const y=h-p-((v-min)/r)*(h-2*p); return x.toFixed(1)+','+y.toFixed(1); }).join(' ');
+  }
+  bars(vals, max){
+    const W=200,H=40,n=vals.length,g=2,bw=(W-(n-1)*g)/n;
+    return vals.map((v,i)=>{ const bh=Math.max(2,(v/max)*(H-3)); return { x:(i*(bw+g)).toFixed(1), y:(H-bh).toFixed(1), w:bw.toFixed(1), h:bh.toFixed(1), fill:i>=n-7?'#B0843B':'#DCCBA0' }; });
+  }
+
+  navItems(side, active){
+    const g = { overview:'◆', timeline:'≡', tasks:'•', trackers:'—', activities:'○' };
+    return ['overview','timeline','tasks','trackers','activities'].map(k => ({
+      key:k, glyph:g[k], label:k.charAt(0).toUpperCase()+k.slice(1),
+      active: active===k, inactive: active!==k,
+      onClick: side==='d' ? () => this.setViewD(k) : () => this.setViewM(k)
+    }));
+  }
+
+  soonInfo(v){
+    const info = {
+      tasks:{ t:'Tasks', g:'•', b:'Coming next — a calm, status-grouped list, with migrated treated as a first-class state. Reading, not Jira.' },
+      trackers:{ t:'Trackers', g:'—', b:'Coming next — each tracker’s history with a visualization matched to its type, plus the correlations heart: “you feel better on days you run.”' },
+      activities:{ t:'Activities', g:'○', b:'Coming next — a filterable log that gently surfaces unlinked activities as candidates for new trackers.' },
+      review:{ t:'Your review inbox', g:'•  ○  —', b:'Five suggestions are waiting. Confirm or dismiss them in Review — the inbox built in Prompt 2.' }
+    };
+    return info[v] || info.tasks;
+  }
+
+  mapTasks(){
+    return this.tasksData.map(e => {
+      let statusColor, statusBg, statusText;
+      if (e.state === 'done') { statusColor='#5E7C66'; statusBg='#E7EEE6'; statusText='Done'; }
+      else if (e.state === 'migrated') { statusColor='#3E4D6B'; statusBg='#E9EDF4'; statusText='Migrated'; }
+      else { statusColor='#8A6A2F'; statusBg='#F2ECDD'; statusText='To do'; }
+      return { ...e, statusColor, statusBg, statusText, isDone:e.state==='done', notDone:e.state!=='done', isMigrated:e.state==='migrated', hasDue:!!e.due, provOpen:this.state.prov===e.id, onClick:()=>this.toggleProv(e.id) };
+    });
+  }
+  mapActs(){
+    return this.activitiesData.map(e => ({ ...e, provOpen:this.state.prov===e.id, onClick:()=>this.toggleProv(e.id) }));
+  }
+
+  renderVals(){
+    const vd = this.state.vd, vm = this.state.vm;
+    const soonD = this.soonInfo(vd), soonM = this.soonInfo(vm);
+    const days = this.daysData.map(d => ({
+      ...d, hasRel:!!d.rel, open:this.state.openDays.includes(d.id),
+      chevron:this.state.openDays.includes(d.id) ? '▾' : '▸', onToggle:()=>this.toggleDay(d.id)
+    }));
+    const titleMap = { overview:'Overview', timeline:'Timeline', tasks:'Tasks', trackers:'Trackers', activities:'Activities', review:'Review' };
+    return {
+      navD: this.navItems('d', vd),
+      navM: this.navItems('m', vm),
+      reviewCount: 5,
+      provEnabled: this.props.showProvenance !== false,
+
+      isOverviewD: vd==='overview', isTimelineD: vd==='timeline', isSoonD: !['overview','timeline'].includes(vd),
+      isOverviewM: vm==='overview', isTimelineM: vm==='timeline', isSoonM: !['overview','timeline'].includes(vm),
+      soonTitleD: soonD.t, soonBodyD: soonD.b, soonGlyphD: soonD.g,
+      soonTitleM: soonM.t, soonBodyM: soonM.b, soonGlyphM: soonM.g,
+      mTitle: titleMap[vm] || 'Overview',
+
+      openReviewD: () => this.setViewD('review'),
+      openReviewM: () => this.setViewM('review'),
+      goTimelineD: () => this.setViewD('timeline'),
+
+      moodVal:'3.9', moodNote:'steadier this week', moodPts:this.points(this.mood,1,5),
+      coffeeVal:'2.3', coffeeNote:'easing off — down from 2.9', coffeeBars:this.bars(this.coffee,4),
+      sleepVal:'6.5h', sleepNote:'+0.4h vs last week', sleepPts:this.points(this.sleep,4,8),
+      runVal:'4-day', runNote:'longest run streak this month',
+      runDots: this.run.map(v => ({ on:v===1, off:v!==1 })),
+
+      todayTasks: this.mapTasks(),
+      openTaskCount: this.tasksData.filter(t => t.state !== 'done').length,
+      recent: this.mapActs(),
+      days
+    };
+  }
+}
+</script>
+</body>
+</html>

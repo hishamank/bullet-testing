@@ -6,7 +6,7 @@
  * "applied", a staged one "will apply", an `ask` one "your call", a plain suggestion "suggested".
  */
 
-import type { SuggestionTier, TargetKind, TaskStatus } from '@/lib/types'
+import type { SuggestionTier, TargetKind, TaskPriority, TaskStatus } from '@/lib/types'
 
 /** The four base kinds the agent extracts, plus the glyphs the journal hangs in the margin. */
 export const GLYPH = {
@@ -70,4 +70,41 @@ export function taskGlyph(status: TaskStatus): { glyph: string; colorClass: stri
   if (status === 'done') return { glyph: GLYPH.done, colorClass: 'text-sage' }
   if (status === 'migrated') return { glyph: GLYPH.migrated, colorClass: 'text-indigo' }
   return { glyph: GLYPH.task, colorClass: 'text-indigo' }
+}
+
+/**
+ * Per-status metadata for the Tasks page: the group heading label, the rapid-logging glyph, and
+ * the ink/wash Tailwind classes. This is the fuller vocabulary the standalone Tasks manager needs
+ * (`in_progress` → `/`, `cancelled` → `✕`) — Overview keeps the leaner `taskGlyph` / `statusPill`.
+ */
+export interface TaskStatusMeta {
+  label: string
+  glyph: string
+  /** Tailwind text-color class for the glyph. */
+  glyphClass: string
+}
+
+export const TASK_STATUS_META: Record<TaskStatus, TaskStatusMeta> = {
+  todo: { label: 'To do', glyph: '•', glyphClass: 'text-indigo' },
+  in_progress: { label: 'In progress', glyph: '/', glyphClass: 'text-indigo' },
+  migrated: { label: 'Migrated', glyph: '›', glyphClass: 'text-indigo' },
+  done: { label: 'Done', glyph: '✓', glyphClass: 'text-sage' },
+  cancelled: { label: 'Cancelled', glyph: '✕', glyphClass: 'text-faint-3' },
+}
+
+/** Fixed reading order for the status groups — open work first, resolved work last. */
+export const TASK_STATUS_ORDER: TaskStatus[] = [
+  'todo',
+  'in_progress',
+  'migrated',
+  'done',
+  'cancelled',
+]
+
+/** A task priority's small pill — ink + wash Tailwind classes (P1 urgent → P4 faint). */
+export const PRIORITY_META: Record<TaskPriority, { textClass: string; bgClass: string }> = {
+  P1: { textClass: 'text-prio-1', bgClass: 'bg-prio-1-wash' },
+  P2: { textClass: 'text-prio-2', bgClass: 'bg-prio-2-wash' },
+  P3: { textClass: 'text-prio-3', bgClass: 'bg-prio-3-wash' },
+  P4: { textClass: 'text-prio-4', bgClass: 'bg-prio-4-wash' },
 }

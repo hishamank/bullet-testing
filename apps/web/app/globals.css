@@ -36,6 +36,16 @@
   --color-sage: #5e7c66;
   --color-sage-wash: #e7eee6;
 
+  /* Task priority scale (P1 urgent → P4 faint) — pill fill + ink, used on the Tasks page */
+  --color-prio-1: #c2503a; /* P1 — shares the rust hue */
+  --color-prio-1-wash: #f6e7e2;
+  --color-prio-2: #a8792f;
+  --color-prio-2-wash: #f3ebd9;
+  --color-prio-3: #7a776d;
+  --color-prio-3-wash: #efede6;
+  --color-prio-4: #a6a398;
+  --color-prio-4-wash: #f1efe9;
+
   /* Warnings / destructive */
   --color-rust: #c2503a;
   --color-coral: #ed6a5e;
