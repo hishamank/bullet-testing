@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { AGENT_CONFIG_DEFAULTS } from '../config'
 import { createScriptedOllamaClient } from '../ollama/scripted'
 import { extractCandidates, extractJsonObject } from './extract'
-import { buildExtractionPrompt } from './prompt'
+import { buildExtractionPrompt, EXTRACTION_SYSTEM_PROMPT } from './prompt'
 import { extractionJsonSchema, extractionResponseSchema } from './schema'
 import type { ExtractionSnapshot } from './snapshot'
 
@@ -44,6 +44,17 @@ describe('buildExtractionPrompt', () => {
     expect(messages[1]?.content).toContain('ran 5k')
     expect(messages[1]?.content).toContain('mood')
     expect(messages[1]?.content).toContain('call dentist')
+  })
+
+  test('the system prompt teaches the state-vs-action distinction', () => {
+    // A reported state/feeling must map to a "happened" record (activity/tracker_entry), NOT a task…
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('feeling overwhelmed')
+    expect(EXTRACTION_SYSTEM_PROMPT).toMatch(/feeling overwhelmed.*NOT a task/s)
+    expect(EXTRACTION_SYSTEM_PROMPT).toMatch(/feeling overwhelmed.*(activity|tracker_entry)/s)
+    // …while an actionable the user intends to DO maps to a task (future_oneoff).
+    expect(EXTRACTION_SYSTEM_PROMPT).toMatch(/call the plumber.*->\s*task/s)
+    // And the JSON-only instruction is still the final line of the prompt.
+    expect(EXTRACTION_SYSTEM_PROMPT.trimEnd().endsWith('no text before or after.')).toBe(true)
   })
 })
 

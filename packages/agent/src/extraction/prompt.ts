@@ -24,6 +24,11 @@ Each candidate also has an ORIENTATION (its time sense):
 - "future_recurring": an intention to track/do something repeatedly -> a tracker DEFINITION.
 - "durable_fact": a standing fact about the user (not an action, not a plan). v1 has no place for these; still emit it so it is counted.
 
+State vs action — a state/feeling you REPORT is a "happened" RECORD, NOT a task; only a thing you intend to DO is a task:
+- "feeling overwhelmed" -> tracker_entry if a matching tracker exists, else an activity; orientation "happened". NOT a task.
+- "energy is low today" / "pretty stressed" -> a state reading; orientation "happened". NOT a task.
+- "need to call the plumber" / "finish the report" -> task; orientation "future_oneoff".
+
 Rules:
 - Split the bullet into ONE OR MORE candidates: a single bullet may contain several things ("ran 5k and felt great, remember to call mom").
 - When a candidate refers to an EXISTING tracker or open task in the provided state, set "referenceName" to that exact name/title so it can be appended/updated instead of duplicated.
