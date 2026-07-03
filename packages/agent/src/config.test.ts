@@ -11,6 +11,7 @@ describe('loadAgentConfig', () => {
     expect(config.autoThreshold).toBe(0.85)
     expect(config.suggestThreshold).toBe(0.5)
     expect(config.autoCreateTasks).toBe(false)
+    expect(config.autoApplyValueRecords).toBe(false)
   })
 
   test('reads overrides from the environment', () => {
@@ -21,6 +22,7 @@ describe('loadAgentConfig', () => {
       AGENT_AUTO_THRESHOLD: '0.9',
       AGENT_SUGGEST_THRESHOLD: '0.4',
       AGENT_AUTO_CREATE_TASKS: 'true',
+      AGENT_AUTO_APPLY_VALUE_RECORDS: 'true',
     })
     expect(config).toEqual({
       baseUrl: 'http://gpu-box:11434',
@@ -29,6 +31,7 @@ describe('loadAgentConfig', () => {
       autoThreshold: 0.9,
       suggestThreshold: 0.4,
       autoCreateTasks: true,
+      autoApplyValueRecords: true,
     })
   })
 

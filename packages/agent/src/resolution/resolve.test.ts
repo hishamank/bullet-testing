@@ -507,6 +507,199 @@ describe('tier assignment (§4.5)', () => {
   })
 })
 
+/**
+ * VALUE-BEARING records are capped OUT of 'auto' by default (§4.5, temporary conservatism until the
+ * deterministic matcher is proven live): a wrong value or a mislinked state must never be written
+ * SILENTLY. A `tracker_entry` is always value-bearing; an `activity` is value-bearing iff it carries
+ * a `quantity`. The cap is liftable via `autoApplyValueRecords`.
+ */
+describe('value-bearing records are capped out of auto (§4.5)', () => {
+  const moodScale10: ExtractionSnapshot = {
+    trackers: [
+      {
+        id: 'tracker-mood',
+        name: 'mood',
+        input_type: 'scale',
+        config: { input_type: 'scale', min: 1, max: 10 },
+      },
+    ],
+    openTasks: [],
+  }
+
+  test('coffee-qty-3: a quantified activity create is capped to "suggest" (was auto)', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'drank 3 coffees',
+          confidence: 0.95, // above autoThreshold — proves the cap, not low confidence, did it
+          fields: { name: 'drank coffee', quantity: 3 },
+        }),
+      ],
+      EMPTY, // no tracker match → activity-first
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('activity')
+    expect(s.operation).toBe('create')
+    expect(s.payload.quantity).toBe(3)
+    // Auto-eligible by confidence, but value-bearing → capped to 'suggest'.
+    expect(s.confidence).toBeGreaterThanOrEqual(config.autoThreshold)
+    expect(s.tier).toBe('suggest')
+  })
+
+  test('mood-3: a tracker_entry append (value 3) is capped to "suggest" even on a STRONG link', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'mood is like a 3',
+          confidence: 0.95,
+          fields: { name: 'mood', value: 3 },
+        }),
+      ],
+      moodScale10,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('tracker_entry')
+    expect(s.operation).toBe('append')
+    expect(s.target_id).toBe('tracker-mood')
+    expect(s.payload.value).toBe(3)
+    // The STRONG exact match + high confidence would otherwise be 'auto'; the value cap forces
+    // 'suggest'. (The combined confidence clears autoThreshold, proving the cap did it.)
+    expect(s.confidence).toBeGreaterThanOrEqual(config.autoThreshold)
+    expect(s.tier).toBe('suggest')
+  })
+
+  test('plain walk: a value-LESS activity create stays "auto"', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'went for a walk',
+          confidence: 0.95,
+          fields: { name: 'walk' }, // no quantity → not value-bearing
+        }),
+      ],
+      EMPTY,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('activity')
+    expect(s.payload.quantity).toBeNull()
+    expect(s.tier).toBe('auto')
+  })
+
+  test('mark-done: a confident task update carries no value → stays "auto"', () => {
+    const snapshot: ExtractionSnapshot = {
+      trackers: [],
+      openTasks: [
+        {
+          id: 'task-1',
+          title: 'call the dentist',
+          status: 'todo',
+          notes: null,
+          due_at: null,
+          priority: null,
+        },
+      ],
+    }
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'called the dentist',
+          referenceName: 'call the dentist',
+          confidence: 0.95,
+        }),
+      ],
+      snapshot,
+      config,
+    )
+    const s = first(suggestions)
+    expect(s.target_kind).toBe('task')
+    expect(s.operation).toBe('update')
+    expect(s.tier).toBe('auto')
+  })
+
+  test('tracker definition stays never-auto (unchanged): future_recurring → "suggest"', () => {
+    const { suggestions } = resolveCandidates(
+      [
+        candidate({
+          kind: 'tracker',
+          orientation: 'future_recurring',
+          confidence: 1,
+          fields: { name: 'water', input_type: 'number' },
+        }),
+      ],
+      EMPTY,
+      config,
+    )
+    expect(first(suggestions).tier).toBe('suggest')
+  })
+
+  test('flag on (autoApplyValueRecords): coffee-qty-3 and a STRONG mood-3 auto-apply again', () => {
+    const promoted = { ...config, autoApplyValueRecords: true }
+
+    // A quantified activity → auto again.
+    const coffee = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'drank 3 coffees',
+          confidence: 0.95,
+          fields: { name: 'drank coffee', quantity: 3 },
+        }),
+      ],
+      EMPTY,
+      promoted,
+    )
+    const c = first(coffee.suggestions)
+    expect(c.target_kind).toBe('activity')
+    expect(c.payload.quantity).toBe(3)
+    expect(c.tier).toBe('auto')
+
+    // A STRONG-linked tracker_entry → auto again.
+    const mood = resolveCandidates(
+      [
+        candidate({
+          orientation: 'happened',
+          text: 'mood is like a 3',
+          confidence: 0.95,
+          fields: { name: 'mood', value: 3 },
+        }),
+      ],
+      moodScale10,
+      promoted,
+    )
+    const m = first(mood.suggestions)
+    expect(m.target_kind).toBe('tracker_entry')
+    expect(m.operation).toBe('append')
+    expect(m.tier).toBe('auto')
+
+    // Defense-in-depth: a DEFINITION create is STILL never auto even with the value flag on — the
+    // value cap promotes records, but the definition cap is independent (guards against a future
+    // reorder of assignTier's branches). CLAUDE.md §4.5: definitions always need a nod.
+    const definition = resolveCandidates(
+      [
+        candidate({
+          kind: 'tracker',
+          orientation: 'future_recurring',
+          confidence: 1,
+          fields: { name: 'water', input_type: 'number' },
+        }),
+      ],
+      EMPTY,
+      promoted,
+    )
+    const d = first(definition.suggestions)
+    expect(d.target_kind).toBe('tracker')
+    expect(d.tier).toBe('suggest')
+    expect(d.tier).not.toBe('auto')
+  })
+})
+
 describe('confidence combination', () => {
   test('append confidence blends model confidence with the fuse match score', () => {
     const snapshot: ExtractionSnapshot = {

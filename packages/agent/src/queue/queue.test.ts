@@ -16,19 +16,32 @@ import {
   softDeleteTracker,
 } from '@bullet/db'
 import { describe, expect, test } from 'vitest'
-import { AGENT_CONFIG_DEFAULTS } from '../config'
+import { AGENT_CONFIG_DEFAULTS, type AgentConfig } from '../config'
 import type { AgentDeps } from '../deps'
 import { type AgentEmitter, createAgentEmitter, type ExtractionCompleteEvent } from '../events'
 import { createScriptedOllamaClient, type OllamaScript } from '../ollama/scripted'
 import { enqueueExtraction } from './enqueue'
 import { createExtractionWorker } from './worker'
 
+/**
+ * Config for tests that specifically exercise AUTO-APPLY of a value-bearing tracker_entry. By
+ * default value-bearing records are capped to 'suggest' (never a silent auto value), so a test
+ * proving the auto-apply MACHINERY on a tracker_entry opts into `autoApplyValueRecords` — the cap
+ * itself is covered by the resolver's tier tests.
+ */
+const AUTO_VALUE_CONFIG: AgentConfig = { ...AGENT_CONFIG_DEFAULTS, autoApplyValueRecords: true }
+
 /** Build deps over a fresh in-memory db + a scripted Ollama client. */
-function makeDeps(conn: DbConnection, script: OllamaScript, emitter?: AgentEmitter): AgentDeps {
+function makeDeps(
+  conn: DbConnection,
+  script: OllamaScript,
+  emitter?: AgentEmitter,
+  config: AgentConfig = AGENT_CONFIG_DEFAULTS,
+): AgentDeps {
   return {
     db: conn.db,
     ollama: createScriptedOllamaClient(script),
-    config: AGENT_CONFIG_DEFAULTS,
+    config,
     emitter: emitter ?? createAgentEmitter(),
   }
 }
@@ -210,6 +223,56 @@ describe('queue end-to-end', () => {
     })
     const bullet = createBullet(conn.db, { owner_id: user.id, text: 'mood was 4' })
 
+    // A tracker_entry is value-bearing → capped to 'suggest' by default; this test proves the
+    // auto-apply machinery, so it opts into `autoApplyValueRecords`.
+    const deps = makeDeps(
+      conn,
+      {
+        chat: () =>
+          JSON.stringify({
+            candidates: [
+              {
+                kind: 'tracker_entry',
+                orientation: 'happened',
+                text: 'mood was 4',
+                referenceName: 'mood',
+                fields: { value: 4 },
+                confidence: 0.95,
+              },
+            ],
+          }),
+      },
+      undefined,
+      AUTO_VALUE_CONFIG,
+    )
+
+    enqueueExtraction(deps, bullet.id, user.id)
+    await createExtractionWorker(deps).drain()
+
+    const entries = listTrackerEntries(conn.db, user.id)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.value).toBe(4)
+    expect(entries[0]?.source_bullet_id).toBe(bullet.id)
+  })
+
+  test('DEFAULT config GATES a value-bearing tracker_entry: pending suggest, NO entry written', async () => {
+    // The PR's HEADLINE default behavior, asserted END-TO-END through the worker: under
+    // AGENT_CONFIG_DEFAULTS (autoApplyValueRecords: false) a high-confidence tracker_entry that
+    // STRONG-matches a seeded tracker is NOT auto-applied — a wrong/mislinked VALUE must never be
+    // written silently. Same setup as the auto-apply test above but WITHOUT the flag.
+    const conn = createTestDb()
+    const user = createUser(conn.db, { name: 'U' })
+    const seedBullet = createBullet(conn.db, { owner_id: user.id, text: 'seed' })
+    createTracker(conn.db, {
+      owner_id: user.id,
+      source_bullet_id: seedBullet.id,
+      name: 'mood',
+      input_type: 'scale',
+      config: { input_type: 'scale', min: 1, max: 5 },
+    })
+    const bullet = createBullet(conn.db, { owner_id: user.id, text: 'mood was 4' })
+
+    // NO flag → makeDeps uses AGENT_CONFIG_DEFAULTS (the default-config path under review).
     const deps = makeDeps(conn, {
       chat: () =>
         JSON.stringify({
@@ -229,10 +292,15 @@ describe('queue end-to-end', () => {
     enqueueExtraction(deps, bullet.id, user.id)
     await createExtractionWorker(deps).drain()
 
-    const entries = listTrackerEntries(conn.db, user.id)
-    expect(entries).toHaveLength(1)
-    expect(entries[0]?.value).toBe(4)
-    expect(entries[0]?.source_bullet_id).toBe(bullet.id)
+    // The suggestion persisted as a PENDING 'suggest' (the value-record gate held) — NOT auto-applied.
+    const suggestions = listSuggestionsByBullet(conn.db, bullet.id)
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]?.target_kind).toBe('tracker_entry')
+    expect(suggestions[0]?.tier).toBe('suggest')
+    expect(suggestions[0]?.status).toBe('pending')
+
+    // Crucially: NO tracker_entry was written — the value awaits an explicit one-tap confirm.
+    expect(listTrackerEntries(conn.db, user.id)).toHaveLength(0)
   })
 
   test('auto-applies a mark-done UPDATE: flips the matched open task to done (same row)', async () => {
@@ -383,6 +451,8 @@ describe('queue end-to-end', () => {
     // tracker_entry append is resolved + persisted) but BEFORE auto-apply. Soft-deleting the
     // tracker here makes acceptSuggestion's re-validation fail → the suggestion degrades to a
     // normal pending one, no entry is written, and the failure is SURFACED (not swallowed).
+    // A tracker_entry is value-bearing (capped to 'suggest' by default); this test needs the
+    // auto-apply path to run and fail soft, so it opts into `autoApplyValueRecords`.
     const deps = makeDeps(
       conn,
       {
@@ -403,6 +473,7 @@ describe('queue end-to-end', () => {
         },
       },
       emitter,
+      AUTO_VALUE_CONFIG,
     )
 
     const job = enqueueExtraction(deps, bullet.id, user.id)

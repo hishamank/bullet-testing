@@ -20,6 +20,13 @@
  *  - `autoCreateTasks` — when false (the default, conservative), task CREATEs are capped at
  *                       `suggest` and never auto-applied (CLAUDE.md §4.5: eagerness scales
  *                       inversely with permanence; we do not silently mint task lists).
+ *  - `autoApplyValueRecords` — when false (the default, conservative), VALUE-BEARING records — a
+ *                       `tracker_entry` (always a logged value) or an `activity` carrying a
+ *                       `quantity` — are capped at `suggest` and never auto-applied: a wrong value
+ *                       or a mislinked state reading must never be written SILENTLY (CLAUDE.md
+ *                       §4.5). This default-false cap is a TEMPORARY conservatism — until Task 1's
+ *                       deterministic matcher is proven reliable live, we do not auto-apply values;
+ *                       once it is, flip this flag to let confident links auto-apply again.
  */
 export interface AgentConfig {
   baseUrl: string
@@ -28,6 +35,7 @@ export interface AgentConfig {
   autoThreshold: number
   suggestThreshold: number
   autoCreateTasks: boolean
+  autoApplyValueRecords: boolean
 }
 
 /** The defaults applied when an env var is absent. Kept in one place for the README/tests. */
@@ -38,6 +46,7 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   autoThreshold: 0.85,
   suggestThreshold: 0.5,
   autoCreateTasks: false,
+  autoApplyValueRecords: false,
 }
 
 /** A minimal view of the environment (so tests can pass a plain object). */
@@ -62,7 +71,8 @@ function booleanFromEnv(raw: string | undefined, fallback: boolean): boolean {
  *
  * Recognised vars:
  *   OLLAMA_BASE_URL, OLLAMA_LIVE_MODEL, OLLAMA_WEEKLY_MODEL,
- *   AGENT_AUTO_THRESHOLD, AGENT_SUGGEST_THRESHOLD, AGENT_AUTO_CREATE_TASKS
+ *   AGENT_AUTO_THRESHOLD, AGENT_SUGGEST_THRESHOLD, AGENT_AUTO_CREATE_TASKS,
+ *   AGENT_AUTO_APPLY_VALUE_RECORDS
  */
 export function loadAgentConfig(env: AgentEnv = process.env): AgentConfig {
   const d = AGENT_CONFIG_DEFAULTS
@@ -73,5 +83,9 @@ export function loadAgentConfig(env: AgentEnv = process.env): AgentConfig {
     autoThreshold: numberFromEnv(env.AGENT_AUTO_THRESHOLD, d.autoThreshold),
     suggestThreshold: numberFromEnv(env.AGENT_SUGGEST_THRESHOLD, d.suggestThreshold),
     autoCreateTasks: booleanFromEnv(env.AGENT_AUTO_CREATE_TASKS, d.autoCreateTasks),
+    autoApplyValueRecords: booleanFromEnv(
+      env.AGENT_AUTO_APPLY_VALUE_RECORDS,
+      d.autoApplyValueRecords,
+    ),
   }
 }

@@ -95,6 +95,7 @@ export {
   type ResolvedSuggestion,
   type ResolveOutcome,
   resolveCandidates,
+  type TierOptions,
   withProvenance,
 } from './resolution'
 // Runtime factory (wires everything for the Task 4 server).

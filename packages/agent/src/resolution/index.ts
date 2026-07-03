@@ -7,4 +7,4 @@ export {
   resolveCandidates,
   withProvenance,
 } from './resolve'
-export { assignTier } from './tier'
+export { assignTier, type TierOptions } from './tier'
