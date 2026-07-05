@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useId, useRef, useState } from 'react'
+import { dueLabel } from '@/lib/format'
 import {
   canSubmitTask,
   dueChipTargets,
@@ -57,6 +58,29 @@ function FieldLabel({ htmlFor, children }: { htmlFor?: string; children: React.R
     >
       {children}
     </label>
+  )
+}
+
+/**
+ * A labelled group of chips. A real `<fieldset>`/`<legend>` (not a dangling `<label>`) so the
+ * grouping — Status / Due / Priority — is announced to assistive tech.
+ */
+function ChipFieldset({
+  legend,
+  className,
+  children,
+}: {
+  legend: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <fieldset className={cn('m-0 min-w-0 border-0 p-0', className)}>
+      <legend className="mb-2 p-0 font-data text-[10px] text-faint-2 uppercase tracking-[0.12em]">
+        {legend}
+      </legend>
+      <div className="flex flex-wrap gap-[7px]">{children}</div>
+    </fieldset>
   )
 }
 
@@ -151,8 +175,7 @@ export function TaskForm({
               className="mb-5 w-full rounded-[9px] border border-line-warm bg-panel px-[13px] py-[11px] font-reader text-[20px] text-ink placeholder:text-faint-3 focus:border-indigo focus:outline-none"
             />
 
-            <FieldLabel>Status</FieldLabel>
-            <div className="mb-5 flex flex-wrap gap-[7px]">
+            <ChipFieldset legend="Status" className="mb-5">
               {STATUS_CHIPS.map((c) => {
                 const selected = values.status === c.value
                 return (
@@ -162,40 +185,39 @@ export function TaskForm({
                   </Chip>
                 )
               })}
-            </div>
+            </ChipFieldset>
 
             <div className="mb-5 flex flex-wrap gap-8">
-              <div>
-                <FieldLabel>Due</FieldLabel>
-                <div className="flex flex-wrap gap-[7px]">
-                  {dueChipTargets().map((c) => (
-                    <Chip
-                      key={c.key}
-                      selected={dueKey === c.key}
-                      onClick={() => pickDue(c.key, c.ms)}
-                    >
-                      {c.label}
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <FieldLabel>Priority</FieldLabel>
-                <div className="flex flex-wrap gap-[7px]">
-                  {PRIORITY_CHIPS.map((c) => (
-                    <Chip
-                      key={c.value}
-                      selected={values.priority === c.value}
-                      onClick={() => set('priority', c.value)}
-                    >
-                      {c.label}
-                    </Chip>
-                  ))}
-                  <Chip selected={values.priority === null} onClick={() => set('priority', null)}>
-                    None
+              <ChipFieldset legend="Due">
+                {dueChipTargets().map((c) => (
+                  <Chip
+                    key={c.key}
+                    selected={dueKey === c.key}
+                    onClick={() => pickDue(c.key, c.ms)}
+                  >
+                    {c.label}
                   </Chip>
-                </div>
-              </div>
+                ))}
+                {values.due_at != null && dueKey === null && (
+                  <div className="w-full font-data text-[10.5px] text-faint">
+                    currently {dueLabel(values.due_at)}
+                  </div>
+                )}
+              </ChipFieldset>
+              <ChipFieldset legend="Priority">
+                {PRIORITY_CHIPS.map((c) => (
+                  <Chip
+                    key={c.value}
+                    selected={values.priority === c.value}
+                    onClick={() => set('priority', c.value)}
+                  >
+                    {c.label}
+                  </Chip>
+                ))}
+                <Chip selected={values.priority === null} onClick={() => set('priority', null)}>
+                  None
+                </Chip>
+              </ChipFieldset>
             </div>
 
             <FieldLabel htmlFor={notesId}>Notes</FieldLabel>

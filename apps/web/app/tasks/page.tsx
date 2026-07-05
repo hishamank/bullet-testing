@@ -8,7 +8,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '@/components/empty-state'
 import { TaskForm } from '@/components/tasks/task-form'
 import { TaskGroup } from '@/components/tasks/task-group'
@@ -75,15 +75,28 @@ export default function TasksPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  // Return keyboard focus to the "New task" button after the form closes (a11y — don't strand
+  // keyboard/SR users at document start when the view swaps back to the list).
+  const newTaskRef = useRef<HTMLButtonElement>(null)
+  const [restoreFocus, setRestoreFocus] = useState(false)
 
   const groups = useMemo(() => groupTasks(tasks), [tasks])
-  const openCount = openTaskCount(tasks)
-  const doneCount = doneTaskCount(tasks)
+  const { openCount, doneCount } = useMemo(
+    () => ({ openCount: openTaskCount(tasks), doneCount: doneTaskCount(tasks) }),
+    [tasks],
+  )
 
   const editingTask = useMemo(
     () => (editingId ? tasks.find((t) => t.id === editingId) : undefined),
     [editingId, tasks],
   )
+
+  useEffect(() => {
+    if (view === 'list' && restoreFocus) {
+      newTaskRef.current?.focus()
+      setRestoreFocus(false)
+    }
+  }, [view, restoreFocus])
 
   async function run(fn: () => Promise<void>) {
     setBusy(true)
@@ -121,6 +134,7 @@ export default function TasksPage() {
     setView('list')
     setEditingId(null)
     setNotice(null)
+    setRestoreFocus(true)
   }
 
   // Create vs. update is decided by the same `editingTask` the form's mode is drawn from — one
@@ -207,6 +221,7 @@ export default function TasksPage() {
             <h2 className="mt-[6px] font-display text-[34px] text-ink max-md:text-[28px]">Tasks</h2>
           </div>
           <button
+            ref={newTaskRef}
             type="button"
             onClick={openNew}
             className="inline-flex items-center gap-2 rounded-[22px] bg-indigo px-[17px] py-[10px] font-ui font-medium text-[13.5px] text-white transition-colors hover:bg-indigo-deep"

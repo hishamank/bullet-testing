@@ -67,14 +67,19 @@ export function TaskRow({
   onEdit: () => void
 }) {
   const { task } = item
-  const provLabel = item.extracted
-    ? `↳ from your journal${bullet ? ` · ${shortDay(bullet.created_at)} ${formatTime(bullet.created_at)}` : ''}`
+  // The source bullet may be gone (the §4.6 "delete but keep extractions" flow leaves the task's
+  // source_bullet_id pointing at a soft-deleted bullet, absent from the active list). So "can we
+  // reveal a quote?" is the row's call — it has the bullet — not the task-only `showProvRow`.
+  const showQuote = item.extracted && !!bullet
+  const canReveal = showQuote || item.hasNotes
+  const provLabel = showQuote
+    ? `↳ from your journal · ${shortDay(bullet.created_at)} ${formatTime(bullet.created_at)}`
     : 'notes'
 
   return (
     <div className="flex gap-[13px] border-line-soft border-t px-[2px] py-[13px] transition-colors hover:bg-panel">
       {/* Glyph — toggles the provenance/notes thread when there's one to show. */}
-      {item.showProvRow ? (
+      {canReveal ? (
         <button
           type="button"
           onClick={onToggleExpand}
@@ -136,7 +141,7 @@ export function TaskRow({
           <div className="mt-[5px] font-data text-[11px] text-faint-3">✎ added by hand</div>
         )}
 
-        {item.showProvRow && (
+        {canReveal && (
           <button
             type="button"
             onClick={onToggleExpand}
@@ -147,9 +152,9 @@ export function TaskRow({
           </button>
         )}
 
-        {expanded && item.showProvRow && (
+        {expanded && canReveal && (
           <div className="mt-[9px] max-w-[560px] rounded-r-[10px] border border-line border-l-2 border-l-indigo-soft bg-panel px-[15px] py-3">
-            {item.extracted && bullet && (
+            {showQuote && (
               <>
                 <div className="mb-[5px] font-data text-[10px] text-faint-3 tracking-[0.06em]">
                   {shortDay(bullet.created_at)} · {formatTime(bullet.created_at)}
@@ -170,7 +175,7 @@ export function TaskRow({
                 <div
                   className={cn(
                     'mb-[5px] font-data text-[10px] text-faint-2 uppercase tracking-[0.12em]',
-                    item.extracted && bullet && 'mt-[11px]',
+                    showQuote && 'mt-[11px]',
                   )}
                 >
                   Notes

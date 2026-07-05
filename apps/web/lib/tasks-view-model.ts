@@ -12,7 +12,7 @@ import {
   TASK_STATUS_ORDER,
   type TaskStatusMeta,
 } from '@/lib/design'
-import { dayKey, daysAgo, dueLabel } from '@/lib/format'
+import { dayKey, daysAgo, dueLabel, relativeDueTargets } from '@/lib/format'
 import type { Task, TaskPriority, TaskStatus } from '@/lib/types'
 
 /** Open work (still on your plate) vs. resolved — the split behind the header count + overdue. */
@@ -211,26 +211,17 @@ export interface DueChip {
   ms: number | null
 }
 
-const endOfDay = (d: Date): number => {
-  d.setHours(23, 59, 0, 0)
-  return d.getTime()
-}
-
 /**
  * The form's relative due presets. No natural-language date parsing (out of scope) — just a few
- * honest quick-sets. "This week" resolves to the coming Friday, matching Review's third preset.
+ * honest quick-sets over the shared `relativeDueTargets` math. "This week" is the coming Friday
+ * (same target Review labels "Fri").
  */
 export function dueChipTargets(now: number = Date.now()): DueChip[] {
-  const today = new Date(now)
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const friday = new Date(now)
-  const delta = (5 - friday.getDay() + 7) % 7 // 5 = Friday; 0 → the coming Friday, not today
-  friday.setDate(friday.getDate() + (delta === 0 ? 7 : delta))
+  const { today, tomorrow, friday } = relativeDueTargets(now)
   return [
-    { key: 'today', label: 'Today', ms: endOfDay(today) },
-    { key: 'tomorrow', label: 'Tomorrow', ms: endOfDay(tomorrow) },
-    { key: 'week', label: 'This week', ms: endOfDay(friday) },
+    { key: 'today', label: 'Today', ms: today },
+    { key: 'tomorrow', label: 'Tomorrow', ms: tomorrow },
+    { key: 'week', label: 'This week', ms: friday },
     { key: 'none', label: 'None', ms: null },
   ]
 }
