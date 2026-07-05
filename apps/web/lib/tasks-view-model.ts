@@ -42,8 +42,6 @@ export interface EnrichedTask {
   /** True when the task traces back to a bullet (has a provenance thread). */
   extracted: boolean
   hasNotes: boolean
-  /** Whether there's anything to reveal on expand (a source quote and/or notes). */
-  showProvRow: boolean
   showComplete: boolean
   showMigrate: boolean
   showReopen: boolean
@@ -83,7 +81,6 @@ export function enrichTask(task: Task, now: number = Date.now()): EnrichedTask {
     isManual: !extracted,
     extracted,
     hasNotes,
-    showProvRow: extracted || hasNotes,
     showComplete: task.status !== 'done' && task.status !== 'cancelled',
     showMigrate: task.status === 'todo' || task.status === 'in_progress',
     showReopen: task.status === 'done' || task.status === 'cancelled',

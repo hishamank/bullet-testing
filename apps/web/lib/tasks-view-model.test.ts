@@ -100,16 +100,19 @@ describe('enrichTask', () => {
     expect(e.extracted).toBe(false)
   })
 
-  test('provenance row shows for an extracted task, or a manual task with notes', () => {
-    expect(enrichTask(makeTask({ source_bullet_id: BULLET, notes: null }), NOW).showProvRow).toBe(
-      true,
-    )
-    expect(
-      enrichTask(makeTask({ source_bullet_id: null, notes: 'buy milk' }), NOW).showProvRow,
-    ).toBe(true)
-    expect(enrichTask(makeTask({ source_bullet_id: null, notes: null }), NOW).showProvRow).toBe(
-      false,
-    )
+  test('extracted / hasNotes flags drive whether the row can reveal a source-or-notes thread', () => {
+    const extracted = enrichTask(makeTask({ source_bullet_id: BULLET, notes: null }), NOW)
+    expect(extracted.extracted).toBe(true)
+    expect(extracted.hasNotes).toBe(false)
+
+    const manualWithNotes = enrichTask(makeTask({ source_bullet_id: null, notes: 'buy milk' }), NOW)
+    expect(manualWithNotes.extracted).toBe(false)
+    expect(manualWithNotes.hasNotes).toBe(true)
+
+    const bare = enrichTask(makeTask({ source_bullet_id: null, notes: null }), NOW)
+    expect(bare.extracted).toBe(false)
+    expect(bare.hasNotes).toBe(false)
+    // Whitespace-only notes are not notes.
     expect(enrichTask(makeTask({ source_bullet_id: null, notes: '   ' }), NOW).hasNotes).toBe(false)
   })
 

@@ -30,7 +30,14 @@ import { useJournalData } from '@/lib/use-journal-data'
 const DEFAULT_OPEN: TaskStatus[] = ['todo', 'in_progress', 'migrated', 'cancelled']
 
 /** The first-run empty state (design B) — an invitation back to the stream, not an apology. */
-function TasksEmpty({ onNew }: { onNew: () => void }) {
+function TasksEmpty({
+  onNew,
+  addRef,
+}: {
+  onNew: () => void
+  /** Focus target when the form (opened from here) closes. */
+  addRef?: React.Ref<HTMLButtonElement>
+}) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-10 py-16 text-center">
       <div className="mb-5 font-data text-[20px] text-indigo tracking-[0.32em]">
@@ -50,6 +57,7 @@ function TasksEmpty({ onNew }: { onNew: () => void }) {
         <span className="font-data text-[13px]">✎</span>Open the stream
       </Link>
       <button
+        ref={addRef}
         type="button"
         onClick={onNew}
         className="mt-[14px] font-ui text-[13px] text-faint transition-colors hover:text-indigo"
@@ -204,7 +212,7 @@ export default function TasksPage() {
             Gathering your tasks…
           </div>
         ) : (
-          <TasksEmpty onNew={openNew} />
+          <TasksEmpty onNew={openNew} addRef={newTaskRef} />
         )}
       </div>
     )

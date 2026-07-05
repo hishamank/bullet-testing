@@ -69,7 +69,7 @@ export function TaskRow({
   const { task } = item
   // The source bullet may be gone (the §4.6 "delete but keep extractions" flow leaves the task's
   // source_bullet_id pointing at a soft-deleted bullet, absent from the active list). So "can we
-  // reveal a quote?" is the row's call — it has the bullet — not the task-only `showProvRow`.
+  // reveal a quote?" is the row's call — only it has the bullet — not a task-only flag.
   const showQuote = item.extracted && !!bullet
   const canReveal = showQuote || item.hasNotes
   const provLabel = showQuote
