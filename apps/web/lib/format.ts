@@ -100,6 +100,31 @@ export function dueLabel(ms: number, now: number = Date.now()): string {
   return `${MONTH_SHORT[d.getMonth()]} ${d.getDate()}`
 }
 
+/** End of a local calendar day (23:59) as epoch-ms — the target a relative due preset resolves to. */
+export function endOfDay(d: Date): number {
+  d.setHours(23, 59, 0, 0)
+  return d.getTime()
+}
+
+/**
+ * The relative due-date targets shared by the Tasks form and Review's chip editor (epoch-ms, each
+ * at end of day). `friday` is the *coming* Friday — never today — surfaced as "This week" / "Fri".
+ * One source of truth so a fix to the roll-over/DST math can't land in one surface and miss the other.
+ */
+export function relativeDueTargets(now: number = Date.now()): {
+  today: number
+  tomorrow: number
+  friday: number
+} {
+  const today = new Date(now)
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const friday = new Date(now)
+  const delta = (5 - friday.getDay() + 7) % 7 // 5 = Friday; 0 → the coming Friday, not today
+  friday.setDate(friday.getDate() + (delta === 0 ? 7 : delta))
+  return { today: endOfDay(today), tomorrow: endOfDay(tomorrow), friday: endOfDay(friday) }
+}
+
 /** Time-of-day greeting. */
 export function greeting(now: number = Date.now()): string {
   const h = new Date(now).getHours()

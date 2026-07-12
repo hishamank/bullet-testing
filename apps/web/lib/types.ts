@@ -30,6 +30,7 @@ export type Suggestion = QueryOutput<Client['suggestions']['listPending']>[numbe
 
 /** Closed unions, taken straight from the inferred entity fields (single source of truth). */
 export type TaskStatus = Task['status']
+export type TaskPriority = NonNullable<Task['priority']>
 export type TargetKind = Suggestion['target_kind']
 export type SuggestionTier = Suggestion['tier']
 export type SuggestionPayload = Suggestion['payload']

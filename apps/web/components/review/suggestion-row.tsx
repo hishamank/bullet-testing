@@ -14,7 +14,7 @@
  */
 
 import { useState } from 'react'
-import { dayKey } from '@/lib/format'
+import { dayKey, relativeDueTargets } from '@/lib/format'
 import type { SuggestionPayload } from '@/lib/types'
 import type { SuggestionRow as Row } from '@/lib/view-model'
 
@@ -26,20 +26,11 @@ const STATUS_CHIPS: { label: string; value: string }[] = [
 
 /** The four Due chips: Today / Tomorrow / next Friday / None — resolved to epoch-ms (or null). */
 function dueChipTargets(now = Date.now()): { label: string; ms: number | null }[] {
-  const atEndOfDay = (d: Date) => {
-    d.setHours(23, 59, 0, 0)
-    return d.getTime()
-  }
-  const today = new Date(now)
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const friday = new Date(now)
-  const delta = (5 - friday.getDay() + 7) % 7 // 5 = Friday
-  friday.setDate(friday.getDate() + (delta === 0 ? 7 : delta))
+  const { today, tomorrow, friday } = relativeDueTargets(now)
   return [
-    { label: 'Today', ms: atEndOfDay(today) },
-    { label: 'Tomorrow', ms: atEndOfDay(tomorrow) },
-    { label: 'Fri', ms: atEndOfDay(friday) },
+    { label: 'Today', ms: today },
+    { label: 'Tomorrow', ms: tomorrow },
+    { label: 'Fri', ms: friday },
     { label: 'None', ms: null },
   ]
 }
