@@ -15,6 +15,9 @@ coverage
 *.sqlite-journal
 *.sqlite3
 *.db
+# SQLite WAL-mode sidecars (created at runtime alongside *.db)
+*.db-wal
+*.db-shm
 
 # env
 .env
