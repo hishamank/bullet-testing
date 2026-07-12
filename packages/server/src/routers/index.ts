@@ -16,6 +16,7 @@ import { bulletsRouter } from './bullets'
 import { suggestionsRouter } from './suggestions'
 import { systemRouter } from './system'
 import { tasksRouter } from './tasks'
+import { trackerAnalyticsRouter } from './trackerAnalytics'
 import { trackerEntriesRouter } from './trackerEntries'
 import { trackersRouter } from './trackers'
 import { weeklyRouter } from './weekly'
@@ -27,6 +28,7 @@ export const appRouter = router({
   tasks: tasksRouter,
   trackers: trackersRouter,
   trackerEntries: trackerEntriesRouter,
+  trackerAnalytics: trackerAnalyticsRouter,
   activities: activitiesRouter,
   weekly: weeklyRouter,
 })

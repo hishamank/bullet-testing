@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Instrument+Serif:ital@0;1&family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  input::placeholder, textarea::placeholder { color:#B6B3A8; }
+  input:focus, textarea:focus { outline:none; border-color:#3E4D6B !important; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</helmet>
+
+<div style="min-width:100%; min-height:100vh; width:max-content; box-sizing:border-box; padding:48px; background:#E5E3DC; font-family:'Spline Sans', sans-serif;">
+
+  <div style="max-width:1180px; margin:0 0 38px 0;">
+    <div style="font-family:'Spline Sans Mono', monospace; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:#8C887E;">Prompt 5 · Trackers — the measured life · Margin Notebook system</div>
+    <h1 style="font-family:'Instrument Serif', serif; font-weight:400; font-size:44px; line-height:1.05; margin:10px 0 10px; color:#26251F;">One visualization per tracker, matched to how you measure it.</h1>
+    <p style="max-width:820px; margin:0; font-size:15px; line-height:1.6; color:#5C594F;">Trackers are the <span style="font-family:'Spline Sans Mono',monospace; color:#B0843B;">—</span> of the notebook: quantities you watch over time. Each has a <b style="font-weight:500;">schema</b> that decides how it's logged and drawn. The dashboard shows the data; one <b style="font-weight:500;">Log</b> button opens an entry dialog matched to that schema — mood and energy you can log <b style="font-weight:500;">many times a day</b>, coffee counts up, weight takes a value, a run is a single tick. Open one and the chart fits the data: a scale gets a year-in-pixels grid, a count gets buckets by week/month/year, a habit gets a streak and heatmap. Everything's live — log, open a tracker, follow any <span style="font-family:'Spline Sans Mono',monospace; color:#A6A398;">↳ from your journal</span> back to the bullet it came from.</p>
+  </div>
+
+  <!-- ============================ THE LIVE APP ============================ -->
+  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">The Trackers page — live app, desktop &amp; mobile</div>
+  <div style="display:flex; gap:48px; align-items:flex-start; margin-bottom:64px;">
+
+    <!-- DESKTOP WINDOW -->
+    <div style="flex:none; width:1180px;">
+      <div style="background:#100F0C; border-radius:14px; box-shadow:0 40px 80px -30px rgba(0,0,0,.45), 0 0 0 1px rgba(0,0,0,.1);">
+        <div style="height:42px; display:flex; align-items:center; padding:0 16px; border-bottom:1px solid rgba(255,255,255,.05);">
+          <div style="display:flex; gap:8px;"><span style="width:12px; height:12px; border-radius:50%; background:#ED6A5E;"></span><span style="width:12px; height:12px; border-radius:50%; background:#F4BF50;"></span><span style="width:12px; height:12px; border-radius:50%; background:#61C554;"></span></div>
+          <div style="flex:1; text-align:center; font-family:'Spline Sans Mono',monospace; font-size:12px; color:#8A877E; letter-spacing:.04em;">Journal</div>
+          <div style="width:54px;"></div>
+        </div>
+
+        <div style="background:#F6F5F1; border-radius:0 0 14px 14px; height:960px; display:flex; overflow:hidden;">
+
+          <!-- LEFT RAIL -->
+          <div style="flex:none; width:214px; border-right:1px solid #ECEAE2; padding:24px 16px 18px; display:flex; flex-direction:column; gap:4px;">
+            <div style="padding:0 12px 22px;">
+              <div style="font-family:'Instrument Serif',serif; font-size:23px; color:#23232A; line-height:1;">Margin</div>
+              <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:#B0AEA4; margin-top:4px;">Notebook</div>
+            </div>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">◆</span>Overview</button>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">≡</span>Timeline</button>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">•</span>Tasks</button>
+            <div style="position:relative; display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:#EEF1F6; border:none; border-radius:9px; padding:9px 12px; font-family:'Spline Sans',sans-serif; font-size:14px; color:#2F3C56; font-weight:500;">
+              <span style="position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:2px; background:#3E4D6B;"></span>
+              <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#3E4D6B; width:16px; text-align:center;">—</span>Trackers
+            </div>
+            <button style="display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:none; border:none; border-radius:9px; padding:9px 12px; cursor:pointer; font-family:'Spline Sans',sans-serif; font-size:14px; color:#6B685E;" style-hover="background:#EFEDE6;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#A6A398; width:16px; text-align:center;">○</span>Activities</button>
+            <div style="flex:1;"></div>
+            <div style="display:flex; align-items:center; justify-content:space-between; width:100%; background:#3E4D6B; border-radius:10px; padding:11px 13px;">
+              <span style="font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#fff; display:flex; align-items:center; gap:9px;"><span style="font-family:'Spline Sans Mono',monospace; font-size:12px;">◷</span>Review</span>
+              <span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#fff; background:rgba(255,255,255,.18); border-radius:10px; padding:1px 8px;">5</span>
+            </div>
+          </div>
+
+          <!-- CONTENT -->
+          <div style="flex:1; min-width:0; overflow-y:auto;">
+
+            <!-- ============ INDEX ============ -->
+            <sc-if value="{{ isIndex }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:34px 40px 60px;">
+                <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:22px;">
+                  <div>
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398;">{{ trackerCount }} trackers · {{ loggedToday }} logged today</div>
+                    <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:34px; color:#23232A; margin:6px 0 0;">Trackers</h2>
+                  </div>
+                  <button onClick="{{ onNew }}" style="display:inline-flex; align-items:center; gap:8px; background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:13.5px; padding:10px 17px; border-radius:22px; cursor:pointer;" style-hover="background:#2F3C56;"><span style="font-family:'Spline Sans Mono',monospace; font-size:14px;">+</span>New tracker</button>
+                </div>
+
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+                  <sc-for list="{{ cards }}" as="c" hint-placeholder-count="6">
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:14px; padding:16px 17px 14px; box-shadow:0 2px 12px -9px rgba(0,0,0,.18); display:flex; flex-direction:column;">
+                      <button onClick="{{ c.onOpen }}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:none; border:none; cursor:pointer; padding:0; margin-bottom:12px;">
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:{{ c.role }}; width:16px; text-align:center;">{{ c.glyph }}</span>
+                        <span style="font-family:'Instrument Serif',serif; font-size:20px; color:#23232A; line-height:1;">{{ c.name }}</span>
+                        <span style="flex:1;"></span>
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#B0AEA4;">{{ c.typeLabel }}</span>
+                      </button>
+
+                      <!-- MINI-VIZ -->
+                      <button onClick="{{ c.onOpen }}" style="display:block; width:100%; background:none; border:none; cursor:pointer; padding:0; margin-bottom:11px;">
+                        <sc-if value="{{ c.isLine }}" hint-placeholder-val="{{ true }}">
+                          <svg viewBox="0 0 240 44" preserveAspectRatio="none" style="width:100%; height:42px; display:block; overflow:visible;"><polyline points="{{ c.sparkPts }}" fill="none" stroke="{{ c.role }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+                        </sc-if>
+                        <sc-if value="{{ c.isBars }}" hint-placeholder-val="{{ false }}">
+                          <svg viewBox="0 0 240 44" preserveAspectRatio="none" style="width:100%; height:42px; display:block;"><sc-for list="{{ c.sparkBars }}" as="b" hint-placeholder-count="21"><rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="1" fill="{{ b.fill }}"></rect></sc-for></svg>
+                        </sc-if>
+                        <sc-if value="{{ c.isHeat }}" hint-placeholder-val="{{ false }}">
+                          <div style="display:flex; gap:3px; height:42px; align-items:center;"><sc-for list="{{ c.heatMini }}" as="h" hint-placeholder-count="21"><span style="flex:1; height:22px; border-radius:2px; background:{{ h.bg }};"></span></sc-for></div>
+                        </sc-if>
+                        <sc-if value="{{ c.isSelViz }}" hint-placeholder-val="{{ false }}">
+                          <div style="display:flex; gap:3px; height:42px; align-items:flex-end;"><sc-for list="{{ c.selBars }}" as="b" hint-placeholder-count="21"><span style="flex:1; border-radius:2px; background:{{ b.bg }}; height:{{ b.h }};"></span></sc-for></div>
+                        </sc-if>
+                        <sc-if value="{{ c.isTextViz }}" hint-placeholder-val="{{ false }}">
+                          <div style="height:42px; display:flex; align-items:center; font-family:'Newsreader',serif; font-style:italic; font-size:14.5px; line-height:1.35; color:#6B685E; overflow:hidden;">“{{ c.textPreview }}”</div>
+                        </sc-if>
+                      </button>
+
+                      <div style="display:flex; align-items:baseline; gap:6px; margin-bottom:13px;">
+                        <span style="font-family:'Instrument Serif',serif; font-size:22px; color:#23232A; line-height:1;">{{ c.lastLabel }}</span>
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#A6A398;">{{ c.lastWhen }}</span>
+                      </div>
+
+                      <!-- DISPLAY + LOG BUTTON -->
+                      <div style="margin-top:auto; padding-top:12px; border-top:1px solid #F4F2EB; display:flex; align-items:center; gap:10px;">
+                        <span style="flex:1; min-width:0; font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#A6A398; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ c.todayNote }}</span>
+                        <button onClick="{{ c.onLog }}" style="flex:none; display:inline-flex; align-items:center; gap:6px; background:{{ c.roleSoft }}; border:none; color:{{ c.role }}; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:12.5px; padding:8px 14px; border-radius:20px; cursor:pointer;" style-hover="filter:brightness(0.96);"><span style="font-family:'Spline Sans Mono',monospace; font-size:13px;">+</span>{{ c.logCta }}</button>
+                      </div>
+                    </div>
+                  </sc-for>
+
+                  <!-- NEW TRACKER CARD -->
+                  <button onClick="{{ onNew }}" style="background:none; border:1.5px dashed #D2CFC4; border-radius:14px; padding:24px 16px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; min-height:210px; color:#8C887E;" style-hover="border-color:#B0843B; color:#B0843B;">
+                    <span style="font-family:'Spline Sans Mono',monospace; font-size:24px; line-height:1;">+</span>
+                    <span style="font-family:'Spline Sans',sans-serif; font-size:14px; font-weight:500;">New tracker</span>
+                    <span style="font-family:'Spline Sans',sans-serif; font-size:12px; color:#A6A398; text-align:center; max-width:160px;">A number, a scale, a yes/no — anything you want to watch.</span>
+                  </button>
+                </div>
+
+                <!-- CORRELATION / PATTERNS NOTE -->
+                <div style="margin-top:26px; display:flex; align-items:flex-start; gap:13px; background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:16px 18px; max-width:720px;">
+                  <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:#B0843B; margin-top:1px;">∿</span>
+                  <div>
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:#A6A398; margin-bottom:4px;">A quiet pattern</div>
+                    <div style="font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#3A382F;">Your mood runs about <b style="font-weight:500;">half a point higher</b> on days you go for a run. Nine weeks of data, and it's held all nine.</div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <!-- ============ DETAIL ============ -->
+            <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:30px 40px 56px;">
+                <button onClick="{{ onBack }}" style="background:none; border:none; padding:0; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; display:inline-flex; align-items:center; gap:6px; margin-bottom:16px;" style-hover="color:#3E4D6B;">← all trackers</button>
+
+                <!-- header -->
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:6px;">
+                  <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:11px; background:{{ dv.roleSoft }}; color:{{ dv.role }}; font-family:'Spline Sans Mono',monospace; font-size:20px;">{{ dv.glyph }}</span>
+                    <div>
+                      <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:30px; color:#23232A; margin:0; line-height:1;">{{ dv.name }}</h2>
+                      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; margin-top:4px;">{{ dv.typeLabel }} · {{ dv.count }} entries · since {{ dv.since }}</div>
+                    </div>
+                  </div>
+                  <button onClick="{{ dv.onEditForm }}" style="background:none; border:1px solid #E2E0D7; color:#5C594F; font-family:'Spline Sans',sans-serif; font-size:12.5px; padding:8px 14px; border-radius:20px; cursor:pointer;" style-hover="border-color:#3E4D6B; color:#3E4D6B;">Edit tracker</button>
+                </div>
+
+                <!-- LOG BAR -->
+                <div style="display:flex; align-items:center; gap:16px; background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:15px 18px; margin:16px 0 22px; box-shadow:0 2px 12px -9px rgba(0,0,0,.18);">
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Today</div>
+                    <div style="font-family:'Newsreader',serif; font-size:16.5px; color:#3A382F; margin-top:2px;">{{ dv.todaySummary }}</div>
+                  </div>
+                  <button onClick="{{ dv.onLog }}" style="flex:none; display:inline-flex; align-items:center; gap:8px; background:{{ dv.role }}; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:12px 22px; border-radius:24px; cursor:pointer;" style-hover="filter:brightness(0.94);"><span style="font-family:'Spline Sans Mono',monospace; font-size:15px;">+</span>{{ dv.logCta }}</button>
+                </div>
+
+                <!-- ===== SCALE VIZ: trend + year-in-pixels ===== -->
+                <sc-if value="{{ dv.isScale }}" hint-placeholder-val="{{ true }}">
+                  <div>
+                    <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px;">
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398;">Last 30 days</span>
+                      <span style="font-family:'Spline Sans',sans-serif; font-size:13px; color:#6B685E;">avg <b style="font-weight:600; color:#23232A;">{{ dv.recentAvg }}</b> · was {{ dv.priorAvg }}</span>
+                    </div>
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:16px 18px 12px; margin-bottom:26px;">
+                      <svg viewBox="0 0 640 130" preserveAspectRatio="none" style="width:100%; height:120px; display:block; overflow:visible;">
+                        <sc-for list="{{ dv.gridLines }}" as="g" hint-placeholder-count="5"><line x1="0" y1="{{ g.y }}" x2="640" y2="{{ g.y }}" stroke="#F0EEE7" stroke-width="1"></line></sc-for>
+                        <polyline points="{{ dv.trendPts }}" fill="none" stroke="{{ dv.role }}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                        <sc-for list="{{ dv.trendDots }}" as="d" hint-placeholder-count="30"><circle cx="{{ d.x }}" cy="{{ d.y }}" r="2.4" fill="{{ dv.role }}"></circle></sc-for>
+                      </svg>
+                    </div>
+
+                    <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px;">
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398;">2026 · a year in pixels</span>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#B0AEA4;">low</span>
+                        <sc-for list="{{ dv.legendCells }}" as="l" hint-placeholder-count="5"><span style="width:16px; height:16px; border-radius:3px; background:{{ l.bg }};"></span></sc-for>
+                        <span style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#B0AEA4;">great</span>
+                      </div>
+                    </div>
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:16px 18px;">
+                      <sc-for list="{{ dv.yearRows }}" as="r" hint-placeholder-count="12">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                          <span style="width:26px; flex:none; font-family:'Spline Sans Mono',monospace; font-size:10px; color:#A6A398; text-align:right;">{{ r.name }}</span>
+                          <div style="flex:1; display:grid; grid-template-columns:repeat(31, 1fr); gap:3px;">
+                            <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="31">
+                              <sc-if value="{{ c.real }}" hint-placeholder-val="{{ true }}"><span title="{{ c.title }}" style="aspect-ratio:1; border-radius:2.5px; background:{{ c.bg }};"></span></sc-if>
+                              <sc-if value="{{ c.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-for>
+                    </div>
+
+                    <div style="margin-top:20px; display:flex; align-items:flex-start; gap:13px; background:{{ dv.roleSoft }}; border-radius:12px; padding:15px 18px; max-width:640px;">
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ dv.role }}; margin-top:1px;">∿</span>
+                      <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#3A382F;">{{ dv.insight }}</div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- ===== NUMBER VIZ: period toggle + buckets ===== -->
+                <sc-if value="{{ dv.isNumber }}" hint-placeholder-val="{{ false }}">
+                  <div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+                      <div style="display:flex; gap:4px; background:#EEEDe7; border:1px solid #E7E5DD; border-radius:10px; padding:3px;">
+                        <sc-for list="{{ dv.periodTabs }}" as="p" hint-placeholder-count="3">
+                          <sc-if value="{{ p.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ p.onClick }}" style="padding:6px 16px; border-radius:7px; border:none; background:#fff; color:#23232A; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:12.5px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.08);">{{ p.label }}</button></sc-if>
+                          <sc-if value="{{ p.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ p.onClick }}" style="padding:6px 16px; border-radius:7px; border:none; background:none; color:#8C887E; font-family:'Spline Sans',sans-serif; font-size:12.5px; cursor:pointer;">{{ p.label }}</button></sc-if>
+                        </sc-for>
+                      </div>
+                      <div style="display:flex; gap:22px; align-items:baseline;">
+                        <span style="font-family:'Spline Sans',sans-serif; font-size:13px; color:#6B685E;">avg <b style="font-weight:600; color:#23232A;">{{ dv.numAvg }}</b></span>
+                        <span style="font-family:'Spline Sans',sans-serif; font-size:13px; color:#6B685E;">total <b style="font-weight:600; color:#23232A;">{{ dv.numTotal }}</b></span>
+                        <span style="font-family:'Spline Sans',sans-serif; font-size:13px; color:{{ dv.trendColor }};">{{ dv.trendArrow }} {{ dv.trendText }}</span>
+                      </div>
+                    </div>
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:18px 20px 14px;">
+                      <svg viewBox="0 0 660 200" preserveAspectRatio="none" style="width:100%; height:190px; display:block; overflow:visible;">
+                        <line x1="0" y1="{{ dv.avgY }}" x2="660" y2="{{ dv.avgY }}" stroke="{{ dv.role }}" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"></line>
+                        <sc-for list="{{ dv.numBars }}" as="b" hint-placeholder-count="30"><rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="2" fill="{{ b.fill }}"></rect></sc-for>
+                      </svg>
+                      <div style="display:flex; justify-content:space-between; margin-top:8px;">
+                        <sc-for list="{{ dv.numAxis }}" as="a" hint-placeholder-count="6"><span style="font-family:'Spline Sans Mono',monospace; font-size:10px; color:#B0AEA4;">{{ a.label }}</span></sc-for>
+                      </div>
+                    </div>
+                    <div style="margin-top:20px; display:flex; align-items:flex-start; gap:13px; background:{{ dv.roleSoft }}; border-radius:12px; padding:15px 18px; max-width:640px;">
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ dv.role }}; margin-top:1px;">∿</span>
+                      <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#3A382F;">{{ dv.insight }}</div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- ===== BOOLEAN VIZ: streak + heatmap ===== -->
+                <sc-if value="{{ dv.isBoolean }}" hint-placeholder-val="{{ false }}">
+                  <div>
+                    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px;">
+                      <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:16px 18px;"><div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Current streak</div><div style="display:flex; align-items:baseline; gap:6px; margin-top:8px;"><span style="font-family:'Instrument Serif',serif; font-size:34px; color:{{ dv.role }}; line-height:1;">{{ dv.streak }}</span><span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#A6A398;">days</span></div></div>
+                      <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:16px 18px;"><div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">Longest</div><div style="display:flex; align-items:baseline; gap:6px; margin-top:8px;"><span style="font-family:'Instrument Serif',serif; font-size:34px; color:#23232A; line-height:1;">{{ dv.best }}</span><span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#A6A398;">days</span></div></div>
+                      <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:16px 18px;"><div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398;">This month</div><div style="display:flex; align-items:baseline; gap:6px; margin-top:8px;"><span style="font-family:'Instrument Serif',serif; font-size:34px; color:#23232A; line-height:1;">{{ dv.rate }}</span><span style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#A6A398;">of days</span></div></div>
+                    </div>
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:12px;">Last six months</div>
+                    <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; padding:18px 20px; overflow-x:auto;">
+                      <div style="display:flex; gap:4px; align-items:flex-start;">
+                        <div style="display:flex; flex-direction:column; gap:3px; margin-right:4px; padding-top:0;">
+                          <sc-for list="{{ dv.heatDayLabels }}" as="d" hint-placeholder-count="7"><span style="height:14px; font-family:'Spline Sans Mono',monospace; font-size:9px; color:#B0AEA4; line-height:14px;">{{ d.label }}</span></sc-for>
+                        </div>
+                        <sc-for list="{{ dv.heatCols }}" as="col" hint-placeholder-count="26">
+                          <div style="display:flex; flex-direction:column; gap:3px;">
+                            <sc-for list="{{ col.cells }}" as="c" hint-placeholder-count="7">
+                              <sc-if value="{{ c.real }}" hint-placeholder-val="{{ true }}"><span title="{{ c.title }}" style="width:14px; height:14px; border-radius:3px; background:{{ c.bg }};"></span></sc-if>
+                              <sc-if value="{{ c.blank }}" hint-placeholder-val="{{ false }}"><span style="width:14px; height:14px;"></span></sc-if>
+                            </sc-for>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div style="margin-top:20px; display:flex; align-items:flex-start; gap:13px; background:{{ dv.roleSoft }}; border-radius:12px; padding:15px 18px; max-width:640px;">
+                      <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ dv.role }}; margin-top:1px;">∿</span>
+                      <div style="font-family:'Newsreader',serif; font-size:15.5px; line-height:1.5; color:#3A382F;">{{ dv.insight }}</div>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <!-- ===== SELECT / TEXT VIZ: history list ===== -->
+                <sc-if value="{{ dv.isList }}" hint-placeholder-val="{{ false }}">
+                  <div>
+                    <sc-if value="{{ dv.isSelect }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex; gap:8px; margin-bottom:20px;">
+                        <sc-for list="{{ dv.distBars }}" as="d" hint-placeholder-count="4">
+                          <div style="flex:1; background:#fff; border:1px solid #ECEAE2; border-radius:10px; padding:12px 13px;">
+                            <div style="display:flex; align-items:center; gap:7px; margin-bottom:9px;"><span style="width:9px; height:9px; border-radius:50%; background:{{ d.color }};"></span><span style="font-family:'Spline Sans',sans-serif; font-size:12.5px; color:#5C594F;">{{ d.label }}</span></div>
+                            <div style="font-family:'Instrument Serif',serif; font-size:22px; color:#23232A; line-height:1;">{{ d.pct }}</div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:4px;">History</div>
+                    <sc-for list="{{ dv.history }}" as="h" hint-placeholder-count="8">
+                      <div style="display:flex; gap:14px; padding:14px 2px; border-top:1px solid #F0EEE7; align-items:flex-start;">
+                        <div style="width:78px; flex:none; text-align:right; padding-top:2px;">
+                          <div style="font-family:'Spline Sans',sans-serif; font-size:13px; color:#23232A;">{{ h.day }}</div>
+                          <div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#B0AEA4; margin-top:1px;">{{ h.time }}</div>
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                          <sc-if value="{{ h.isChip }}" hint-placeholder-val="{{ false }}">
+                            <span style="display:inline-flex; align-items:center; gap:7px; font-family:'Spline Sans',sans-serif; font-size:13.5px; color:{{ h.valColor }}; background:{{ h.valBg }}; border-radius:8px; padding:5px 12px;"><span style="width:8px; height:8px; border-radius:50%; background:{{ h.valColor }};"></span>{{ h.value }}</span>
+                          </sc-if>
+                          <sc-if value="{{ h.isText }}" hint-placeholder-val="{{ true }}">
+                            <div style="font-family:'Newsreader',serif; font-size:17px; line-height:1.45; color:#23232A;">{{ h.value }}</div>
+                          </sc-if>
+                          <div style="margin-top:6px;">
+                            <sc-if value="{{ h.manual }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#B0AEA4;">✎ manual</span></sc-if>
+                            <sc-if value="{{ h.extracted }}" hint-placeholder-val="{{ true }}">
+                              <button onClick="{{ h.onProv }}" style="background:none; border:none; padding:0; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#A6A398; display:inline-flex; align-items:center; gap:5px;" style-hover="color:#3E4D6B;">↳ from your journal · {{ h.srcDay }}</button>
+                              <sc-if value="{{ h.provOpen }}" hint-placeholder-val="{{ false }}">
+                                <div style="margin-top:8px; background:#FBFAF7; border:1px solid #ECEAE2; border-left:2px solid #C7CEDB; border-radius:0 10px 10px 0; padding:11px 14px; max-width:520px;">
+                                  <div style="font-family:'Newsreader',serif; font-style:italic; font-size:14.5px; line-height:1.5; color:#6B685E;">“{{ h.src }}”</div>
+                                </div>
+                              </sc-if>
+                            </sc-if>
+                          </div>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <!-- ============ FORM ============ -->
+            <sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:30px 40px 44px;">
+                <button onClick="{{ onBack }}" style="background:none; border:none; padding:0; cursor:pointer; font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; display:inline-flex; align-items:center; gap:6px; margin-bottom:16px;" style-hover="color:#3E4D6B;">← all trackers</button>
+                <div style="max-width:600px;">
+                  <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                    <span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0843B;">—</span>
+                    <h2 style="font-family:'Instrument Serif',serif; font-weight:400; font-size:30px; color:#23232A; margin:0;">{{ formHeading }}</h2>
+                  </div>
+                  <p style="font-family:'Newsreader',serif; font-size:15px; color:#6B685E; margin:0 0 22px;">The same form Review fills in when it spots something new worth tracking.</p>
+
+                  <div style="background:#fff; border:1px solid #ECEAE2; border-radius:14px; padding:22px 24px 24px; box-shadow:0 2px 12px -8px rgba(0,0,0,.14);">
+                    <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Name</label>
+                    <input value="{{ formName }}" onChange="{{ onFormName }}" placeholder="What are you tracking?" style="width:100%; font-family:'Newsreader',serif; font-size:20px; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:9px; padding:11px 13px; margin-bottom:20px;">
+
+                    <label style="display:block; font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#A6A398; margin-bottom:8px;">Input type</label>
+                    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:20px;">
+                      <sc-for list="{{ typeOptions }}" as="t" hint-placeholder-count="5">
+                        <sc-if value="{{ t.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ t.onClick }}" style="display:flex; align-items:flex-start; gap:10px; text-align:left; padding:12px 13px; border-radius:10px; border:1.5px solid #3E4D6B; background:#EEF1F6; cursor:pointer;"><span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:#3E4D6B; margin-top:1px;">{{ t.glyph }}</span><span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:13.5px; font-weight:500; color:#2F3C56;">{{ t.label }}</span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:11.5px; color:#6B7A93; margin-top:1px;">{{ t.hint }}</span></span></button></sc-if>
+                        <sc-if value="{{ t.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ t.onClick }}" style="display:flex; align-items:flex-start; gap:10px; text-align:left; padding:12px 13px; border-radius:10px; border:1px solid #E2E0D7; background:#FBFAF7; cursor:pointer;" style-hover="border-color:#3E4D6B;"><span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:#A6A398; margin-top:1px;">{{ t.glyph }}</span><span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:13.5px; font-weight:500; color:#23232A;">{{ t.label }}</span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:11.5px; color:#8C887E; margin-top:1px;">{{ t.hint }}</span></span></button></sc-if>
+                      </sc-for>
+                    </div>
+
+                    <!-- type-specific config -->
+                    <sc-if value="{{ cfgScale }}" hint-placeholder-val="{{ true }}">
+                      <div style="background:#FBFAF7; border:1px solid #EFEDE6; border-radius:10px; padding:15px 16px;">
+                        <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:10px;">Scale · {{ scaleMin }} to {{ scaleMax }}</div>
+                        <div style="display:flex; gap:20px; margin-bottom:12px;">
+                          <div><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:12px; color:#8C887E; margin-bottom:5px;">Lowest</span><input value="{{ scaleMin }}" style="width:60px; font-family:'Spline Sans Mono',monospace; font-size:15px; text-align:center; color:#23232A; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:8px;"></div>
+                          <div><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:12px; color:#8C887E; margin-bottom:5px;">Highest</span><input value="{{ scaleMax }}" style="width:60px; font-family:'Spline Sans Mono',monospace; font-size:15px; text-align:center; color:#23232A; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:8px;"></div>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                          <div style="flex:1;"><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:12px; color:#8C887E; margin-bottom:5px;">Label the low end</span><input value="Low" style="width:100%; font-family:'Spline Sans',sans-serif; font-size:13px; color:#23232A; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:8px 10px;"></div>
+                          <div style="flex:1;"><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:12px; color:#8C887E; margin-bottom:5px;">Label the high end</span><input value="Great" style="width:100%; font-family:'Spline Sans',sans-serif; font-size:13px; color:#23232A; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:8px 10px;"></div>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ cfgNumber }}" hint-placeholder-val="{{ false }}">
+                      <div style="background:#FBFAF7; border:1px solid #EFEDE6; border-radius:10px; padding:15px 16px;">
+                        <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:10px;">Number</div>
+                        <div style="display:flex; gap:14px; align-items:flex-end;">
+                          <div style="flex:1;"><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:12px; color:#8C887E; margin-bottom:5px;">Unit (optional)</span><input value="cups" style="width:100%; font-family:'Spline Sans',sans-serif; font-size:13px; color:#23232A; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:8px 10px;"></div>
+                          <div style="flex:1;"><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:12px; color:#8C887E; margin-bottom:5px;">Step</span><input value="1" style="width:100%; font-family:'Spline Sans Mono',monospace; font-size:13px; color:#23232A; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:8px 10px;"></div>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ cfgSelect }}" hint-placeholder-val="{{ false }}">
+                      <div style="background:#FBFAF7; border:1px solid #EFEDE6; border-radius:10px; padding:15px 16px;">
+                        <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:10px;">Options</div>
+                        <div style="display:flex; flex-direction:column; gap:7px;">
+                          <div style="display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:7px 10px;"><span style="font-family:'Spline Sans Mono',monospace; color:#B0AEA4;">≡</span><span style="flex:1; font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#23232A;">Low</span><span style="color:#C0BEB4; font-size:14px;">✕</span></div>
+                          <div style="display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:7px 10px;"><span style="font-family:'Spline Sans Mono',monospace; color:#B0AEA4;">≡</span><span style="flex:1; font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#23232A;">Steady</span><span style="color:#C0BEB4; font-size:14px;">✕</span></div>
+                          <div style="display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #E2E0D7; border-radius:8px; padding:7px 10px;"><span style="font-family:'Spline Sans Mono',monospace; color:#B0AEA4;">≡</span><span style="flex:1; font-family:'Spline Sans',sans-serif; font-size:13.5px; color:#23232A;">Good</span><span style="color:#C0BEB4; font-size:14px;">✕</span></div>
+                          <button style="align-self:flex-start; margin-top:2px; background:none; border:none; font-family:'Spline Sans',sans-serif; font-size:12.5px; color:#3E4D6B; cursor:pointer; padding:0;">+ Add option</button>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ cfgBoolText }}" hint-placeholder-val="{{ false }}">
+                      <div style="background:#FBFAF7; border:1px solid #EFEDE6; border-radius:10px; padding:14px 16px; font-family:'Spline Sans',sans-serif; font-size:13px; color:#8C887E;">{{ cfgBoolTextNote }}</div>
+                    </sc-if>
+
+                    <!-- GUARDRAIL: type change with existing entries -->
+                    <sc-if value="{{ showGuardrail }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:16px; background:#FBF4E9; border:1px solid #E9D9B8; border-radius:11px; padding:15px 17px;">
+                        <div style="display:flex; align-items:center; gap:9px; margin-bottom:8px;">
+                          <span style="font-family:'Spline Sans Mono',monospace; font-size:14px; color:#B0843B;">△</span>
+                          <span style="font-family:'Spline Sans',sans-serif; font-size:13.5px; font-weight:600; color:#7A5A1E;">This tracker already has {{ guardCount }} entries</span>
+                        </div>
+                        <p style="font-family:'Spline Sans',sans-serif; font-size:13px; line-height:1.55; color:#7A6A48; margin:0 0 12px;">Switching from <b style="font-weight:600;">{{ guardFrom }}</b> to <b style="font-weight:600;">{{ guardTo }}</b> can't cleanly convert your history. Choose what happens to it:</p>
+                        <div style="display:flex; flex-direction:column; gap:7px;">
+                          <sc-for list="{{ guardChoices }}" as="g" hint-placeholder-count="3">
+                            <sc-if value="{{ g.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ g.onClick }}" style="display:flex; align-items:flex-start; gap:9px; text-align:left; background:#fff; border:1.5px solid #B0843B; border-radius:9px; padding:10px 12px; cursor:pointer;"><span style="width:16px; height:16px; border-radius:50%; border:5px solid #B0843B; flex:none; margin-top:1px;"></span><span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:13px; font-weight:500; color:#23232A;">{{ g.label }}</span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:11.5px; color:#8C887E; margin-top:1px;">{{ g.desc }}</span></span></button></sc-if>
+                            <sc-if value="{{ g.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ g.onClick }}" style="display:flex; align-items:flex-start; gap:9px; text-align:left; background:#fff; border:1px solid #E9DCC0; border-radius:9px; padding:10px 12px; cursor:pointer;" style-hover="border-color:#B0843B;"><span style="width:16px; height:16px; border-radius:50%; border:1.5px solid #C9BC9C; flex:none; margin-top:1px;"></span><span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:13px; font-weight:500; color:#23232A;">{{ g.label }}</span><span style="display:block; font-family:'Spline Sans',sans-serif; font-size:11.5px; color:#8C887E; margin-top:1px;">{{ g.desc }}</span></span></button></sc-if>
+                          </sc-for>
+                        </div>
+                      </div>
+                    </sc-if>
+                  </div>
+
+                  <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:18px;">
+                    <button onClick="{{ onBack }}" style="background:none; border:none; font-family:'Spline Sans',sans-serif; font-size:14px; color:#9A988F; cursor:pointer; padding:9px 8px;" style-hover="color:#5C594F;">Cancel</button>
+                    <button onClick="{{ onBack }}" style="background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:11px 22px; border-radius:23px; cursor:pointer;" style-hover="background:#2F3C56;">{{ formSaveLabel }}</button>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MOBILE -->
+    <div style="flex:none; width:392px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">Mobile · the shelf, one tap to log</div>
+      <div style="background:#0F0F12; border-radius:46px; padding:9px; box-shadow:0 34px 64px -22px rgba(0,0,0,.4), 0 0 0 1px rgba(0,0,0,.12);">
+        <div style="background:#F6F5F1; border-radius:38px; overflow:hidden; height:812px; display:flex; flex-direction:column;">
+          <div style="flex:none; display:flex; justify-content:space-between; align-items:center; padding:14px 26px 4px;">
+            <span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#23232A; font-weight:500;">9:41</span>
+            <span style="font-size:11px; color:#9A988F;">●●● &nbsp;⌃ &nbsp;◐</span>
+          </div>
+          <div style="flex:none; display:flex; align-items:center; justify-content:space-between; padding:6px 22px 10px;">
+            <span style="font-family:'Instrument Serif',serif; font-size:25px; color:#23232A;">Trackers</span>
+            <button onClick="{{ onNew }}" style="display:inline-flex; align-items:center; gap:6px; background:#3E4D6B; border:none; border-radius:16px; padding:6px 12px; cursor:pointer;"><span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#fff;">+ New</span></button>
+          </div>
+
+          <div style="flex:1; overflow-y:auto; padding:4px 18px 18px; display:flex; flex-direction:column; gap:12px;">
+            <sc-for list="{{ cards }}" as="c" hint-placeholder-count="6">
+              <div style="background:#fff; border:1px solid #ECEAE2; border-radius:14px; padding:14px 15px 13px;">
+                <button onClick="{{ c.onOpen }}" style="display:flex; align-items:center; gap:9px; width:100%; text-align:left; background:none; border:none; cursor:pointer; padding:0; margin-bottom:9px;">
+                  <span style="font-family:'Spline Sans Mono',monospace; font-size:15px; color:{{ c.role }}; width:15px; text-align:center;">{{ c.glyph }}</span>
+                  <span style="font-family:'Instrument Serif',serif; font-size:18px; color:#23232A;">{{ c.name }}</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-family:'Instrument Serif',serif; font-size:18px; color:#23232A;">{{ c.lastLabel }}</span>
+                  <span style="font-family:'Spline Sans Mono',monospace; font-size:9.5px; color:#B0AEA4;">{{ c.lastWhen }}</span>
+                </button>
+                <button onClick="{{ c.onOpen }}" style="display:block; width:100%; background:none; border:none; cursor:pointer; padding:0; margin-bottom:10px;">
+                  <sc-if value="{{ c.isLine }}" hint-placeholder-val="{{ true }}"><svg viewBox="0 0 240 32" preserveAspectRatio="none" style="width:100%; height:30px; display:block; overflow:visible;"><polyline points="{{ c.sparkPtsM }}" fill="none" stroke="{{ c.role }}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></sc-if>
+                  <sc-if value="{{ c.isBars }}" hint-placeholder-val="{{ false }}"><svg viewBox="0 0 240 32" preserveAspectRatio="none" style="width:100%; height:30px; display:block;"><sc-for list="{{ c.sparkBarsM }}" as="b" hint-placeholder-count="21"><rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="1" fill="{{ b.fill }}"></rect></sc-for></svg></sc-if>
+                  <sc-if value="{{ c.isHeat }}" hint-placeholder-val="{{ false }}"><div style="display:flex; gap:3px; height:30px; align-items:center;"><sc-for list="{{ c.heatMini }}" as="h" hint-placeholder-count="21"><span style="flex:1; height:18px; border-radius:2px; background:{{ h.bg }};"></span></sc-for></div></sc-if>
+                  <sc-if value="{{ c.isSelViz }}" hint-placeholder-val="{{ false }}"><div style="display:flex; gap:3px; height:30px; align-items:flex-end;"><sc-for list="{{ c.selBars }}" as="b" hint-placeholder-count="21"><span style="flex:1; border-radius:2px; background:{{ b.bg }}; height:{{ b.h }};"></span></sc-for></div></sc-if>
+                  <sc-if value="{{ c.isTextViz }}" hint-placeholder-val="{{ false }}"><div style="height:30px; display:flex; align-items:center; font-family:'Newsreader',serif; font-style:italic; font-size:14px; color:#6B685E; overflow:hidden;">“{{ c.textPreview }}”</div></sc-if>
+                </button>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="flex:1; min-width:0; font-family:'Spline Sans Mono',monospace; font-size:10px; color:#A6A398; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ c.todayNote }}</span>
+                  <button onClick="{{ c.onLog }}" style="flex:none; display:inline-flex; align-items:center; gap:6px; background:{{ c.roleSoft }}; border:none; color:{{ c.role }}; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:12.5px; padding:8px 15px; border-radius:20px; cursor:pointer;"><span style="font-family:'Spline Sans Mono',monospace; font-size:13px;">+</span>{{ c.logCta }}</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- BOTTOM TAB BAR -->
+          <div style="flex:none; display:flex; justify-content:space-around; align-items:center; padding:9px 8px 24px; border-top:1px solid #ECEAE2; background:#FBFAF7;">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">◆</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Overview</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">≡</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Timeline</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">•</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Tasks</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#3E4D6B;">—</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#3E4D6B; font-weight:500;">Trackers</span></div>
+            <div style="display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 6px; flex:1;"><span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#B0AEA4;">○</span><span style="font-family:'Spline Sans',sans-serif; font-size:10px; color:#A6A398;">Activities</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================ STATES ============================ -->
+  <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:#8C887E; margin-bottom:8px;">Three states — empty, sparse, and a full year</div>
+  <div style="display:flex; gap:40px; align-items:flex-start; flex-wrap:wrap; margin-bottom:60px;">
+
+    <!-- EMPTY -->
+    <div style="flex:none; width:420px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.08em; color:#9A988F; margin-bottom:8px;">A · No trackers yet</div>
+      <div style="background:#F6F5F1; border:1px solid #E2E0D7; border-radius:12px; box-shadow:0 18px 44px -28px rgba(0,0,0,.3); height:420px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:44px 40px;">
+        <div style="font-family:'Spline Sans Mono',monospace; font-size:22px; letter-spacing:.3em; color:#B0843B; margin-bottom:20px;">—</div>
+        <div style="font-family:'Instrument Serif',serif; font-size:27px; line-height:1.15; color:#23232A; margin-bottom:12px;">Watch anything that changes over time.</div>
+        <p style="font-family:'Newsreader',serif; font-size:16px; line-height:1.55; color:#6B685E; margin:0 0 22px; max-width:320px;">Mood, coffee, weight, whether you ran — a tracker is one number you keep, and the chart draws itself. Most start on their own, pulled from what you write.</p>
+        <button style="display:inline-flex; align-items:center; gap:8px; background:#3E4D6B; border:none; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; padding:11px 20px; border-radius:23px; cursor:pointer;" style-hover="background:#2F3C56;"><span style="font-family:'Spline Sans Mono',monospace;">+</span>Add your first tracker</button>
+      </div>
+    </div>
+
+    <!-- SPARSE 3 ENTRIES -->
+    <div style="flex:none; width:420px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.08em; color:#9A988F; margin-bottom:8px;">B · Three entries — sparse, not broken</div>
+      <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; box-shadow:0 18px 44px -28px rgba(0,0,0,.3); height:420px; padding:22px 24px; display:flex; flex-direction:column;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:2px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; background:#F1EBDA; color:#8A6A2F; font-family:'Spline Sans Mono',monospace; font-size:17px;">—</span>
+          <div><div style="font-family:'Instrument Serif',serif; font-size:22px; color:#23232A; line-height:1;">Reading</div><div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#A6A398; margin-top:3px;">Number · 3 entries · since Mon</div></div>
+        </div>
+        <div style="font-family:'Spline Sans',sans-serif; font-size:12.5px; color:#8C887E; margin:16px 0 10px; line-height:1.5;">Not enough for a trend yet — here's what you've logged. A few more and the chart fills in.</div>
+        <div style="display:flex; align-items:flex-end; gap:14px; height:80px; padding:0 6px 10px; border-bottom:1px solid #F0EEE7;">
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;"><div style="width:100%; max-width:34px; height:40px; background:#8A6A2F; border-radius:3px;"></div></div>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;"><div style="width:100%; max-width:34px; height:22px; background:#8A6A2F; border-radius:3px;"></div></div>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;"><div style="width:100%; max-width:34px; height:62px; background:#8A6A2F; border-radius:3px;"></div></div>
+          <div style="flex:1;"></div><div style="flex:1;"></div><div style="flex:1;"></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:0; margin-top:6px;">
+          <div style="display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid #F4F2EB;"><span style="font-family:'Spline Sans',sans-serif; font-size:14px; color:#23232A;">Today</span><span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#8A6A2F;">31 pages</span></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid #F4F2EB;"><span style="font-family:'Spline Sans',sans-serif; font-size:14px; color:#23232A;">Tuesday</span><span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#8A6A2F;">18 pages</span></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 0; border-top:1px solid #F4F2EB;"><span style="font-family:'Spline Sans',sans-serif; font-size:14px; color:#23232A;">Monday</span><span style="font-family:'Spline Sans Mono',monospace; font-size:13px; color:#8A6A2F;">45 pages</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- YEAR OF DATA -->
+    <div style="flex:none; width:420px;">
+      <div style="font-family:'Spline Sans Mono',monospace; font-size:11px; letter-spacing:.08em; color:#9A988F; margin-bottom:8px;">C · A full year — the payoff of keeping it</div>
+      <div style="background:#fff; border:1px solid #ECEAE2; border-radius:12px; box-shadow:0 18px 44px -28px rgba(0,0,0,.3); height:420px; padding:22px 24px; display:flex; flex-direction:column;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+          <span style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; background:#F3EBD9; color:#B0843B; font-family:'Spline Sans Mono',monospace; font-size:17px;">—</span>
+          <div><div style="font-family:'Instrument Serif',serif; font-size:22px; color:#23232A; line-height:1;">Mood</div><div style="font-family:'Spline Sans Mono',monospace; font-size:10.5px; color:#A6A398; margin-top:3px;">Scale · 168 entries · a year in pixels</div></div>
+        </div>
+        <div style="flex:1; overflow:hidden;">
+          <sc-for list="{{ miniYearRows }}" as="r" hint-placeholder-count="12">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px;">
+              <span style="width:22px; flex:none; font-family:'Spline Sans Mono',monospace; font-size:9px; color:#A6A398; text-align:right;">{{ r.name }}</span>
+              <div style="flex:1; display:grid; grid-template-columns:repeat(31, 1fr); gap:2px;">
+                <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="31">
+                  <sc-if value="{{ c.real }}" hint-placeholder-val="{{ true }}"><span style="aspect-ratio:1; border-radius:1.5px; background:{{ c.bg }};"></span></sc-if>
+                  <sc-if value="{{ c.blank }}" hint-placeholder-val="{{ false }}"><span></span></sc-if>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============================ LOG DIALOG ============================ -->
+<sc-if value="{{ lg.open }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ lg.onClose }}" style="position:fixed; inset:0; z-index:60; background:rgba(24,20,14,.42); display:flex; align-items:center; justify-content:center; padding:24px; font-family:'Spline Sans',sans-serif;">
+    <div onClick="{{ lg.stop }}" style="width:430px; max-width:100%; background:#F6F5F1; border-radius:16px; box-shadow:0 40px 90px -24px rgba(0,0,0,.55); overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:11px; padding:20px 22px 16px; border-bottom:1px solid #ECEAE2;">
+        <span style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:10px; background:{{ lg.roleSoft }}; color:{{ lg.role }}; font-family:'Spline Sans Mono',monospace; font-size:17px;">—</span>
+        <div style="flex:1; min-width:0;">
+          <div style="font-family:'Instrument Serif',serif; font-size:21px; color:#23232A; line-height:1;">{{ lg.name }}</div>
+          <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.04em; color:#A6A398; margin-top:4px;">{{ lg.schemaNote }}</div>
+        </div>
+        <button onClick="{{ lg.onClose }}" style="background:none; border:none; color:#B0AEA4; font-size:18px; cursor:pointer; padding:2px 4px;" style-hover="color:#5C594F;">✕</button>
+      </div>
+      <div style="padding:20px 22px 22px;">
+
+        <!-- SCALE: multiple per day -->
+        <sc-if value="{{ lg.isScale }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:10px;">How is it right now?</div>
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+              <sc-for list="{{ lg.scaleBtns }}" as="q" hint-placeholder-count="5">
+                <sc-if value="{{ q.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ q.onClick }}" style="flex:1; height:56px; border-radius:11px; border:none; background:{{ lg.role }}; color:#fff; font-family:'Spline Sans Mono',monospace; font-size:19px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;">{{ q.n }}<span style="font-family:'Spline Sans',sans-serif; font-size:8.5px; opacity:.85; text-transform:uppercase; letter-spacing:.04em;">{{ q.lab }}</span></button></sc-if>
+                <sc-if value="{{ q.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ q.onClick }}" style="flex:1; height:56px; border-radius:11px; border:1px solid #E2E0D7; background:#FBFAF7; color:#6B685E; font-family:'Spline Sans Mono',monospace; font-size:19px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;" style-hover="border-color:{{ lg.role }}; color:{{ lg.role }};">{{ q.n }}<span style="font-family:'Spline Sans',sans-serif; font-size:8.5px; opacity:.7; text-transform:uppercase; letter-spacing:.04em;">{{ q.lab }}</span></button></sc-if>
+              </sc-for>
+            </div>
+            <input value="{{ lg.noteVal }}" onChange="{{ lg.onNote }}" placeholder="A word on why (optional)…" style="width:100%; font-family:'Newsreader',serif; font-size:15px; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:10px; padding:10px 13px; margin-bottom:16px;">
+            <sc-if value="{{ lg.canAdd }}" hint-placeholder-val="{{ false }}"><button onClick="{{ lg.onAdd }}" style="width:100%; height:44px; border-radius:11px; border:none; background:{{ lg.role }}; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; cursor:pointer;">Add entry</button></sc-if>
+            <sc-if value="{{ lg.cannotAdd }}" hint-placeholder-val="{{ true }}"><div style="width:100%; height:44px; border-radius:11px; background:#E4E2D9; color:#B0AEA4; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; display:flex; align-items:center; justify-content:center;">Pick a value</div></sc-if>
+            <div style="margin-top:18px; padding-top:14px; border-top:1px solid #ECEAE2;">
+              <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:9px;">Logged today</div>
+              <sc-if value="{{ lg.hasToday }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <sc-for list="{{ lg.todayEntries }}" as="e" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:center; gap:10px;"><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; width:44px;">{{ e.time }}</span><span style="display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:26px; border-radius:7px; background:{{ lg.roleSoft }}; color:{{ lg.role }}; font-family:'Spline Sans Mono',monospace; font-size:13px; padding:0 8px;">{{ e.label }}</span></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ lg.noneToday }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Newsreader',serif; font-style:italic; font-size:14px; color:#A6A398;">Nothing yet — your first reading today.</div></sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- SELECT: multiple per day -->
+        <sc-if value="{{ lg.isSelect }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:10px;">Where's it at right now?</div>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+              <sc-for list="{{ lg.selBtns }}" as="q" hint-placeholder-count="4">
+                <sc-if value="{{ q.sel }}" hint-placeholder-val="{{ false }}"><button onClick="{{ q.onClick }}" style="width:100%; height:46px; border-radius:11px; border:none; background:{{ lg.role }}; color:#fff; font-family:'Spline Sans',sans-serif; font-size:14.5px; cursor:pointer; text-align:left; padding:0 16px;">{{ q.label }}</button></sc-if>
+                <sc-if value="{{ q.notSel }}" hint-placeholder-val="{{ true }}"><button onClick="{{ q.onClick }}" style="width:100%; height:46px; border-radius:11px; border:1px solid #E2E0D7; background:#FBFAF7; color:#5C594F; font-family:'Spline Sans',sans-serif; font-size:14.5px; cursor:pointer; text-align:left; padding:0 16px;" style-hover="border-color:{{ lg.role }};">{{ q.label }}</button></sc-if>
+              </sc-for>
+            </div>
+            <sc-if value="{{ lg.canAdd }}" hint-placeholder-val="{{ false }}"><button onClick="{{ lg.onAdd }}" style="width:100%; height:44px; border-radius:11px; border:none; background:{{ lg.role }}; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; cursor:pointer;">Add entry</button></sc-if>
+            <sc-if value="{{ lg.cannotAdd }}" hint-placeholder-val="{{ true }}"><div style="width:100%; height:44px; border-radius:11px; background:#E4E2D9; color:#B0AEA4; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; display:flex; align-items:center; justify-content:center;">Pick a level</div></sc-if>
+            <div style="margin-top:18px; padding-top:14px; border-top:1px solid #ECEAE2;">
+              <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:9px;">Logged today</div>
+              <sc-if value="{{ lg.hasToday }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <sc-for list="{{ lg.todayEntries }}" as="e" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:center; gap:10px;"><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; width:44px;">{{ e.time }}</span><span style="display:inline-flex; align-items:center; height:26px; border-radius:7px; background:{{ lg.roleSoft }}; color:{{ lg.role }}; font-family:'Spline Sans',sans-serif; font-size:13px; padding:0 11px;">{{ e.label }}</span></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ lg.noneToday }}" hint-placeholder-val="{{ false }}"><div style="font-family:'Newsreader',serif; font-style:italic; font-size:14px; color:#A6A398;">No reading yet today.</div></sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- COUNTER -->
+        <sc-if value="{{ lg.isCounter }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;">
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:14px;">So far today</div>
+            <div style="display:flex; align-items:center; justify-content:center; gap:22px; margin-bottom:8px;">
+              <button onClick="{{ lg.onMinus }}" style="width:52px; height:52px; border-radius:14px; border:1px solid #E2E0D7; background:#FBFAF7; color:#6B685E; font-size:26px; cursor:pointer; line-height:1;" style-hover="border-color:{{ lg.role }}; color:{{ lg.role }};">−</button>
+              <span style="font-family:'Instrument Serif',serif; font-size:64px; color:{{ lg.role }}; line-height:1; min-width:80px;">{{ lg.countVal }}</span>
+              <button onClick="{{ lg.onPlus }}" style="width:52px; height:52px; border-radius:14px; border:none; background:{{ lg.role }}; color:#fff; font-size:26px; cursor:pointer; line-height:1;">+</button>
+            </div>
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:12px; color:#A6A398; margin-bottom:20px;">{{ lg.unit }}</div>
+            <button onClick="{{ lg.onClose }}" style="width:100%; height:44px; border-radius:11px; border:none; background:#23232A; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; cursor:pointer;">Done</button>
+          </div>
+        </sc-if>
+
+        <!-- VALUE (weight) -->
+        <sc-if value="{{ lg.isValue }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:10px;">Today's reading</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+              <input value="{{ lg.numVal }}" onChange="{{ lg.onNum }}" placeholder="0.0" style="flex:1; font-family:'Instrument Serif',serif; font-size:30px; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:11px; padding:12px 16px;">
+              <span style="font-family:'Spline Sans Mono',monospace; font-size:16px; color:#A6A398;">{{ lg.unit }}</span>
+            </div>
+            <button onClick="{{ lg.onSave }}" style="width:100%; height:44px; border-radius:11px; border:none; background:{{ lg.role }}; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; cursor:pointer;">Save today's reading</button>
+          </div>
+        </sc-if>
+
+        <!-- HABIT (run) -->
+        <sc-if value="{{ lg.isHabit }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:12px;">Did it happen today?</div>
+            <div style="display:flex; gap:10px;">
+              <sc-if value="{{ lg.isDone }}" hint-placeholder-val="{{ false }}"><button onClick="{{ lg.onDone }}" style="flex:1; height:80px; border-radius:13px; border:none; background:{{ lg.role }}; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:15px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;"><span style="font-family:'Spline Sans Mono',monospace; font-size:22px;">✓</span>Done</button></sc-if>
+              <sc-if value="{{ lg.notDone }}" hint-placeholder-val="{{ true }}"><button onClick="{{ lg.onDone }}" style="flex:1; height:80px; border-radius:13px; border:1px solid #E2E0D7; background:#FBFAF7; color:#5C594F; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:15px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;" style-hover="border-color:{{ lg.role }}; color:{{ lg.role }};"><span style="font-family:'Spline Sans Mono',monospace; font-size:22px;">✓</span>Done</button></sc-if>
+              <button onClick="{{ lg.onSkip }}" style="flex:1; height:80px; border-radius:13px; border:1px solid #E2E0D7; background:#FBFAF7; color:#9A988F; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:15px; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;" style-hover="border-color:#C2503A; color:#C2503A;"><span style="font-family:'Spline Sans Mono',monospace; font-size:22px;">○</span>Not today</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- TEXT -->
+        <sc-if value="{{ lg.isText }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:10px;">A line worth keeping</div>
+            <textarea value="{{ lg.textVal }}" onChange="{{ lg.onText }}" placeholder="What stood out?" rows="3" style="width:100%; font-family:'Newsreader',serif; font-size:16px; line-height:1.5; color:#23232A; background:#FBFAF7; border:1px solid #E2E0D7; border-radius:11px; padding:12px 14px; resize:vertical; margin-bottom:14px;"></textarea>
+            <sc-if value="{{ lg.canAdd }}" hint-placeholder-val="{{ false }}"><button onClick="{{ lg.onAdd }}" style="width:100%; height:44px; border-radius:11px; border:none; background:{{ lg.role }}; color:#fff; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; cursor:pointer;">Add note</button></sc-if>
+            <sc-if value="{{ lg.cannotAdd }}" hint-placeholder-val="{{ true }}"><div style="width:100%; height:44px; border-radius:11px; background:#E4E2D9; color:#B0AEA4; font-family:'Spline Sans',sans-serif; font-weight:500; font-size:14px; display:flex; align-items:center; justify-content:center;">Write a line</div></sc-if>
+            <sc-if value="{{ lg.hasToday }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:18px; padding-top:14px; border-top:1px solid #ECEAE2;">
+                <div style="font-family:'Spline Sans Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#A6A398; margin-bottom:9px;">Today's notes</div>
+                <div style="display:flex; flex-direction:column; gap:9px;">
+                  <sc-for list="{{ lg.todayNotes }}" as="e" hint-placeholder-count="1">
+                    <div style="display:flex; gap:10px;"><span style="font-family:'Spline Sans Mono',monospace; font-size:11px; color:#A6A398; width:44px; flex:none; padding-top:2px;">{{ e.time }}</span><span style="font-family:'Newsreader',serif; font-size:15px; line-height:1.45; color:#23232A;">{{ e.text }}</span></div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+</sc-if></x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1980,&quot;height&quot;:2100}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    // ---- calendar 2026, today = Jun 22 (doy 173) ----
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const MLEN = [31,28,31,30,31,30,31,31,30,31,30,31];
+    this.MONTHS = MONTHS; this.MLEN = MLEN; this.TODAY = 173;
+    const days = []; let doy = 0;
+    for (let m = 0; m < 12; m++) for (let d = 1; d <= MLEN[m]; d++) { doy++; days.push({ m, d, doy, label: MONTHS[m] + ' ' + d }); }
+    this.days = days;
+    // seeded rng
+    let s = 7; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    // mood scale 1..5 with gaps
+    const mood = {}; for (const dy of days) { if (dy.doy > this.TODAY) continue; if (rnd() < 0.10) continue; let b = 3 + 1.15 * Math.sin(dy.doy / 15.5) + (rnd() * 1.9 - 0.95); mood[dy.doy] = Math.max(1, Math.min(5, Math.round(b))); }
+    // coffee count, gentle downtrend
+    const coffee = {}; for (const dy of days) { if (dy.doy > this.TODAY) continue; if (rnd() < 0.05) continue; let b = 2.7 - dy.doy / 260 + (rnd() * 2.2 - 1.05); coffee[dy.doy] = Math.max(0, Math.min(6, Math.round(b))); }
+    // weight continuous, slow decline
+    const weight = {}; let w = 75.6; for (const dy of days) { if (dy.doy > this.TODAY) continue; w += (rnd() * 0.46 - 0.265); w = Math.max(72.8, Math.min(76.4, w)); if (rnd() < 0.55) weight[dy.doy] = Math.round(w * 10) / 10; }
+    // run boolean
+    const run = {}; for (const dy of days) { if (dy.doy > this.TODAY) continue; run[dy.doy] = rnd() < 0.46 ? 1 : 0; }
+    for (let k = this.TODAY - 3; k <= this.TODAY; k++) run[k] = 1; run[this.TODAY - 4] = 0; // current 4-day streak
+    this.data = { mood, coffee, weight, run };
+
+    // energy select + highlight text: recent history lists
+    this.energyHist = [
+      { value: 'Wired', day: 'Today', time: '08:20', manual: false, srcDay: 'Today', src: "Coffee kicked in hard — jittery, can't settle to anything." },
+      { value: 'Steady', day: 'Yesterday', time: '14:10', manual: true },
+      { value: 'Good', day: 'Sun', time: '10:05', manual: false, srcDay: 'Sun', src: 'Woke up clear-headed for once, felt good through the morning.' },
+      { value: 'Low', day: 'Sat', time: '21:30', manual: true },
+      { value: 'Steady', day: 'Fri', time: '12:00', manual: false, srcDay: 'Fri', src: 'Even sort of day, nothing dragging, nothing racing.' },
+      { value: 'Good', day: 'Thu', time: '09:15', manual: true },
+      { value: 'Low', day: 'Wed', time: '22:40', manual: false, srcDay: 'Wed', src: 'Running on fumes by the evening. Bed early.' },
+      { value: 'Steady', day: 'Tue', time: '11:20', manual: true }
+    ];
+    this.highlightHist = [
+      { value: 'The canal was completely still at 7am — mist sitting on the water.', day: 'Today', time: '09:07', manual: false, srcDay: 'Today', src: 'Ran 4k along the canal. Lungs ok, head much better.' },
+      { value: 'Finally shipped the export fix. Small thing, felt huge.', day: 'Yesterday', time: '17:40', manual: true },
+      { value: 'Long lunch with Dana, no agenda, just talking.', day: 'Sun', time: '15:00', manual: false, srcDay: 'Sun', src: 'Long slow lunch with Dana, no agenda. Needed that.' },
+      { value: 'First proper night of sleep in weeks.', day: 'Sat', time: '09:40', manual: true },
+      { value: 'Made it out for a walk even though I did not want to.', day: 'Fri', time: '19:00', manual: false, srcDay: 'Fri', src: 'Evening walk to clear my head.' }
+    ];
+
+    const R = {
+      ochre: { c: '#B0843B', rgb: '176,132,59', soft: '#F3EBD9' },
+      clay: { c: '#C2503A', rgb: '194,80,58', soft: '#F6E7E2' },
+      slate: { c: '#3E4D6B', rgb: '62,77,107', soft: '#EEF1F6' },
+      sage: { c: '#5E7C66', rgb: '94,124,102', soft: '#E7EEE6' },
+      olive: { c: '#8A6A2F', rgb: '138,106,47', soft: '#F1EBDA' },
+      stone: { c: '#6B685E', rgb: '107,104,94', soft: '#EFEDE6' }
+    };
+    this.R = R;
+
+    this.trackers = [
+      { id: 'mood', name: 'Mood', type: 'scale', role: R.ochre, unit: '/5', min: 1, max: 5, labels: { 1: 'Low', 2: '', 3: 'OK', 4: '', 5: 'Great' }, since: 'Jan 1', count: Object.keys(mood).length,
+        insight: 'Steadier than it looks day to day. Your lowest stretches cluster on weeks you barely ran — the two move together.' },
+      { id: 'coffee', name: 'Coffee', type: 'number', numStyle: 'bars', role: R.clay, unit: 'cups', since: 'Jan 1', count: Object.keys(coffee).length,
+        insight: "Down from nearly three a day in winter to just over two now. The afternoon cup is the one that's quietly disappearing." },
+      { id: 'weight', name: 'Weight', type: 'number', numStyle: 'line', role: R.slate, unit: 'kg', since: 'Jan 1', count: Object.keys(weight).length,
+        insight: 'A slow, steady descent — about a kilo and a half since January, no crash weeks. The kind of line that holds.' },
+      { id: 'run', name: 'Run', type: 'boolean', role: R.sage, since: 'Jan 1', count: Object.values(run).filter(v => v === 1).length,
+        insight: 'You almost never run two days in a row — but you rarely skip more than two, either. A rhythm, not a rule.' },
+      { id: 'energy', name: 'Energy', type: 'select', role: R.olive, options: ['Low', 'Steady', 'Good', 'Wired'], since: 'Jun 1', count: 8 },
+      { id: 'highlight', name: 'Highlight', type: 'text', role: R.stone, since: 'Jun 1', count: 5 }
+    ];
+
+    this.state = {
+      view: 'index', selected: null, prov: null, period: 'month', textDraft: '',
+      formType: 'scale', guardChoice: 'keep', editing: false, editType: null,
+      // log dialog
+      logOpen: false, logId: null, draft: { scale: null, sel: null, num: '', note: '', text: '' },
+      // today's aggregate per tracker (feeds charts)
+      today: { mood: 4, coffee: 2, weight: null, run: 1, energy: 'Wired' },
+      // today's individual entries (multiple-per-day schema)
+      todayLog: { mood: [{ v: 5, time: '07:40' }, { v: 3, time: '14:20' }], energy: [{ v: 'Wired', time: '08:20' }], highlight: [] }
+    };
+  }
+
+  // ---------- helpers ----------
+  moodBg(v) { if (v == null) return '#EFEDE6'; const a = [0, 0.18, 0.34, 0.52, 0.74, 1][v]; return 'rgba(176,132,59,' + a + ')'; }
+  legend() { return [1, 2, 3, 4, 5].map(v => ({ bg: this.moodBg(v) })); }
+
+  series(id) { // logged values array over the year (doy asc), plus today overlay
+    const map = this.data[id]; if (!map) return []; const out = [];
+    for (const dy of this.days) { if (dy.doy > this.TODAY) break; let v = map[dy.doy]; if (dy.doy === this.TODAY) { const t = this.state.today[id]; if (t != null) v = t; } if (v != null) out.push({ doy: dy.doy, v, label: dy.label }); }
+    return out;
+  }
+  linePts(vals, min, max, w, h, pad) { const n = vals.length; if (n === 0) return ''; const r = (max - min) || 1; return vals.map((v, i) => { const x = pad + (n === 1 ? 0.5 : i / (n - 1)) * (w - 2 * pad); const y = h - pad - ((v - min) / r) * (h - 2 * pad); return x.toFixed(1) + ',' + y.toFixed(1); }).join(' '); }
+  barArr(vals, max, w, h, fill) { const n = vals.length; const g = Math.max(1, (w / n) * 0.28); const bw = (w - (n - 1) * g) / n; return vals.map((v, i) => { const bh = Math.max(1.5, (v / max) * (h - 2)); return { x: (i * (bw + g)).toFixed(1), y: (h - bh).toFixed(1), w: bw.toFixed(1), h: bh.toFixed(1), fill }; }); }
+
+  // ---------- interactions ----------
+  open(id) { this.setState({ view: 'detail', selected: id, prov: null, textDraft: '' }); }
+  back() { this.setState({ view: 'index', selected: null, editing: false }); }
+  newTracker() { this.setState({ view: 'form', editing: false, formType: 'scale' }); }
+  editTracker(id) { const t = this.trackers.find(x => x.id === id); this.setState({ view: 'form', editing: true, selected: id, formType: t ? t.type : 'scale', editType: t ? t.type : 'scale', guardChoice: 'keep' }); }
+  setFormType(tp) { this.setState({ formType: tp }); }
+  setGuard(g) { this.setState({ guardChoice: g }); }
+  setPeriod(p) { this.setState({ period: p }); }
+  toggleProv(i) { this.setState(s => ({ prov: s.prov === i ? null : i })); }
+  setToday(id, v) { this.setState(s => ({ today: { ...s.today, [id]: v } })); }
+  bump(id, d, lo, hi, step) { this.setState(s => { let cur = s.today[id]; if (cur == null) cur = 0; let nv = Math.round((cur + d * step) * 10) / 10; nv = Math.max(lo, Math.min(hi, nv)); return { today: { ...s.today, [id]: nv } }; }); }
+  toggleBool(id) { this.setState(s => ({ today: { ...s.today, [id]: s.today[id] ? 0 : 1 } })); }
+  setDraft(v) { this.setState({ textDraft: v }); }
+  addText(id) { const v = this.state.textDraft.trim(); if (!v) return; this.highlightHist = [{ value: v, day: 'Today', time: 'now', manual: true }, ...this.highlightHist]; this.setState({ textDraft: '' }); }
+
+  // ---------- quick-log builders ----------
+  qScale(t) { const cur = this.state.today[t.id]; return [1, 2, 3, 4, 5].map(n => ({ n, lab: t.labels[n] || '', sel: cur === n, notSel: cur !== n, onClick: () => this.setToday(t.id, n) })); }
+  qSelOpts(t) { const cur = this.state.today[t.id]; return t.options.map(o => ({ label: o, sel: cur === o, notSel: cur !== o, onClick: () => this.setToday(t.id, o) })); }
+
+  // ---------- index cards ----------
+  card(t) {
+    const ser = this.series(t.id);
+    const last = ser.length ? ser[ser.length - 1] : null;
+    const base = { id: t.id, name: t.name, glyph: '—', role: t.role.c, roleSoft: t.role.soft,
+      typeLabel: { scale: 'Scale', number: 'Number', boolean: 'Yes / no', select: 'Select', text: 'Text' }[t.type],
+      isScale: t.type === 'scale', isNumber: t.type === 'number', isBoolean: t.type === 'boolean', isSelect: t.type === 'select', isText: t.type === 'text',
+      isLine: false, isBars: false, isHeat: false, isSelViz: false, isTextViz: false,
+      onOpen: () => this.open(t.id) };
+
+    if (t.type === 'scale') {
+      const tail = ser.slice(-24).map(p => p.v);
+      base.isLine = true; base.sparkPts = this.linePts(tail, 1, 5, 240, 44, 4); base.sparkPtsM = this.linePts(tail, 1, 5, 240, 32, 3);
+      base.lastLabel = last ? last.v.toFixed(0) : '—'; base.lastWhen = 'today';
+      base.qScale = this.qScale(t);
+    } else if (t.type === 'number') {
+      const tail = ser.slice(-24).map(p => p.v);
+      if (t.numStyle === 'bars') { const mx = Math.max(1, ...tail); base.isBars = true; base.sparkBars = this.barArr(tail, mx, 240, 44, t.role.c); base.sparkBarsM = this.barArr(tail, mx, 240, 32, t.role.c); base.lastLabel = (last ? last.v : 0) + ''; base.lastWhen = 'cups today'; }
+      else { const mn = Math.min(...tail), mx = Math.max(...tail); base.isLine = true; base.sparkPts = this.linePts(tail, mn, mx, 240, 44, 4); base.sparkPtsM = this.linePts(tail, mn, mx, 240, 32, 3); base.lastLabel = (last ? last.v.toFixed(1) : '—') + ''; base.lastWhen = t.unit + ' · ' + 'today'; }
+      base.qCountVal = this.qCountLabel(t); base.onMinus = () => this.bump(t.id, -1, 0, t.numStyle === 'line' ? 200 : 30, t.numStyle === 'line' ? 0.1 : 1); base.onPlus = () => this.bump(t.id, 1, 0, t.numStyle === 'line' ? 200 : 30, t.numStyle === 'line' ? 0.1 : 1);
+    } else if (t.type === 'boolean') {
+      const tail = []; for (let k = this.TODAY - 20; k <= this.TODAY; k++) { let v = this.data.run[k]; if (k === this.TODAY) v = this.state.today.run; tail.push({ bg: v ? t.role.c : '#E9E7DF' }); }
+      base.isHeat = true; base.heatMini = tail;
+      base.streak = this.streak(); base.lastLabel = base.streak + '-day'; base.lastWhen = 'streak';
+      base.qBoolLogged = !!this.state.today.run; base.qBoolOpen = !this.state.today.run; base.onBool = () => this.toggleBool(t.id);
+    } else if (t.type === 'select') {
+      const order = t.options; const counts = order.map(() => 0); [{ value: this.state.today.energy }, ...this.energyHist].forEach(e => { const i = order.indexOf(e.value); if (i >= 0) counts[i]++; }); const mx = Math.max(1, ...counts);
+      base.isSelViz = true; base.selBars = order.map((o, i) => ({ bg: 'rgba(' + t.role.rgb + ',' + (0.35 + 0.65 * (counts[i] / mx)) + ')', h: Math.round(10 + 20 * (counts[i] / mx)) + 'px' }));
+      base.lastLabel = this.state.today.energy || (this.energyHist[0] && this.energyHist[0].value); base.lastWhen = 'today';
+      base.qSelOpts = this.qSelOpts(t);
+    } else if (t.type === 'text') {
+      base.isTextViz = true; base.textPreview = (this.highlightHist[0] && this.highlightHist[0].value) || '—'; base.lastLabel = this.highlightHist.length + ' notes'; base.lastWhen = 'latest today';
+    }
+    base.onLog = () => this.openLog(t.id);
+    base.logCta = t.type === 'text' ? 'Add note' : 'Log';
+    base.todayNote = this.todayNote(t);
+    return base;
+  }
+  qCountLabel(t) { const v = this.state.today[t.id]; if (v == null) return '—'; return t.numStyle === 'line' ? v.toFixed(1) + ' ' + t.unit : v + ''; }
+
+  streak() { let n = 0; for (let k = this.TODAY; k >= 1; k--) { let v = this.data.run[k]; if (k === this.TODAY) v = this.state.today.run; if (v) n++; else break; } return n; }
+  bestStreak() { let best = 0, cur = 0; for (let k = 1; k <= this.TODAY; k++) { let v = this.data.run[k]; if (k === this.TODAY) v = this.state.today.run; if (v) { cur++; best = Math.max(best, cur); } else cur = 0; } return best; }
+
+  // ---------- detail viz ----------
+  yearRows(id, small) {
+    const map = this.data[id];
+    return this.MONTHS.map((mn, mi) => ({ name: mn, cells: Array.from({ length: 31 }, (_, di) => {
+      const d = di + 1; if (d > this.MLEN[mi]) return { real: false, blank: true };
+      const dy = this.days.find(x => x.m === mi && x.d === d); let v = map[dy.doy]; if (dy.doy === this.TODAY) { const t = this.state.today[id]; if (t != null) v = t; }
+      const future = dy.doy > this.TODAY;
+      return { real: true, blank: false, bg: future ? '#F4F2EC' : this.moodBg(v), title: mn + ' ' + d + (v != null ? ' · ' + v : '') };
+    }) }));
+  }
+  heatCols() {
+    // last ~26 weeks ending today; Jan1 2026 = Thu -> weekday(doy)=(3+(doy-1))%7 (0=Mon)
+    const startDoy = this.TODAY - 26 * 7 + 1; const cols = []; let col = null;
+    for (let k = Math.max(1, startDoy); k <= this.TODAY; k++) {
+      const wd = (3 + (k - 1)) % 7;
+      if (wd === 0 || !col) { if (col) cols.push(col); col = { cells: Array.from({ length: 7 }, () => ({ real: false, blank: true })) }; }
+      let v = this.data.run[k]; if (k === this.TODAY) v = this.state.today.run;
+      const dy = this.days[k - 1];
+      col.cells[wd] = { real: true, blank: false, bg: v ? this.trackers.find(t => t.id === 'run').role.c : '#E9E7DF', title: dy.label };
+    }
+    if (col) cols.push(col);
+    return cols;
+  }
+  numberViz(t) {
+    const ser = this.series(t.id); const p = this.state.period; let vals = [], axis = [], W = 660, H = 190;
+    if (p === 'week') { const tail = ser.slice(-7); vals = tail.map(x => x.v); axis = tail.map(x => ({ label: x.label.split(' ')[1] })); }
+    else if (p === 'month') { const tail = ser.slice(-30); vals = tail.map(x => x.v); axis = tail.filter((_, i) => i % 6 === 0).map(x => ({ label: x.label })); }
+    else { // year: monthly averages
+      const byM = this.MONTHS.map(() => []); ser.forEach(x => { const dy = this.days[x.doy - 1]; byM[dy.m].push(x.v); }); vals = byM.map(a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0); axis = this.MONTHS.map(m => ({ label: m[0] }));
+    }
+    const avg = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+    const mx = Math.max(1, ...vals) * 1.1;
+    const bars = this.barArr(vals, mx, W, H, t.role.c);
+    const avgY = (H - Math.max(1.5, (avg / mx) * (H - 2))).toFixed(1);
+    const total = vals.reduce((s, v) => s + v, 0);
+    // trend: compare first half vs second half
+    const half = Math.floor(vals.length / 2); const a1 = vals.slice(0, half), a2 = vals.slice(half);
+    const m1 = a1.length ? a1.reduce((s, v) => s + v, 0) / a1.length : 0; const m2 = a2.length ? a2.reduce((s, v) => s + v, 0) / a2.length : 0;
+    const down = m2 < m1;
+    return { numBars: bars, numAxis: axis, numAvg: avg.toFixed(1), numTotal: t.numStyle === 'line' ? '—' : total.toFixed(0), avgY,
+      trendArrow: down ? '↓' : '↑', trendColor: '#6B685E', trendText: (down ? 'easing off' : 'trending up') };
+  }
+
+  detail() {
+    const t = this.trackers.find(x => x.id === this.state.selected); if (!t) return {};
+    const d = { name: t.name, glyph: '—', role: t.role.c, roleSoft: t.role.soft, unit: t.unit,
+      typeLabel: { scale: 'Scale', number: 'Number', boolean: 'Yes / no', select: 'Select', text: 'Text' }[t.type],
+      count: t.count, since: t.since, insight: t.insight || '',
+      isScale: t.type === 'scale', isNumber: t.type === 'number', isBoolean: t.type === 'boolean', isSelect: t.type === 'select', isText: t.type === 'text', isList: t.type === 'select' || t.type === 'text',
+      onBack: () => this.back(), onEditForm: () => this.editTracker(t.id) };
+
+    // quick-log
+    if (t.type === 'scale') d.qScale = this.qScale(t);
+    if (t.type === 'number') { d.qCountVal = this.qCountLabel(t); d.onMinus = () => this.bump(t.id, -1, 0, t.numStyle === 'line' ? 200 : 30, t.numStyle === 'line' ? 0.1 : 1); d.onPlus = () => this.bump(t.id, 1, 0, t.numStyle === 'line' ? 200 : 30, t.numStyle === 'line' ? 0.1 : 1); }
+    if (t.type === 'boolean') { d.qBoolLogged = !!this.state.today.run; d.qBoolOpen = !this.state.today.run; d.onBool = () => this.toggleBool(t.id); }
+    if (t.type === 'select') d.qSelOpts = this.qSelOpts(t);
+    if (t.type === 'text') { d.textDraft = this.state.textDraft; d.onTextInput = e => this.setDraft(e.target.value); d.onTextAdd = () => this.addText(t.id); }
+
+    if (t.type === 'scale') {
+      const ser = this.series(t.id); const tail = ser.slice(-30); const vals = tail.map(x => x.v);
+      d.trendPts = this.linePts(vals, 1, 5, 640, 130, 12);
+      const n = vals.length; d.trendDots = vals.map((v, i) => { const x = 12 + (n === 1 ? 0.5 : i / (n - 1)) * (640 - 24); const y = 130 - 12 - ((v - 1) / 4) * (130 - 24); return { x: x.toFixed(1), y: y.toFixed(1) }; });
+      d.gridLines = [1, 2, 3, 4, 5].map(v => ({ y: (130 - 12 - ((v - 1) / 4) * (130 - 24)).toFixed(1) }));
+      const recent = vals.slice(-14), prior = vals.slice(-28, -14);
+      d.recentAvg = recent.length ? (recent.reduce((s, v) => s + v, 0) / recent.length).toFixed(1) : '—';
+      d.priorAvg = prior.length ? (prior.reduce((s, v) => s + v, 0) / prior.length).toFixed(1) : '—';
+      d.yearRows = this.yearRows('mood'); d.legendCells = this.legend();
+    }
+    if (t.type === 'number') { d.periodTabs = ['week', 'month', 'year'].map(p => ({ label: { week: 'Week', month: 'Month', year: 'Year' }[p], sel: this.state.period === p, notSel: this.state.period !== p, onClick: () => this.setPeriod(p) })); Object.assign(d, this.numberViz(t)); }
+    if (t.type === 'boolean') { d.streak = this.streak(); d.best = this.bestStreak(); const monthDays = this.TODAY - 152 + 1; let hit = 0; for (let k = 152; k <= this.TODAY; k++) { let v = this.data.run[k]; if (k === this.TODAY) v = this.state.today.run; if (v) hit++; } d.rate = Math.round(100 * hit / monthDays) + '%'; d.heatCols = this.heatCols(); d.heatDayLabels = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun'].map(l => ({ label: l })); }
+    if (t.type === 'select') {
+      const order = t.options; const all = [{ value: this.state.today.energy, day: 'Today', time: 'now', manual: true }, ...this.energyHist];
+      const colors = ['#B0AEA4', '#8A6A2F', '#5E7C66', '#C2503A'];
+      const counts = order.map((o, i) => all.filter(e => e.value === o).length); const tot = all.length || 1;
+      d.distBars = order.map((o, i) => ({ label: o, color: colors[i], pct: Math.round(100 * counts[i] / tot) + '%' }));
+      d.history = all.map((e, i) => ({ isChip: true, isText: false, value: e.value, valColor: colors[order.indexOf(e.value)] || '#6B685E', valBg: 'rgba(' + t.role.rgb + ',0.08)', day: e.day, time: e.time, manual: e.manual === true, extracted: e.manual !== true, srcDay: e.srcDay || '', src: e.src || '', provOpen: this.state.prov === i, onProv: () => this.toggleProv(i) }));
+    }
+    if (t.type === 'text') {
+      d.history = this.highlightHist.map((e, i) => ({ isChip: false, isText: true, value: e.value, day: e.day, time: e.time, manual: e.manual === true, extracted: e.manual !== true, srcDay: e.srcDay || '', src: e.src || '', provOpen: this.state.prov === i, onProv: () => this.toggleProv(i) }));
+    }
+    d.onLog = () => this.openLog(t.id);
+    d.logCta = t.type === 'text' ? 'Add a note' : (t.type === 'number' && t.numStyle === 'line' ? 'Weigh in' : 'Log entry');
+    d.todaySummary = this.todaySummary(t);
+    return d;
+  }
+
+  // ---------- form ----------
+  formVals() {
+    const editing = this.state.editing; const tp = this.state.formType;
+    const editT = editing ? this.trackers.find(x => x.id === this.state.selected) : null;
+    const opts = [
+      { key: 'scale', label: 'Scale', glyph: '—', hint: '1–5, like mood' },
+      { key: 'number', label: 'Number', glyph: '—', hint: 'a count or amount' },
+      { key: 'boolean', label: 'Yes / no', glyph: '○', hint: 'did it happen' },
+      { key: 'select', label: 'Select', glyph: '≡', hint: 'pick from a list' },
+      { key: 'text', label: 'Text', glyph: '✎', hint: 'a note per entry' }
+    ];
+    const typeName = { scale: 'Scale', number: 'Number', boolean: 'Yes / no', select: 'Select', text: 'Text' };
+    const changed = editing && editT && tp !== this.state.editType;
+    return {
+      formHeading: editing ? 'Edit tracker' : 'New tracker',
+      formSaveLabel: editing ? 'Save changes' : 'Create tracker',
+      formName: editT ? editT.name : '',
+      onFormName: () => {},
+      typeOptions: opts.map(o => ({ label: o.label, glyph: o.glyph, hint: o.hint, sel: tp === o.key, notSel: tp !== o.key, onClick: () => this.setFormType(o.key) })),
+      cfgScale: tp === 'scale', cfgNumber: tp === 'number', cfgSelect: tp === 'select',
+      cfgBoolText: tp === 'boolean' || tp === 'text',
+      cfgBoolTextNote: tp === 'boolean' ? 'Nothing to configure — each day is a single tap for yes, or left blank for no.' : 'Nothing to configure — each entry is a short line of text, logged with its date.',
+      scaleMin: '1', scaleMax: '5',
+      showGuardrail: changed,
+      guardCount: editT ? editT.count : 0,
+      guardFrom: editT ? typeName[this.state.editType] : '', guardTo: typeName[tp],
+      guardChoices: [
+        { key: 'keep', label: 'Keep history, start fresh format', desc: 'Old entries stay readable in the log but drop out of the new chart.', sel: this.state.guardChoice === 'keep', notSel: this.state.guardChoice !== 'keep', onClick: () => this.setGuard('keep') },
+        { key: 'convert', label: 'Convert what maps cleanly', desc: 'Values that fit the new type carry over; the rest are archived.', sel: this.state.guardChoice === 'convert', notSel: this.state.guardChoice !== 'convert', onClick: () => this.setGuard('convert') },
+        { key: 'archive', label: 'Archive this one, make a new tracker', desc: 'Safest — your history is untouched and read-only under a new name.', sel: this.state.guardChoice === 'archive', notSel: this.state.guardChoice !== 'archive', onClick: () => this.setGuard('archive') }
+      ]
+    };
+  }
+
+  // mini year for the "year of data" showcase card
+  miniYear() { return this.yearRows('mood', true); }
+
+  // ---------- logging (dialog) ----------
+  openLog(id) { const t = this.trackers.find(x => x.id === id); const d = { scale: null, sel: null, num: '', note: '', text: '' }; if (t.type === 'number' && t.numStyle === 'line') d.num = this.state.today.weight != null ? String(this.state.today.weight) : ''; this.setState({ logOpen: true, logId: id, draft: d }); }
+  closeLog() { this.setState({ logOpen: false, logId: null }); }
+  dSet(k, v) { this.setState(s => ({ draft: { ...s.draft, [k]: v } })); }
+  stop(e) { if (e && e.stopPropagation) e.stopPropagation(); }
+  addScaleEntry() { const v = this.state.draft.scale; if (v == null) return; this.setState(s => { const arr = [...s.todayLog.mood, { v, time: 'now', note: s.draft.note }]; const avg = Math.round(arr.reduce((a, b) => a + b.v, 0) / arr.length); return { todayLog: { ...s.todayLog, mood: arr }, today: { ...s.today, mood: avg }, draft: { ...s.draft, scale: null, note: '' } }; }); }
+  addSelEntry() { const v = this.state.draft.sel; if (!v) return; this.setState(s => ({ todayLog: { ...s.todayLog, energy: [...s.todayLog.energy, { v, time: 'now' }] }, today: { ...s.today, energy: v }, draft: { ...s.draft, sel: null } })); }
+  saveValue() { const n = parseFloat(this.state.draft.num); if (isNaN(n)) return; this.setState(s => ({ today: { ...s.today, weight: Math.round(n * 10) / 10 } })); this.closeLog(); }
+  setHabit(v) { this.setState(s => ({ today: { ...s.today, run: v } })); this.closeLog(); }
+  addTextEntry() { const v = this.state.draft.text.trim(); if (!v) return; this.highlightHist = [{ value: v, day: 'Today', time: 'now', manual: true }, ...this.highlightHist]; this.setState(s => ({ todayLog: { ...s.todayLog, highlight: [{ text: v, time: 'now' }, ...s.todayLog.highlight] }, draft: { ...s.draft, text: '' } })); }
+
+  todayNote(t) {
+    const s = this.state;
+    if (t.id === 'mood') { const n = s.todayLog.mood.length; return n ? ('avg ' + s.today.mood + ' · ' + n + '× today') : 'not logged today'; }
+    if (t.id === 'energy') { const n = s.todayLog.energy.length; return n ? (s.today.energy + ' · ' + n + '× today') : 'not logged today'; }
+    if (t.id === 'coffee') { return s.today.coffee ? (s.today.coffee + ' so far today') : 'none today'; }
+    if (t.id === 'weight') { return s.today.weight != null ? 'logged today' : 'not logged today'; }
+    if (t.id === 'run') { return s.today.run ? 'done today' : 'not yet today'; }
+    if (t.id === 'highlight') { const n = s.todayLog.highlight.length; return n ? (n + ' today') : 'nothing today'; }
+    return '';
+  }
+  todaySummary(t) {
+    const s = this.state;
+    if (t.id === 'mood') { const n = s.todayLog.mood.length; return n ? ('Logged ' + n + ' time' + (n > 1 ? 's' : '') + ' today — averaging ' + s.today.mood + '.') : 'Nothing logged today yet.'; }
+    if (t.id === 'energy') { const n = s.todayLog.energy.length; return n ? ('Last read ' + s.today.energy + ' · ' + n + ' today.') : 'No reading yet today.'; }
+    if (t.id === 'coffee') { return (s.today.coffee || 0) + ' cups so far today.'; }
+    if (t.id === 'weight') { return s.today.weight != null ? (s.today.weight + ' kg, logged today.') : 'Not weighed in today.'; }
+    if (t.id === 'run') { return s.today.run ? 'Done today — nice.' : 'Not marked yet today.'; }
+    if (t.id === 'highlight') { const n = s.todayLog.highlight.length; return n ? (n + ' note' + (n > 1 ? 's' : '') + ' today.') : 'No note today yet.'; }
+    return '';
+  }
+  logDialog() {
+    const t = this.trackers.find(x => x.id === this.state.logId); if (!t) return { open: false };
+    const d = { open: true, name: t.name, role: t.role.c, roleSoft: t.role.soft, onClose: () => this.closeLog(), stop: (e) => this.stop(e),
+      isScale: t.type === 'scale', isSelect: t.type === 'select', isCounter: t.type === 'number' && t.numStyle === 'bars', isValue: t.type === 'number' && t.numStyle === 'line', isHabit: t.type === 'boolean', isText: t.type === 'text' };
+    const noteBy = { scale: 'Scale · log as often as you like', select: 'Level · log through the day', number: 'Counter · tap to add one', boolean: 'Habit · a single tick a day', text: 'Note · jot as many as you like' };
+    d.schemaNote = (t.type === 'number' && t.numStyle === 'line') ? 'Measurement · one value a day' : noteBy[t.type];
+    if (d.isScale) { const cur = this.state.draft.scale; d.scaleBtns = [1, 2, 3, 4, 5].map(n => ({ n, lab: t.labels[n] || '', sel: cur === n, notSel: cur !== n, onClick: () => this.dSet('scale', n) })); d.noteVal = this.state.draft.note; d.onNote = e => this.dSet('note', e.target.value); d.onAdd = () => this.addScaleEntry(); d.canAdd = cur != null; d.cannotAdd = cur == null; d.todayEntries = this.state.todayLog.mood.map(e => ({ time: e.time, label: String(e.v) })); d.hasToday = this.state.todayLog.mood.length > 0; d.noneToday = this.state.todayLog.mood.length === 0; }
+    if (d.isSelect) { const cur = this.state.draft.sel; d.selBtns = t.options.map(o => ({ label: o, sel: cur === o, notSel: cur !== o, onClick: () => this.dSet('sel', o) })); d.onAdd = () => this.addSelEntry(); d.canAdd = !!cur; d.cannotAdd = !cur; d.todayEntries = this.state.todayLog.energy.map(e => ({ time: e.time, label: e.v })); d.hasToday = this.state.todayLog.energy.length > 0; d.noneToday = this.state.todayLog.energy.length === 0; }
+    if (d.isCounter) { d.countVal = this.state.today.coffee || 0; d.unit = t.unit; d.onMinus = () => this.bump('coffee', -1, 0, 30, 1); d.onPlus = () => this.bump('coffee', 1, 0, 30, 1); }
+    if (d.isValue) { d.numVal = this.state.draft.num; d.onNum = e => this.dSet('num', e.target.value); d.unit = t.unit; d.onSave = () => this.saveValue(); }
+    if (d.isHabit) { d.isDone = !!this.state.today.run; d.notDone = !this.state.today.run; d.onDone = () => this.setHabit(1); d.onSkip = () => this.setHabit(0); }
+    if (d.isText) { d.textVal = this.state.draft.text; d.onText = e => this.dSet('text', e.target.value); d.onAdd = () => this.addTextEntry(); d.canAdd = this.state.draft.text.trim().length > 0; d.cannotAdd = this.state.draft.text.trim().length === 0; d.todayNotes = this.state.todayLog.highlight.map(e => ({ time: e.time, text: e.text })); d.hasToday = this.state.todayLog.highlight.length > 0; d.noneToday = this.state.todayLog.highlight.length === 0; }
+    return d;
+  }
+
+  renderVals() {
+    const cards = this.trackers.map(t => this.card(t));
+    const loggedToday = ['mood', 'coffee', 'run', 'energy'].filter(k => this.state.today[k] != null).length + 1;
+    const base = {
+      isIndex: this.state.view === 'index', isDetail: this.state.view === 'detail', isForm: this.state.view === 'form',
+      cards, trackerCount: this.trackers.length, loggedToday,
+      onNew: () => this.newTracker(), onBack: () => this.back(),
+      dv: this.state.view === 'detail' ? this.detail() : {},
+      lg: this.state.logOpen ? this.logDialog() : { open: false },
+      miniYearRows: this.miniYear()
+    };
+    if (this.state.view === 'form') Object.assign(base, this.formVals());
+    return base;
+  }
+}
+</script>
+</body>
+</html>
+

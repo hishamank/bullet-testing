@@ -82,6 +82,23 @@ export const trackerEntryUpdateInput = trackerEntryInsertSchema
   .partial()
   .extend({ id: z.string().uuid() })
 
+// --- Tracker analytics (read-only aggregations) ---------------------------------------------
+
+/** The caller's local UTC offset in minutes (`-new Date().getTimezoneOffset()`), for day bucketing. */
+const tzOffsetMinutes = z.number().int().min(-840).max(840).optional()
+
+export const trackerSeriesInput = z.object({ trackerId: z.string().uuid(), tzOffsetMinutes })
+export const trackerYearInPixelsInput = z.object({
+  trackerId: z.string().uuid(),
+  year: z.number().int().min(1970).max(3000),
+  tzOffsetMinutes,
+})
+export const trackerStreaksInput = z.object({ trackerId: z.string().uuid(), tzOffsetMinutes })
+export const quietPatternInput = z.object({
+  tzOffsetMinutes,
+  minDays: z.number().int().min(1).max(365).optional(),
+})
+
 // --- Activities -----------------------------------------------------------------------------
 
 export const activityCreateInput = activityInsertSchema.omit(serverOwnedCreateFields)
