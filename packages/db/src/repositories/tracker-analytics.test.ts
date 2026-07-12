@@ -12,7 +12,7 @@ import {
   trackerYearInPixels,
 } from './tracker-analytics'
 import { createTrackerEntry } from './trackerEntries'
-import { createTracker } from './trackers'
+import { createTracker, softDeleteTracker } from './trackers'
 
 const MS_PER_DAY = 86_400_000
 /** Epoch-ms at UTC-noon of a given day index — with tz=0 this lands squarely on `dayIndex`. */
@@ -184,6 +184,35 @@ test('trackerActivityCorrelation: honest with/without means, threshold-gated', (
 
   // Raising the threshold above the sample hides it.
   expect(trackerActivityCorrelation(db, ownerId, t.id, 'run', { minDays: 7 })).toBeNull()
+})
+
+test('soft-deleted tracker: correlation reports nothing, year rollup drops the scale bounds', () => {
+  const { db } = createTestDb()
+  const { ownerId } = seedOwnerAndBullet(db)
+  const t = scaleTracker(db, ownerId)
+  const inYear = dayNumberOf(Date.UTC(2026, 2, 5, 12), 0)
+  for (let i = 0; i < 6; i++) {
+    logValue(db, ownerId, t.id, 4, dayMs(i))
+    createActivity(db, {
+      owner_id: ownerId,
+      source_bullet_id: null,
+      name: 'Run',
+      occurred_at: dayMs(i, 7),
+      tracker_id: null,
+      notes: null,
+      quantity: null,
+      unit: null,
+    })
+  }
+  for (let i = 10; i < 16; i++) logValue(db, ownerId, t.id, 3, dayMs(i))
+  logValue(db, ownerId, t.id, 3, inYear * MS_PER_DAY + 12 * 3_600_000)
+
+  expect(trackerActivityCorrelation(db, ownerId, t.id, 'run', { minDays: 5 })).not.toBeNull()
+  expect(trackerYearInPixels(db, t.id, 2026).scaleMin).toBe(1)
+
+  softDeleteTracker(db, t.id)
+  expect(trackerActivityCorrelation(db, ownerId, t.id, 'run', { minDays: 5 })).toBeNull()
+  expect(trackerYearInPixels(db, t.id, 2026).scaleMin).toBeNull()
 })
 
 test('findQuietPattern: returns the strongest qualifying pattern, else null', () => {

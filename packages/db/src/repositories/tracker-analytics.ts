@@ -48,6 +48,15 @@ function activeEntries(db: Db, trackerId: string) {
     .sort((a, b) => a.logged_at - b.logged_at)
 }
 
+/** Look one tracker up by id, respecting soft-delete (a deleted tracker reads as absent). */
+function activeTracker(db: Db, trackerId: string): Tracker | undefined {
+  return db
+    .select()
+    .from(trackers)
+    .where(and(eq(trackers.id, trackerId), eq(trackers.state, 'active')))
+    .get()
+}
+
 // --- daily-bucketed numeric series -----------------------------------------------------------
 
 /** One calendar day's roll-up of a numeric tracker's entries. */
@@ -147,7 +156,7 @@ export function trackerYearInPixels(
   year: number,
   opts: DailySeriesOptions = {},
 ): YearInPixels {
-  const tracker = db.select().from(trackers).where(eq(trackers.id, trackerId)).get()
+  const tracker = activeTracker(db, trackerId)
   const scale = scaleBounds(tracker)
   const series = trackerDailySeries(db, trackerId, opts)
   const days: YearDay[] = []
@@ -309,7 +318,7 @@ export function trackerActivityCorrelation(
 ): Correlation | null {
   const tz = opts.tzOffsetMinutes ?? 0
   const minDays = opts.minDays ?? DEFAULT_MIN_DAYS
-  const tracker = db.select().from(trackers).where(eq(trackers.id, trackerId)).get()
+  const tracker = activeTracker(db, trackerId)
   if (!tracker) return null
 
   const series = trackerDailySeries(db, trackerId, { tzOffsetMinutes: tz })
