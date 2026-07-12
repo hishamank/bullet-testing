@@ -34,3 +34,15 @@ export type TaskPriority = NonNullable<Task['priority']>
 export type TargetKind = Suggestion['target_kind']
 export type SuggestionTier = Suggestion['tier']
 export type SuggestionPayload = Suggestion['payload']
+
+/** Tracker discriminants + config union, inferred from the entity (never re-declared). */
+export type TrackerInputType = Tracker['input_type']
+export type TrackerConfig = Tracker['config']
+export type TrackerEntryValue = TrackerEntry['value']
+
+/** Read-only aggregation outputs, inferred from the trackerAnalytics procedures. */
+export type DailyBucket = QueryOutput<Client['trackerAnalytics']['dailySeries']>[number]
+export type YearInPixels = QueryOutput<Client['trackerAnalytics']['yearInPixels']>
+export type YearDay = YearInPixels['days'][number]
+export type BooleanStreaks = QueryOutput<Client['trackerAnalytics']['streaks']>
+export type Correlation = NonNullable<QueryOutput<Client['trackerAnalytics']['quietPattern']>>

@@ -31,6 +31,8 @@
 
   /* Ochre — trackers / notes / "your call" */
   --color-ochre: #b0843b;
+  --color-ochre-wash: #f6efe2; /* soft tint fill (tracker role washes) */
+  --color-ochre-deep: #96702f; /* hover on ochre fills */
 
   /* Sage — applied / done / positive */
   --color-sage: #5e7c66;
