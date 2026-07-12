@@ -7,9 +7,8 @@
  * significance claim — just the two means, the gap, and how many days back each side.
  */
 
+import { round1 } from '@/lib/trackers-view-model'
 import type { Correlation } from '@/lib/types'
-
-const round1 = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 
 /**
  * Phrase the gap the way the design does — "about half a point higher", plainly, with the honest

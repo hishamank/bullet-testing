@@ -12,6 +12,7 @@ import {
   buildTrackerConfig,
   canLogValue,
   canSubmitTracker,
+  dayNumberOf,
   EMPTY_TRACKER_FORM,
   initialLogValue,
   logEntryPayload,
@@ -208,31 +209,92 @@ describe('yearGrid', () => {
     // Jan 1 present + coloured.
     expect(g.rows[0]?.cells[0]?.real).toBe(true)
     expect(g.rows[0]?.cells[0]?.bg).toContain('rgba(176, 132, 59')
-    // Feb 30/31 blank (out of month).
+    // 2026 is not a leap year: Feb 29/30/31 all blank (no phantom Feb 29 cell).
+    expect(g.rows[1]?.cells[28]?.real).toBe(false)
+    expect(g.rows[1]?.cells[29]?.real).toBe(false)
     expect(g.rows[1]?.cells[30]?.real).toBe(false)
+    // Feb 28 is a real (empty-data) cell.
+    expect(g.rows[1]?.cells[27]?.real).toBe(true)
     expect(g.legend).toHaveLength(5)
     expect(g.hasData).toBe(true)
+  })
+
+  test('leap year keeps Feb 29 as a real cell', () => {
+    const yip: YearInPixels = {
+      year: 2028, // leap
+      min: null,
+      max: null,
+      scaleMin: 1,
+      scaleMax: 5,
+      days: [],
+    }
+    const g = yearGrid(yip)
+    expect(g.rows[1]?.cells[28]?.real).toBe(true) // Feb 29 exists in 2028
+    expect(g.rows[1]?.cells[29]?.real).toBe(false)
   })
 })
 
 // --- detail: streak heatmap -----------------------------------------------------------------
 
 describe('streakViz', () => {
-  test('carries streak stats and builds a week-column grid', () => {
-    const streaks: BooleanStreaks = {
-      current: 3,
+  // Europe/Athens in summer is UTC+3 → the page sends tz = +180. Every fixture day index is built
+  // with the SAME canonical `dayNumberOf` the db buckets with, so these tests exercise the real
+  // db day axis in an eastern (positive-offset) timezone — the axis where the old local-offset
+  // re-implementation was off by one.
+  const TZ = 180
+  /** UTC epoch-ms of Athens-local `hour:minute` on 2026-06-`day`. */
+  const athens = (day: number, hour = 12, minute = 0) =>
+    Date.UTC(2026, 5, day, hour, minute) - TZ * 60_000
+  /** The db-axis day index for Athens-local noon on 2026-06-`day`. */
+  const athensDay = (day: number) => dayNumberOf(athens(day), TZ)
+
+  function makeStreaks(onDays: number[], todayNumber: number): BooleanStreaks {
+    return {
+      current: 2,
       longest: 5,
-      onDays: [dayNumber(NOW) - 1, dayNumber(NOW)],
-      firstDayNumber: dayNumber(NOW) - 1,
-      lastDayNumber: dayNumber(NOW),
-      todayNumber: dayNumber(NOW),
+      onDays,
+      firstDayNumber: onDays[0] ?? null,
+      lastDayNumber: onDays[onDays.length - 1] ?? null,
+      todayNumber,
     }
-    const v = streakViz(streaks, NOW, 4)
-    expect(v.current).toBe(3)
+  }
+
+  test('month stat counts on-days since the 1st, on the db day axis (UTC+3)', () => {
+    // On-days: May 30 (outside the month) + June 1, 10, 14, 15. Today = 09:00 local, 15 Jun.
+    const mayThirty = dayNumberOf(Date.UTC(2026, 4, 30, 12) - TZ * 60_000, TZ)
+    const streaks = makeStreaks(
+      [mayThirty, athensDay(1), athensDay(10), athensDay(14), athensDay(15)],
+      athensDay(15),
+    )
+    const v = streakViz(streaks, TZ, athens(15, 9))
+    expect(v.monthElapsed).toBe(15) // June 1–15
+    expect(v.monthOnDays).toBe(4) // June 1, 10, 14, 15 — May 30 excluded
+    expect(v.current).toBe(2)
     expect(v.longest).toBe(5)
+  })
+
+  test('month boundary holds just after local midnight on the 1st (UTC+3)', () => {
+    // 00:30 Athens-local on 1 June is still 31 May in UTC — the exact spot an inverted or
+    // process-local offset lands in the wrong month (a 32-day "elapsed" May instead of 1-day June).
+    const now = athens(1, 0, 30)
+    const streaks = makeStreaks([athensDay(1)], athensDay(1))
+    const v = streakViz(streaks, TZ, now)
+    expect(v.monthElapsed).toBe(1)
+    expect(v.monthOnDays).toBe(1)
+  })
+
+  test('builds a week-column grid ending on today, marks on-days', () => {
+    const today = athensDay(15) // 15 Jun 2026 — a Monday
+    const streaks = makeStreaks([today - 1, today], today)
+    const v = streakViz(streaks, TZ, athens(15, 9), 4)
     expect(v.columns).toHaveLength(4)
     expect(v.columns[0]?.cells).toHaveLength(7)
     expect(v.dayLabels).toHaveLength(7)
+    // Monday sits in row index 1 of the last column, and both on-days render on.
+    const lastCol = v.columns[3]
+    expect(lastCol?.cells[1]?.on).toBe(true) // Monday (today)
+    expect(lastCol?.cells[0]?.on).toBe(true) // Sunday (yesterday)
+    expect(lastCol?.cells[2]?.real).toBe(false) // Tuesday hasn't happened yet
   })
 })
 
@@ -343,8 +405,3 @@ describe('trackerFormValues', () => {
     expect(trackerFormValues(t).options).toEqual(['a', 'b'])
   })
 })
-
-/** Local day index helper mirroring the view-model's boolean-heatmap bucketing. */
-function dayNumber(ms: number): number {
-  return Math.floor((ms - new Date(ms).getTimezoneOffset() * -60_000) / DAY)
-}

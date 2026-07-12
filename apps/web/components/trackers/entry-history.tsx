@@ -57,7 +57,15 @@ export function EntryHistory({
             )}
             <div className="mt-[6px]">
               {row.extracted && row.sourceBulletId ? (
-                <Provenance bullet={bulletsById.get(row.sourceBulletId)} />
+                bulletsById.has(row.sourceBulletId) ? (
+                  <Provenance bullet={bulletsById.get(row.sourceBulletId)} />
+                ) : (
+                  // Extracted, but the source bullet was deleted (delete-but-keep-extractions) —
+                  // keep the provenance honest instead of a blank line.
+                  <span className="font-data text-[10.5px] text-faint-3">
+                    ↳ from a removed note
+                  </span>
+                )
               ) : (
                 <span className="font-data text-[10.5px] text-faint-3">✎ manual</span>
               )}

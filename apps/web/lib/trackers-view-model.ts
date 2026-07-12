@@ -129,7 +129,8 @@ export function displayValue(value: TrackerEntry['value'], tracker: Tracker): st
   return String(value)
 }
 
-const round1 = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+/** "3" / "3.7" — one decimal at most; shared by the cards, captions, and the quiet-pattern copy. */
+export const round1 = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 const mean = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
 
 // --- sorting / recency ----------------------------------------------------------------------
@@ -408,7 +409,15 @@ const MONTH_ABBR = [
   'Nov',
   'Dec',
 ]
-const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] // Feb padded to 29 (leap-safe grid)
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+const isLeapYear = (y: number): boolean => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+
+/** Real day count for a month of the grid's year — Feb gets 29 only in leap years. */
+function daysInMonth(year: number, month: number): number {
+  if (month === 1) return isLeapYear(year) ? 29 : 28
+  return DAYS_IN_MONTH[month] ?? 31
+}
 
 /**
  * Lay a year-in-pixels roll-up into 12 month rows × 31 day cells, colouring each present day by
@@ -423,7 +432,7 @@ export function yearGrid(yip: YearInPixels): YearGrid {
   const rows: YearRow[] = MONTH_ABBR.map((name, month) => {
     const cells: YearCell[] = []
     for (let day = 1; day <= 31; day++) {
-      if (day > (DAYS_IN_MONTH[month] ?? 31)) {
+      if (day > daysInMonth(yip.year, month)) {
         cells.push({ real: false, bg: 'transparent', title: '' })
         continue
       }
@@ -482,20 +491,41 @@ export interface StreakViz {
 
 const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
+const MS_PER_DAY = 86_400_000
+
+/**
+ * The day index (days since the Unix epoch) a timestamp falls on, after shifting by
+ * `tzOffsetMinutes` — the SAME axis the db's `trackerAnalytics` buckets on (the page sends
+ * `-new Date().getTimezoneOffset()` to every analytics query). This is the ONE day-math helper on
+ * the web side; it mirrors `@bullet/db`'s `dayNumberOf` exactly (web can't import `@bullet/db` —
+ * dependency rule: web → tRPC client only), so day indices computed here always line up with the
+ * day indices the analytics rows carry.
+ */
+export function dayNumberOf(ms: number, tzOffsetMinutes = 0): number {
+  return Math.floor((ms + tzOffsetMinutes * 60_000) / MS_PER_DAY)
+}
+
 /**
  * A GitHub-style heatmap for a boolean tracker over the last `weeks` weeks, plus the current/longest
  * streaks and this-month completion. Columns are weeks (Sun→Sat rows); off-window cells blank out.
+ *
+ * `tzOffsetMinutes` MUST be the same offset the `streaks` query was made with — every day index in
+ * here (today, week columns, the month boundary) lives on that one tz-shifted axis, with no hidden
+ * reads of the process's local timezone.
  */
 export function streakViz(
   streaks: BooleanStreaks,
+  tzOffsetMinutes = 0,
   now: number = Date.now(),
   weeks = 26,
 ): StreakViz {
   const onDayNumbers = new Set(streaks.onDays)
   const todayN = streaks.todayNumber
+  // Day-of-week straight from the day index (epoch day 0 = Thu 1 Jan 1970 → Sunday-index 4), so
+  // the column layout stays on the same axis as todayN.
+  const todayDow = (((todayN + 4) % 7) + 7) % 7
   // Walk back to the most recent Sunday, then span `weeks` columns forward.
-  const todayDate = new Date(now)
-  const startBack = (weeks - 1) * 7 + todayDate.getDay()
+  const startBack = (weeks - 1) * 7 + todayDow
   const columns: HeatmapColumn[] = []
   for (let w = 0; w < weeks; w++) {
     const cells: HeatmapCell[] = []
@@ -512,9 +542,12 @@ export function streakViz(
     columns.push({ cells })
   }
 
-  // This-month completion.
-  const first = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)
-  const monthStartN = dayNumberOfLocal(first.getTime())
+  // This-month completion: decompose `now` on the tz-shifted axis (UTC getters over the shifted
+  // instant), then take the first-of-month's day index on that same axis.
+  const shifted = new Date(now + tzOffsetMinutes * 60_000)
+  const monthStartN = Math.floor(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) / MS_PER_DAY,
+  )
   let monthOnDays = 0
   for (let dn = monthStartN; dn <= todayN; dn++) if (onDayNumbers.has(dn)) monthOnDays++
   return {
@@ -528,11 +561,6 @@ export function streakViz(
   }
 }
 
-const MS_PER_DAY = 86_400_000
-/** The local day index for a timestamp (matches the db's tz-shifted bucketing when tz = local). */
-function dayNumberOfLocal(ms: number): number {
-  return Math.floor((ms - new Date(ms).getTimezoneOffset() * -60_000) / MS_PER_DAY)
-}
 function dayTitle(dayNumber: number): string {
   const d = new Date(dayNumber * MS_PER_DAY)
   return `${MONTH_ABBR[d.getUTCMonth()]} ${d.getUTCDate()}`

@@ -42,6 +42,8 @@ export interface DetailAnalytics {
   series?: DailyBucket[]
   yearInPixels?: YearInPixels
   streaks?: BooleanStreaks
+  /** The offset every analytics query above was made with — day indices live on this axis. */
+  tzOffsetMinutes: number
   loading: boolean
 }
 
@@ -171,7 +173,7 @@ function Viz({
     return <NumberViz series={analytics.series ?? []} />
   }
   if (cfg.input_type === 'boolean') {
-    return <BooleanViz streaks={analytics.streaks} />
+    return <BooleanViz streaks={analytics.streaks} tzOffsetMinutes={analytics.tzOffsetMinutes} />
   }
   if (cfg.input_type === 'single_select' || cfg.input_type === 'multi_select') {
     return <SelectViz tracker={tracker} entries={entries} />
@@ -355,9 +357,16 @@ function NumberViz({ series }: { series: DailyBucket[] }) {
   )
 }
 
-function BooleanViz({ streaks }: { streaks?: BooleanStreaks }) {
+function BooleanViz({
+  streaks,
+  tzOffsetMinutes,
+}: {
+  streaks?: BooleanStreaks
+  tzOffsetMinutes: number
+}) {
   if (!streaks) return <VizSkeleton />
-  const v = streakViz(streaks)
+  // The same offset the streaks query was bucketed with — keeps the month stat on the db's axis.
+  const v = streakViz(streaks, tzOffsetMinutes)
   return (
     <div>
       <div className="mb-6 grid grid-cols-3 gap-4 max-md:grid-cols-1">

@@ -283,6 +283,7 @@ export default function TrackersPage() {
             series: seriesQ.data,
             yearInPixels: yearQ.data,
             streaks: streaksQ.data,
+            tzOffsetMinutes: tz,
             loading: analyticsLoading,
           }}
           busy={busy}
