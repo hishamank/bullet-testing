@@ -12,7 +12,7 @@
  * The question becomes `answered` with `answer_option`. The same answer again is a `duplicate`.
  */
 
-import { resolveDateAnswer } from '@bullet/engine'
+import { dateAnswerFields, yesNoAnswer } from '@bullet/engine'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { bullets, questions } from '../db/schema'
@@ -29,25 +29,11 @@ import {
 } from './apply'
 import { getEntity, patchEntity } from './entities'
 
-const DATE_FIELD = { task: 'due_at', event: 'starts_at' } as const
-
 function linkedSuggestion(db: Db, ownerId: string, id: string | null): SuggestionRow {
   const s = id === null ? undefined : getSuggestion(db, ownerId, id)
   if (!s) throw new ApplyError('invalid', 'the question is not about a suggestion')
   if (s.state !== 'active') throw new ApplyError('conflict', 'its suggestion was withdrawn')
   return s
-}
-
-/** The date fields to write: the new day, and an event's end moved by the same amount. */
-function moveDate(
-  kind: 'task' | 'event',
-  from: Record<string, unknown>,
-  at: number,
-): Record<string, unknown> {
-  if (kind === 'task') return { due_at: at }
-  const start = typeof from.starts_at === 'number' ? from.starts_at : at
-  const end = typeof from.ends_at === 'number' ? from.ends_at + (at - start) : null
-  return { starts_at: at, ends_at: end }
 }
 
 function answerDate(db: Db, ownerId: string, s: SuggestionRow, option: string, now: number) {
@@ -64,10 +50,9 @@ function answerDate(db: Db, ownerId: string, s: SuggestionRow, option: string, n
   const ctx = { capturedAt: bullet.captured_at, timezone: bullet.timezone }
 
   if (s.status === 'pending') {
-    const current = s.payload[DATE_FIELD[kind]]
-    const at = resolveDateAnswer(option, typeof current === 'number' ? current : null, ctx)
-    if (at === null) throw new ApplyError('invalid', `"${option}" names no date`)
-    applySuggestion(db, s, now, { payload: { ...s.payload, ...moveDate(kind, s.payload, at) } })
+    const fields = dateAnswerFields(kind, s.payload, option, ctx)
+    if (fields === null) throw new ApplyError('invalid', `"${option}" names no date`)
+    applySuggestion(db, s, now, { payload: { ...s.payload, ...fields } })
     refreshReviewStatus(db, ownerId, s.source_bullet_id, now)
     return
   }
@@ -80,19 +65,16 @@ function answerDate(db: Db, ownerId: string, s: SuggestionRow, option: string, n
   if (!entity || entity.state !== 'active' || entity.updated_at > s.applied_at) {
     throw new ApplyError('conflict', `the ${kind} was changed since`)
   }
-  const current = entity[DATE_FIELD[kind]]
-  const at = resolveDateAnswer(option, typeof current === 'number' ? current : null, ctx)
-  if (at === null) throw new ApplyError('invalid', `"${option}" names no date`)
-  const fields = moveDate(kind, entity, at)
+  const fields = dateAnswerFields(kind, entity, option, ctx)
+  if (fields === null) throw new ApplyError('invalid', `"${option}" names no date`)
   patchEntity(db, kind, ownerId, entity.id, fields, now)
   updateSuggestionRow(db, s, { payload: { ...s.payload, ...fields }, applied_at: now }, now)
 }
 
 function answerNewTracker(db: Db, ownerId: string, s: SuggestionRow, option: string, now: number) {
   if (s.target_kind !== 'tracker') throw new ApplyError('invalid', 'not a tracker suggestion')
-  const yes = option.trim().toLowerCase() === 'yes'
-  const no = option.trim().toLowerCase() === 'no'
-  if (!yes && !no) throw new ApplyError('invalid', `"${option}" is neither yes nor no`)
+  const yes = yesNoAnswer(option)
+  if (yes === null) throw new ApplyError('invalid', `"${option}" is neither yes nor no`)
   const applied = s.status === 'accepted' || s.status === 'edited'
   if (yes) {
     if (s.status === 'rejected') throw new ApplyError('conflict', 'the tracker was dismissed')

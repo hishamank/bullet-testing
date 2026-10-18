@@ -5,6 +5,7 @@ import {
   sourceBulletIdNullable,
 } from '../base'
 import { timestampMs, uuid } from '../primitives'
+import type { TrackerConfig } from './tracker'
 
 /**
  * The set of value types a TrackerEntry can hold. Which one is valid depends on the parent
@@ -19,6 +20,30 @@ export const trackerEntryValueSchema = z.union([
   z.array(z.string()),
 ])
 export type TrackerEntryValue = z.infer<typeof trackerEntryValueSchema>
+
+/** Does `value` fit the tracker's input type and bounds? (Shared by the server and the phone.) */
+export function entryValueFits(value: TrackerEntryValue, config: TrackerConfig): boolean {
+  switch (config.input_type) {
+    case 'scale':
+      return typeof value === 'number' && value >= config.min && value <= config.max
+    case 'number':
+      return (
+        typeof value === 'number' &&
+        (config.min === undefined || value >= config.min) &&
+        (config.max === undefined || value <= config.max)
+      )
+    case 'boolean':
+      return typeof value === 'boolean'
+    case 'text':
+      return typeof value === 'string'
+    case 'single_select':
+      return typeof value === 'string' && config.options.includes(value)
+    case 'multi_select':
+      return Array.isArray(value) && value.every((v) => config.options.includes(v))
+    default:
+      return false
+  }
+}
 
 /**
  * TrackerEntry — a value logged against a Tracker at a point in time.

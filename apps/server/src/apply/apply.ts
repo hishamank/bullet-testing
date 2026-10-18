@@ -16,8 +16,8 @@
  */
 
 import {
+  entryValueFits,
   type PushRejectCode,
-  type TrackerConfig,
   type TrackerEntryValue,
   targetKindInsertSchemas,
   targetKindUpdateSchemas,
@@ -65,29 +65,8 @@ export function updateSuggestionRow(
   return next
 }
 
-/** Does `value` fit the tracker's input type and bounds? */
-export function entryValueFits(value: TrackerEntryValue, config: TrackerConfig): boolean {
-  switch (config.input_type) {
-    case 'scale':
-      return typeof value === 'number' && value >= config.min && value <= config.max
-    case 'number':
-      return (
-        typeof value === 'number' &&
-        (config.min === undefined || value >= config.min) &&
-        (config.max === undefined || value <= config.max)
-      )
-    case 'boolean':
-      return typeof value === 'boolean'
-    case 'text':
-      return typeof value === 'string'
-    case 'single_select':
-      return typeof value === 'string' && config.options.includes(value)
-    case 'multi_select':
-      return Array.isArray(value) && value.every((v) => config.options.includes(v))
-    default:
-      return false
-  }
-}
+/** Re-exported from `@bullet/core`, where the phone shares it. */
+export { entryValueFits }
 
 function activeTracker(db: Db, ownerId: string, id: string) {
   const t = db
