@@ -21,6 +21,18 @@ thought, taps Send, and moves on. Capture never waits on classification.
   first-slice target. The **web** app is a secondary client (review, dashboards).
 - Privacy-first: journal text stays on the user's hardware. Never send it to hosted services.
 
+**Capture → thoughts → things.** The user can empty their mind: a **capture** (typed or spoken,
+kept forever with its audio) is split into **thoughts** (every thought kept, classified), and
+**things** (tasks, events, tracker entries, activities) are extracted from the actionable ones as
+suggestions. The code and API keep the name `bullet` for a capture.
+
+**First-slice thought kinds:** worry, to_check, question, idea, note, task, event, tracker,
+activity. Kinds are classification (no review needed); the user can re-classify (sticky).
+
+**Slices:** 1 = capture, transcribe, store, split into thoughts, classify, extract things,
+clarifying questions as data. 2 = reflective questions. 3 = cross-capture connections and
+recurring themes. Build gradually; don't pull slice 2/3 forward.
+
 **First-slice entity set:** `Bullet`, `Task`, `Tracker` / `Tracker Entry`, `Activity`, `Event`.
 Habit, Goal, Note, Collection, Planner, recurrence and search come later, one at a time.
 **Voice capture is in the first slice.**
@@ -145,6 +157,10 @@ detection). Mood/weight/sleep are Tracker Entries, not activities. This axis is 
 - **Activity** — something the user did; optional tracker link.
 - **Event** — something that happens to the user at a time (start, optional end). Recurrence is
   later. Distinct from Task (you do it) vs Event (it happens).
+- **Thought** — a segment of a capture: text, span, position, kind, kind_source; provenance
+  `source_bullet_id`. Things/suggestions carry `source_thought_id` too.
+- **Question** — clarifying (slice 1): topic date | new_tracker | other, options, status
+  open | answered | dismissed.
 
 ### 4.3 Suggestion (persisted)
 
@@ -173,6 +189,15 @@ re-validates against current state.
 Delete offers Cancel / Delete + extractions (cascade soft-delete) / Delete but keep extractions.
 Editing a bullet re-runs extraction and must **reconcile** with what was already applied (keep
 matches, add new, retire removed) — extract first, then retire, in one transaction.
+
+### 4.7 Asking the user (deliberate reversal)
+
+The old rule "the agent never asks free-text questions" is reversed, deliberately and narrowly:
+
+- **Clarifying questions** (slice 1): short and concrete, about one ambiguous extraction, at most
+  3 per capture, optional, never blocking a suggestion. Answering is a capture
+  (`answers_question_id`).
+- **Reflective questions** (slice 2): optional and never nagging.
 
 ## 5. Known issues in ported code
 
