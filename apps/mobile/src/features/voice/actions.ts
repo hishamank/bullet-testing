@@ -62,3 +62,15 @@ export async function recoverInterruptedRecordings(): Promise<void> {
     // A broken leftover stays on disk for the next attempt; never block recording on it.
   }
 }
+
+let launchRecoveryQueued = false
+
+/**
+ * At launch: once, after the first screen is up and idle (recovery joins and hashes whole files on
+ * the JS thread; a stalled splash would block pairing and the first screen).
+ */
+export function recoverAfterLaunch(): void {
+  if (launchRecoveryQueued) return
+  launchRecoveryQueued = true
+  requestIdleCallback(() => void recoverInterruptedRecordings(), { timeout: 2_000 })
+}

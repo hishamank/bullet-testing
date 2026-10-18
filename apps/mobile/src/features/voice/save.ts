@@ -131,7 +131,7 @@ async function saveSingleFiles(
       // Only the whole recording's length is known; a lone file gets it exactly.
       durationMs: rec.files.length === 1 ? Math.round(rec.recordedMs) : 0,
       sizeBytes,
-      sha256: hashFile(io, out),
+      sha256: await hashFile(io, out),
     }
     ids.push(
       captureVoiceBullet(
@@ -182,7 +182,7 @@ export async function saveVoiceNote(
   if (rec.mimeType !== 'audio/wav') return saveSingleFiles(deps, sessionId, rec, links, local)
   const name = `${sessionId}.wav`
   const out = `${root}${name}`
-  const plan = assembleSegments(rec.files, out, io)
+  const plan = await assembleSegments(rec.files, out, io)
   if (!plan) return null
   const audio: VoiceCaptureInput['audio'] = {
     localPath: storedRecordingPath(name),
