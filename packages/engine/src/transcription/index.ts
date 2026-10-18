@@ -1,6 +1,7 @@
 export type { Transcriber, TranscriptionRequest, TranscriptionResult } from './types'
 export {
   createScriptedTranscriber,
+  hasSpeech,
   type ScriptedTranscriber,
   withTranscriberTimeout,
 } from './scripted'

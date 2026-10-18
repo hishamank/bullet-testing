@@ -302,6 +302,17 @@ describe('voice notes: transcription', () => {
     expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_failed')
   })
 
+  test('a transcript with no words (" ." for a tone) never replaces the draft', async () => {
+    const h = createHarness(llmByText({}), {
+      transcriber: createScriptedTranscriber(() => ({ text: ' .' })),
+    })
+    const { bulletId, audioId } = await captureVoice(h)
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_failed')
+    expect(bullet(h, bulletId)?.text).toBe('call mom bukra')
+  })
+
   test('a retry after extraction failed does not transcribe again', async () => {
     let llmUp = false
     const llm = {

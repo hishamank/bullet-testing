@@ -26,8 +26,17 @@ export function createScriptedTranscriber(
 }
 
 /**
+ * Whether a transcript holds any words: not empty, not only punctuation, not only non-speech
+ * markers. whisper.cpp answers a tone or room noise with "." or "[BLANK_AUDIO]".
+ */
+export function hasSpeech(text: string): boolean {
+  return /[\p{L}\p{N}]/u.test(text.replace(/\[[^\]]*\]|\([^)]*\)/g, ' '))
+}
+
+/**
  * A deadline for any {@link Transcriber} (rejects with `TRANSCRIBER_TIMEOUT`), and the guard every
- * result passes: an empty transcript is a failure (`TRANSCRIPTION_FAILED`), never an empty bullet.
+ * result passes: a transcript with no words is a failure (`TRANSCRIPTION_FAILED`), never a bullet
+ * whose text is "." or empty.
  */
 export function withTranscriberTimeout(inner: Transcriber, timeoutMs: number): Transcriber {
   return {
@@ -46,7 +55,7 @@ export function withTranscriberTimeout(inner: Transcriber, timeoutMs: number): T
         inner.transcribe(req).then(
           (res) => {
             clearTimeout(timer)
-            if (res.text.trim() === '') {
+            if (!hasSpeech(res.text)) {
               reject(new EngineError('TRANSCRIPTION_FAILED', 'no speech found in the recording'))
             } else resolve({ ...res, text: res.text.trim() })
           },
