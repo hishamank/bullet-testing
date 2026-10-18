@@ -201,3 +201,72 @@ describe('processCapture: capture → thoughts → things', () => {
     expect(out.questions).toHaveLength(3)
   })
 })
+
+describe('processCapture: duplicate candidates within one thought', () => {
+  test('two identical tasks from one thought become one thing', async () => {
+    const garage = { fields: { title: 'take the car to the garage', when: 'tomorrow 10:00' } }
+    const llm = scripted(
+      () => [{ text: 'take the car to the garage tomorrow at 10', kind: 'task' }],
+      () => [garage, garage],
+    )
+    const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
+    expect(out.things).toHaveLength(1)
+    expect(out.things[0]).toMatchObject({
+      target_kind: 'task',
+      payload: { title: 'take the car to the garage' },
+    })
+    expect(out.duplicates).toBe(1)
+  })
+
+  test('case, whitespace and key order do not make a duplicate distinct (Arabic too)', async () => {
+    const llm = scripted(
+      () => [{ text: 'اتصل بالبنك', kind: 'task' }],
+      () => [
+        { fields: { title: 'اتصل بالبنك' } },
+        { fields: { title: '  اتصل  بالبنك ' } },
+        { text: 'x', fields: { title: 'اتصل بالبنك' } },
+      ],
+    )
+    const out = await processCapture({ llm, config }, { text: 'اتصل بالبنك', ...CTX }, EMPTY)
+    expect(out.things.map((t) => t.payload.title)).toEqual(['اتصل بالبنك'])
+    expect(out.duplicates).toBe(2)
+  })
+
+  test('three identical events collapse; their question points at the kept thing, once', async () => {
+    const reunion: Partial<Candidate> = {
+      kind: 'event',
+      fields: { title: 'Réunion avec Karim', when: 'Thursday 15:00' },
+    }
+    const llm = scripted(
+      () => [
+        { text: 'call mom', kind: 'task' },
+        { text: 'Demain réunion avec Karim à 15h', kind: 'event' },
+      ],
+      (t) => (t === 'call mom' ? [{ fields: { title: 'call mom' } }] : [reunion, reunion, reunion]),
+    )
+    const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
+    expect(out.things.map((t) => [t.thoughtPosition, t.target_kind])).toEqual([
+      [0, 'task'],
+      [1, 'event'],
+    ])
+    expect(out.duplicates).toBe(2)
+    expect(out.questions).toHaveLength(1)
+    expect(out.questions[0]).toMatchObject({ topic: 'date', thoughtPosition: 1, thingIndex: 1 })
+  })
+
+  test('different payloads and the same thing in two thoughts are both kept', async () => {
+    const llm = scripted(
+      () => [
+        { text: 'buy milk', kind: 'task' },
+        { text: 'buy milk', kind: 'task' },
+      ],
+      () => [
+        { fields: { title: 'buy milk' } },
+        { fields: { title: 'buy milk', when: 'tomorrow' } },
+      ],
+    )
+    const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
+    expect(out.things).toHaveLength(4)
+    expect(out.duplicates).toBe(0)
+  })
+})

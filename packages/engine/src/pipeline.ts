@@ -10,6 +10,7 @@ import type { EngineConfig } from './config'
 import { extractCandidates } from './extraction/extract'
 import type { ExtractionSnapshot } from './extraction/snapshot'
 import type { LlmClient } from './llm/types'
+import { dedupeOutcome } from './resolution/dedupe'
 import {
   type QuestionDraft,
   type ResolvedSuggestion,
@@ -49,6 +50,8 @@ export interface CaptureOutcome {
   questions: CaptureQuestionDraft[]
   /** Candidates intentionally not turned into things (counted, never silently lost). */
   skipped: number
+  /** Repeated candidates within one thought, dropped in favour of the first (see dedupe.ts). */
+  duplicates: number
 }
 
 /** Date questions first (they change what gets scheduled), then the rest, in capture order. */
@@ -69,11 +72,13 @@ export async function processCapture(
   const things: ThingDraft[] = []
   const questions: CaptureQuestionDraft[] = []
   let skipped = 0
+  let duplicates = 0
 
   for (const thought of thoughts) {
     if (!EXTRACTABLE_THOUGHT_KINDS.includes(thought.kind)) continue
     const candidates = await extractCandidates(deps, { text: thought.text, ...ctx }, snapshot)
-    const outcome = resolveCandidates(candidates, snapshot, deps.config, ctx)
+    // The model sometimes repeats a candidate; one thought never yields the same thing twice.
+    const outcome = dedupeOutcome(resolveCandidates(candidates, snapshot, deps.config, ctx))
     const base = things.length
     things.push(...outcome.suggestions.map((s) => ({ ...s, thoughtPosition: thought.position })))
     for (const q of outcome.questions) {
@@ -85,6 +90,7 @@ export async function processCapture(
       })
     }
     skipped += outcome.skipped
+    duplicates += outcome.duplicates
   }
 
   const capped = questions
@@ -94,5 +100,5 @@ export async function processCapture(
     .sort((a, b) => a.i - b.i)
     .map(({ q }) => q)
 
-  return { thoughts, things, questions: capped, skipped }
+  return { thoughts, things, questions: capped, skipped, duplicates }
 }

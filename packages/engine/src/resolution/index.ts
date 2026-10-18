@@ -1,5 +1,6 @@
 /** Resolution barrel — matching, tier assignment, and the create-vs-append resolver. */
 
+export { type DedupeOutcome, dedupeOutcome } from './dedupe'
 export { type Match, matchOpenTask, matchTracker } from './match'
 export {
   type QuestionDraft,
