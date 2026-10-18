@@ -37,8 +37,32 @@ describe('push', () => {
       { op_id: OP, type: 'suggestion.undo', suggestion_id: BULLET },
       { op_id: OP, type: 'thought.reclassify', thought_id: BULLET, kind: 'worry' },
       { op_id: OP, type: 'question.dismiss', question_id: BULLET },
+      { op_id: OP, type: 'question.answer', question_id: BULLET, option: 'Next Thursday' },
+      { op_id: OP, type: 'thought.resolve', thought_id: BULLET },
+      { op_id: OP, type: 'thought.unresolve', thought_id: BULLET },
+      { op_id: OP, type: 'task.update', task_id: BULLET, patch: { status: 'done' } },
+      { op_id: OP, type: 'task.update', task_id: BULLET, patch: { title: 'x', due_at: null } },
+      { op_id: OP, type: 'task.delete', task_id: BULLET },
+      { op_id: OP, type: 'event.update', event_id: BULLET, patch: { starts_at: 1, ends_at: 2 } },
+      { op_id: OP, type: 'event.delete', event_id: BULLET },
+      { op_id: OP, type: 'tracker_entry.update', tracker_entry_id: BULLET, patch: { value: 4 } },
+      { op_id: OP, type: 'tracker_entry.delete', tracker_entry_id: BULLET },
+      { ...createOp, bullet: { ...createOp.bullet, resolves_thought_id: BULLET } },
     ]
     for (const op of ops) expect(pushOpSchema.safeParse(op).success, op.type).toBe(true)
+  })
+
+  test('manual edits carry a non-empty patch of the editable fields only', () => {
+    const bad = [
+      { op_id: OP, type: 'task.update', task_id: BULLET, patch: {} },
+      // Only complete / reopen by hand in slice 1.
+      { op_id: OP, type: 'task.update', task_id: BULLET, patch: { status: 'cancelled' } },
+      { op_id: OP, type: 'task.update', task_id: BULLET, patch: { notes: 'x' } },
+      { op_id: OP, type: 'event.update', event_id: BULLET, patch: { location: 'x' } },
+      { op_id: OP, type: 'tracker_entry.update', tracker_entry_id: BULLET, patch: {} },
+      { op_id: OP, type: 'question.answer', question_id: BULLET, option: '' },
+    ]
+    for (const op of bad) expect(pushOpSchema.safeParse(op).success, JSON.stringify(op)).toBe(false)
   })
 
   test('a voice capture can carry its recording and the device draft', () => {

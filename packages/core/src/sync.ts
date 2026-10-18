@@ -13,7 +13,7 @@ import { questionSelectSchema } from './entities/question'
 import { thoughtKindSchema, thoughtSelectSchema } from './entities/thought'
 import { taskSelectSchema } from './entities/task'
 import { trackerSelectSchema } from './entities/tracker'
-import { trackerEntrySelectSchema } from './entities/trackerEntry'
+import { trackerEntrySelectSchema, trackerEntryValueSchema } from './entities/trackerEntry'
 import { bulletSourceSchema } from './enums'
 import { serverBulletProcessingStatusSchema } from './processing'
 import { ianaTimezone, nonEmptyString, timestampMs, uuid } from './primitives'
@@ -77,6 +77,11 @@ export const bulletCreateOpSchema = z.object({
       audio: voiceAudioSchema.optional(),
       /** This capture answers a clarifying question. */
       answers_question_id: uuid().optional(),
+      /**
+       * This capture closes an open loop "with a note": the `to_check` / `question` thought it
+       * resolves once the server accepts it. The capture is then processed like any other.
+       */
+      resolves_thought_id: uuid().optional(),
     })
     .refine((b) => b.audio === undefined || b.source === 'voice', {
       message: "audio requires source 'voice'",
@@ -156,6 +161,112 @@ export const questionDismissOpSchema = z.object({
   question_id: uuid(),
 })
 
+/**
+ * The user answered a clarifying question by tapping one of its `options` (no model call):
+ *  - `date`        — the option's day is set on the linked task/event suggestion, which is then
+ *                    applied (or, if it already was, its result is moved to that day).
+ *  - `new_tracker` — "Yes" accepts the linked tracker suggestion (that tap is the confirmation a
+ *                    definition always needs); "No" dismisses it.
+ *  - `other`       — the answer is recorded; nothing else changes.
+ * The question becomes `answered` with `answer_option`. Re-sending the same answer is a no-op.
+ */
+export const questionAnswerOpSchema = z.object({
+  ...opBase,
+  type: z.literal('question.answer'),
+  question_id: uuid(),
+  /** Exactly one of the question's `options`. */
+  option: nonEmptyString(),
+})
+
+/** Close an open loop: a `to_check` or `question` thought (others are refused `invalid`). */
+export const thoughtResolveOpSchema = z.object({
+  ...opBase,
+  type: z.literal('thought.resolve'),
+  thought_id: uuid(),
+})
+
+/** Re-open a resolved thought. */
+export const thoughtUnresolveOpSchema = z.object({
+  ...opBase,
+  type: z.literal('thought.unresolve'),
+  thought_id: uuid(),
+})
+
+/**
+ * Light manual editing (slice 1: edit and delete what the app extracted; no manual creation).
+ * A patch carries only the fields that change, unknown keys are refused, and at least one field is
+ * required. Every manual edit or delete stamps the row's `user_edited_at`, so reprocessing never
+ * overwrites it and undoing the suggestion that produced it is refused (`conflict`).
+ */
+const manualPatch = <T extends z.ZodRawShape>(shape: T) =>
+  z
+    .object(shape)
+    .partial()
+    .strict()
+    .refine((p) => Object.keys(p).length > 0, { message: 'a patch must change at least one field' })
+
+/** Complete (`done`) / reopen (`todo`), reschedule or clear the due date, rename. */
+export const taskManualPatchSchema = manualPatch({
+  status: z.enum(['todo', 'done']),
+  title: nonEmptyString(),
+  due_at: timestampMs().nullable(),
+})
+export type TaskManualPatch = z.infer<typeof taskManualPatchSchema>
+
+/** Move or rename. The result must still end no earlier than it starts. */
+export const eventManualPatchSchema = manualPatch({
+  title: nonEmptyString(),
+  starts_at: timestampMs(),
+  ends_at: timestampMs().nullable(),
+})
+export type EventManualPatch = z.infer<typeof eventManualPatchSchema>
+
+/** Correct a reading. The value must fit its tracker's input type and config. */
+export const trackerEntryManualPatchSchema = z.object({ value: trackerEntryValueSchema }).strict()
+export type TrackerEntryManualPatch = z.infer<typeof trackerEntryManualPatchSchema>
+
+export const taskUpdateOpSchema = z.object({
+  ...opBase,
+  type: z.literal('task.update'),
+  task_id: uuid(),
+  patch: taskManualPatchSchema,
+})
+
+/** Soft-delete a task. */
+export const taskDeleteOpSchema = z.object({
+  ...opBase,
+  type: z.literal('task.delete'),
+  task_id: uuid(),
+})
+
+export const eventUpdateOpSchema = z.object({
+  ...opBase,
+  type: z.literal('event.update'),
+  event_id: uuid(),
+  patch: eventManualPatchSchema,
+})
+
+/** Soft-delete an event. */
+export const eventDeleteOpSchema = z.object({
+  ...opBase,
+  type: z.literal('event.delete'),
+  event_id: uuid(),
+})
+
+export const trackerEntryUpdateOpSchema = z.object({
+  ...opBase,
+  type: z.literal('tracker_entry.update'),
+  tracker_entry_id: uuid(),
+  patch: trackerEntryManualPatchSchema,
+})
+
+/** Soft-delete a tracker reading. */
+export const trackerEntryDeleteOpSchema = z.object({
+  ...opBase,
+  type: z.literal('tracker_entry.delete'),
+  tracker_entry_id: uuid(),
+})
+
 export const pushOpSchema = z.discriminatedUnion('type', [
   bulletCreateOpSchema,
   bulletEditOpSchema,
@@ -166,6 +277,15 @@ export const pushOpSchema = z.discriminatedUnion('type', [
   suggestionUndoOpSchema,
   thoughtReclassifyOpSchema,
   questionDismissOpSchema,
+  questionAnswerOpSchema,
+  thoughtResolveOpSchema,
+  thoughtUnresolveOpSchema,
+  taskUpdateOpSchema,
+  taskDeleteOpSchema,
+  eventUpdateOpSchema,
+  eventDeleteOpSchema,
+  trackerEntryUpdateOpSchema,
+  trackerEntryDeleteOpSchema,
 ])
 export type PushOp = z.infer<typeof pushOpSchema>
 export type PushOpType = PushOp['type']
@@ -182,8 +302,11 @@ export type PushRequest = z.infer<typeof pushRequestSchema>
  *  - not_found — the bullet/suggestion does not exist (or belongs to someone else).
  *  - invalid   — the operation is well-formed JSON but not valid against current state
  *                (e.g. accepting an already-rejected suggestion, an edited payload that fails
- *                validation, or a create re-using an id with different content).
- *  - conflict  — the target changed since (e.g. undo after the user edited the task by hand).
+ *                validation, a create re-using an id with different content, editing something
+ *                deleted, a reading that doesn't fit its tracker, resolving a `note` thought, or
+ *                an option the question doesn't offer).
+ *  - conflict  — the target changed since (e.g. undo after the user edited the task by hand, or
+ *                answering a question whose suggestion was dismissed meanwhile).
  *  - stale     — an edit older than the text the server already has.
  */
 export const pushRejectCodeSchema = z.enum(['not_found', 'invalid', 'conflict', 'stale'])

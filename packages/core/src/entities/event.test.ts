@@ -15,6 +15,7 @@ const validEvent = {
   all_day: false,
   location: 'Main St',
   notes: null,
+  user_edited_at: null,
 }
 
 test('event select: valid object parses', () => {

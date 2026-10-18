@@ -33,8 +33,15 @@ test('thought: valid parses; span optional; bad span rejected', () => {
     span: { start: 0, end: 26 },
     kind: 'worry' as const,
     kind_source: 'engine' as const,
+    resolved_at: null,
+    resolved_by_bullet_id: null,
   }
   expect(thoughtSelectSchema.parse(t)).toEqual(t)
+  // Rows from before open loops existed are still valid (open).
+  const { resolved_at, resolved_by_bullet_id, ...older } = t
+  void resolved_at
+  void resolved_by_bullet_id
+  expect(thoughtSelectSchema.parse(older)).toEqual(t)
   expect(thoughtSelectSchema.safeParse({ ...t, span: null }).success).toBe(true)
   expect(thoughtSelectSchema.safeParse({ ...t, span: { start: 5, end: 2 } }).success).toBe(false)
   expect(thoughtSelectSchema.safeParse({ ...t, kind: 'rant' }).success).toBe(false)
@@ -51,6 +58,7 @@ test('question: clarifying only in slice 1, up to 4 quick options', () => {
     options: ['Today', 'Next week'],
     status: 'open' as const,
     answer_bullet_id: null,
+    answer_option: null,
     resolved_at: null,
   }
   expect(questionSelectSchema.parse(q)).toEqual(q)

@@ -34,7 +34,16 @@ const endsAfterStart = (e: { starts_at: number; ends_at: number | null }, ctx: z
 }
 
 export const eventSelectSchema = z
-  .object({ ...ownedTimestampedStateFields, ...sourceBulletIdNullable, ...eventFields })
+  .object({
+    ...ownedTimestampedStateFields,
+    ...sourceBulletIdNullable,
+    ...eventFields,
+    /**
+     * When the user last changed this by hand (a manual edit or delete); null if never. Undo of a
+     * suggestion applied before then is refused, and reprocessing never overwrites it.
+     */
+    user_edited_at: timestampMs().nullable().default(null),
+  })
   .superRefine(endsAfterStart)
 export type Event = z.infer<typeof eventSelectSchema>
 

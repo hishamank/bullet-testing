@@ -29,6 +29,11 @@ export const trackerEntrySelectSchema = z.object({
   tracker_id: uuid(),
   value: trackerEntryValueSchema,
   logged_at: timestampMs(),
+  /**
+   * When the user last changed this by hand (a manual edit or delete); null if never. Undo of a
+   * suggestion applied before then is refused, and reprocessing never overwrites it.
+   */
+  user_edited_at: timestampMs().nullable().default(null),
 })
 export type TrackerEntry = z.infer<typeof trackerEntrySelectSchema>
 

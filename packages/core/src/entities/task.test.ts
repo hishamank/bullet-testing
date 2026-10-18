@@ -14,6 +14,7 @@ const validTask = {
   notes: null,
   due_at: null,
   priority: null,
+  user_edited_at: null,
 }
 
 test('task select: valid object parses; source_bullet_id may be null', () => {

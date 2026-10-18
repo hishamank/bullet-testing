@@ -18,6 +18,11 @@ export const taskSelectSchema = z.object({
   notes: z.string().nullable(),
   due_at: timestampMs().nullable(),
   priority: taskPrioritySchema.nullable(),
+  /**
+   * When the user last changed this by hand (a manual edit or delete); null if never. Undo of a
+   * suggestion applied before then is refused, and reprocessing never overwrites it.
+   */
+  user_edited_at: timestampMs().nullable().default(null),
 })
 export type Task = z.infer<typeof taskSelectSchema>
 
