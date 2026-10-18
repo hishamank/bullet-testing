@@ -3,9 +3,7 @@ node_modules
 
 # build output
 dist
-.turbo
-.next
-out
+.vite-task
 
 # test
 coverage
@@ -27,3 +25,16 @@ coverage
 # misc
 *.log
 .DS_Store
+
+# expo / react native
+.expo
+apps/mobile/ios
+apps/mobile/android
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# AI agent worktrees
+.claude/worktrees/

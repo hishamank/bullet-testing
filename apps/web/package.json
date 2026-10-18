@@ -4,34 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start --port 3000",
-    "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
-    "test": "vitest run"
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview"
   },
   "dependencies": {
-    "@bullet/server": "workspace:*",
-    "@tanstack/react-query": "^5.101.0",
-    "@trpc/client": "^11.18.0",
-    "@trpc/tanstack-react-query": "^11.18.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "next": "^16.2.9",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "tailwind-merge": "^3.6.0"
+    "@bullet/core": "workspace:*",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@bullet/agent": "workspace:*",
-    "@bullet/db": "workspace:*",
-    "@tailwindcss/postcss": "^4.3.1",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "jsdom": "^29.1.1",
-    "tailwindcss": "^4.3.1"
+    "@types/react": "~19.2.2",
+    "@types/react-dom": "~19.2.2",
+    "@vitejs/plugin-react": "^5.0.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   }
 }

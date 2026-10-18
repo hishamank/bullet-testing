@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { taskInsertSchema } from './entities/task'
 import { targetKindSchema } from './enums'
 import { insertSchemaFor, targetKindInsertSchemas, validateSuggestionPayload } from './registry'
