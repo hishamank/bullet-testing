@@ -22,6 +22,7 @@ import {
 import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { PhoneDb } from '../data/db'
 import { applyPull, CURSOR_KEY, getState, setState } from '../data/mirror'
+import { recordRejection } from '../data/rejections'
 import { audioAttachments, bullets, outbox } from '../data/schema'
 import { type SyncTransport, TransportError } from './transport'
 
@@ -79,7 +80,10 @@ export function createSyncClient(opts: SyncClientOptions): SyncClient {
       for (const row of batch) {
         const r = byId.get(row.op_id)
         if (!r) continue
-        if (r.status === 'rejected') noteRejection(tx, row, `${r.error.code}: ${r.error.message}`)
+        if (r.status === 'rejected') {
+          noteRejection(tx, row, `${r.error.code}: ${r.error.message}`)
+          recordRejection(tx, row, r.error.code, r.error.message, now())
+        }
         tx.delete(outbox).where(eq(outbox.seq, row.seq)).run()
         settled += 1
       }

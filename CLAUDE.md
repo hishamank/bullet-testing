@@ -132,7 +132,9 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
   SQL inlined into `migrations.gen.ts` (`pnpm --filter mobile db:generate`) and applied by a
   driver-agnostic runner, so the same code runs on device and in Vitest (better-sqlite3).
   React Native / Expo APIs live only in `open.ts`, `settings.ts` and `runtime.ts` (which also
-  reads recording chunks with expo-file-system); everything else is testable logic. The mobile test script is `pnpm exec vp test` because the app's TypeScript
+  reads recording chunks with expo-file-system); everything else is testable logic. Ops the server
+  refuses for good are logged in `sync_state` (`data/rejections.ts`) for calm UI notices, and force
+  the next pull to be a full one (an unchanged server row would otherwise never come back). The mobile test script is `pnpm exec vp test` because the app's TypeScript
   (Expo's ~6.x) gives it its own `vite-plus` peer variant.
 
 ## 4. Domain model

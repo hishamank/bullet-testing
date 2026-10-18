@@ -15,6 +15,9 @@ const ICONS = {
   back: { ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' },
   forward: { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' },
   pause: { ios: 'pause', android: 'pause', web: 'pause' },
+  play: { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' },
+  text: { ios: 'text.quote', android: 'format_quote', web: 'format_quote' },
+  info: { ios: 'info.circle', android: 'info', web: 'info' },
 } satisfies Record<string, SymbolName>
 
 export type IconName = keyof typeof ICONS

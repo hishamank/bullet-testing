@@ -1,46 +1,121 @@
-import { Link, useRouter } from 'expo-router'
-import { Pressable, ScrollView, StyleSheet } from 'react-native'
-import { BackHeader, Label, Placeholder, Screen } from '@/components/ui'
-import { listOpenQuestions, listPendingSuggestions } from '@/data/queries'
-import { useLocalQuery } from '@/hooks'
-import { radius, space, type, useTheme } from '@/theme'
+import { useRouter } from 'expo-router'
+import { useCallback, useEffect, useState } from 'react'
+import { ScrollView, StyleSheet, View } from 'react-native'
+import { DecideGroup } from '@/components/inbox/DecideGroup'
+import { DoneList } from '@/components/inbox/DoneList'
+import { SectionTitle } from '@/components/inbox/parts'
+import { QuestionCard } from '@/components/inbox/QuestionCard'
+import { BackHeader, Label, Note, Screen } from '@/components/ui'
+import {
+  accept,
+  acceptAll,
+  answerWithOption,
+  dismiss,
+  dismissNotice,
+  flushDecisions,
+  skipQuestion,
+  UNDO_MESSAGES,
+  undoApplied,
+  undoDecision,
+} from '@/features/inbox/actions'
+import { useInbox } from '@/features/inbox/useInbox'
+import { space, type } from '@/theme'
+
+/** How long a one-off message (e.g. "it stays dismissed") stays before fading out. */
+const MESSAGE_MS = 6_000
 
 /**
- * Inbox. Minimal stand-in: counts plus open questions linking to Answer. To decide, quick
- * options, Skip and Done for you (with Undo) are built in their own session.
+ * Inbox: To decide (grouped by capture), Questions, and Done for you today. Everything here is
+ * optional and can wait; the screen only wires taps to `features/inbox/actions`.
  */
 export default function Inbox() {
-  const t = useTheme()
   const router = useRouter()
-  const pending = useLocalQuery((db) => listPendingSuggestions(db).length)
-  const questions = useLocalQuery(listOpenQuestions)
+  const view = useInbox()
+  const [message, setMessage] = useState<string | null>(null)
+
+  // Leaving the Inbox sends whatever is still in its Undo window.
+  useEffect(() => flushDecisions, [])
+  useEffect(() => {
+    if (!message) return
+    const id = setTimeout(() => setMessage(null), MESSAGE_MS)
+    return () => clearTimeout(id)
+  }, [message])
+
+  const onUndo = useCallback((id: string) => {
+    const outcome = undoDecision(id)
+    if (outcome === 'already_sent') setMessage(UNDO_MESSAGES.already_sent)
+  }, [])
+
   return (
     <Screen>
       <BackHeader title="Inbox" backLabel="Capture" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.body}>
-        <Placeholder
-          title={`${pending} to decide · ${questions.length} ${questions.length === 1 ? 'question' : 'questions'}`}
-        />
-        {questions.map((q) => (
-          <Link key={q.id} href={{ pathname: '/answer', params: { question: q.id } }} asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityHint="Answer in words"
-              style={[styles.card, { backgroundColor: t.card }]}
-            >
-              <Label>{q.text}</Label>
-              <Label tone="accent" size={type.label}>
-                Answer in words
-              </Label>
-            </Pressable>
-          </Link>
+        {view.notices.map((n) => (
+          <Note key={n.key} icon="info" text={n.text} onDismiss={() => dismissNotice(n.key)} />
         ))}
+        {message ? <Note icon="info" text={message} onDismiss={() => setMessage(null)} /> : null}
+
+        {view.empty ? <EmptyState /> : null}
+
+        {view.groups.length > 0 ? (
+          <>
+            <SectionTitle title="To decide" count={view.pendingCount} />
+            {view.groups.map((g) => (
+              <DecideGroup
+                key={g.bulletId}
+                group={g}
+                onAccept={(i) => accept(i.id, i.summary.spoken)}
+                onDismiss={(i) => dismiss(i.id, i.summary.spoken)}
+                onEdit={(i) =>
+                  router.push({ pathname: '/inbox/edit', params: { suggestion: i.id } })
+                }
+                onUndo={(i) => onUndo(i.id)}
+                onAcceptAll={(items) => acceptAll(items.map((i) => i.id))}
+              />
+            ))}
+          </>
+        ) : null}
+
+        {view.questions.length > 0 ? (
+          <>
+            <SectionTitle title="Questions" count={view.questions.length} />
+            {view.questions.map((q) => (
+              <QuestionCard
+                key={q.id}
+                question={q}
+                onAnswer={(option) => answerWithOption(q.id, option)}
+                onSkip={() => skipQuestion(q.id)}
+              />
+            ))}
+          </>
+        ) : null}
+
+        {view.done.length > 0 ? (
+          <>
+            <SectionTitle title="Done for you today" count={view.done.length} />
+            <DoneList
+              items={view.done}
+              onUndo={(d) => undoApplied(d.suggestionId, d.summary.done)}
+            />
+          </>
+        ) : null}
       </ScrollView>
     </Screen>
   )
 }
 
+function EmptyState() {
+  return (
+    <View style={styles.empty} accessible accessibilityRole="text">
+      <Label size={type.title} style={{ fontWeight: '600' }}>
+        Nothing waiting.
+      </Label>
+      <Label tone="secondary">Captures you make will show up here when they need you.</Label>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
-  body: { padding: space.lg, gap: space.md },
-  card: { borderRadius: radius.card, padding: space.lg, gap: space.sm, minHeight: 44 },
+  body: { paddingHorizontal: space.lg, paddingBottom: space.xxl, gap: space.md },
+  empty: { paddingVertical: space.xxl, gap: space.sm },
 })
