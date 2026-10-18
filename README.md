@@ -40,7 +40,12 @@ pnpm dev:server                               # http://127.0.0.1:3001, data in a
 ```
 
 Environment: `HOST`, `PORT`, `DB_PATH`, `AUDIO_DIR` (voice recordings, kept forever), `LLM_BASE_URL` (llama-server, default
-`http://127.0.0.1:8080`), `LLM_MODEL`, `LLM_API_KEY`, `LLM_TIMEOUT_MS`.
+`http://127.0.0.1:8080`), `LLM_MODEL`, `LLM_API_KEY`, `LLM_TIMEOUT_MS`, `WHISPER_BASE_URL` (whisper-server; unset = device
+drafts only), `WHISPER_MODEL`, `WHISPER_PROMPT`, `TRANSCRIBE_TIMEOUT_MS`. See
+`apps/server/.env.example`.
+
+Running it for real (llama-server + whisper-server, launch flags, Tailscale, the Whisper eval
+script): [`docs/home-server.md`](./docs/home-server.md).
 
 The capture-loop states and the sync protocol are described in
 [`docs/contract.md`](./docs/contract.md).

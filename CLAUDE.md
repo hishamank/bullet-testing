@@ -206,3 +206,9 @@ time + zone and dates resolve deterministically; a matched scale/number tracker 
 no longer defaults to the minimum (falls back to an unlinked activity); mark-done is a
 `{ status: 'done' }` patch; only an exact title match may auto-apply mark-done; record
 timestamps default to capture time. Add new findings here.
+
+- **First real-model run (2026-10-18, Qwen3.5-4B Q4_K_M, see `docs/home-server.md`):** on a mixed
+  Arabizi/French/English capture, segmentation returned thought `text` **translated to English**
+  although the prompt asks for the language(s) used (spans were correct); "take the car to the
+  garage before 10am" became an `event`, not a `task`; "slept 6 hours" was dated at local midnight
+  of the previous day. Re-check with the user's own captures (and Gemma 26B) before tuning prompts.
