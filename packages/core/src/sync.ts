@@ -1,5 +1,12 @@
 import { z } from 'zod'
 import { activitySelectSchema } from './entities/activity'
+import {
+  audioAttachmentSelectSchema,
+  audioMetadataFields,
+  audioUploadStatusSchema,
+  transcriptSelectSchema,
+  transcriptSourceFields,
+} from './entities/audio'
 import { bulletSelectSchema } from './entities/bullet'
 import { eventSelectSchema } from './entities/event'
 import { taskSelectSchema } from './entities/task'
@@ -13,8 +20,11 @@ import { suggestionPayloadSchema, suggestionSelectSchema } from './suggestion'
 /**
  * The phone ↔ home-server sync contract (docs/contract.md is the readable version).
  *
- *   POST /sync/push   — the phone sends its outbox: an ordered list of operations.
- *   GET  /sync/pull   — the phone asks for everything that changed since its cursor.
+ *   POST /sync/push              — the phone sends its outbox: an ordered list of operations.
+ *   GET  /sync/pull              — the phone asks for everything that changed since its cursor.
+ *   PUT  /sync/audio/:id         — upload (part of) a voice recording, resumable by offset.
+ *   GET  /sync/audio/:id/status  — how many bytes of it the server already has.
+ *   GET  /sync/audio/:id         — download a recording (e.g. to another device).
  *
  * Every request carries `Authorization: Bearer <device token>`.
  *
@@ -36,20 +46,44 @@ const opBase = {
   op_id: uuid(),
 } as const
 
-/** A new capture. */
+/**
+ * The recording behind a voice capture: its metadata (bytes follow via `PUT /sync/audio/:id`)
+ * and the live on-device draft transcript.
+ */
+export const voiceAudioSchema = z.object({
+  ...audioMetadataFields,
+  draft: z.object(transcriptSourceFields),
+})
+export type VoiceAudio = z.infer<typeof voiceAudioSchema>
+
+/**
+ * A new capture. A voice capture with a recording carries `audio`; its `text` is what the user
+ * sent — the draft, or their edit of it (`text_edited_by_user: true`, so the server transcript
+ * will not replace it).
+ */
 export const bulletCreateOpSchema = z.object({
   ...opBase,
   type: z.literal('bullet.create'),
-  bullet: z.object({
-    id: uuid(),
-    text: nonEmptyString(),
-    captured_at: timestampMs(),
-    timezone: ianaTimezone(),
-    source: bulletSourceSchema,
-  }),
+  bullet: z
+    .object({
+      id: uuid(),
+      text: nonEmptyString(),
+      captured_at: timestampMs(),
+      timezone: ianaTimezone(),
+      source: bulletSourceSchema,
+      text_edited_by_user: z.boolean().optional(),
+      audio: voiceAudioSchema.optional(),
+    })
+    .refine((b) => b.audio === undefined || b.source === 'voice', {
+      message: "audio requires source 'voice'",
+      path: ['audio'],
+    }),
 })
 
-/** The user changed a bullet's text. Re-runs extraction and reconciles what was applied. */
+/**
+ * The user changed a bullet's text. Re-runs extraction and reconciles what was applied. Marks the
+ * bullet `text_edited_by_user`, so a later server transcript never overwrites it.
+ */
 export const bulletEditOpSchema = z.object({
   ...opBase,
   type: z.literal('bullet.edit'),
@@ -188,6 +222,8 @@ export const pullChangesSchema = z.object({
   trackers: z.array(trackerSelectSchema),
   tracker_entries: z.array(trackerEntrySelectSchema),
   activities: z.array(activitySelectSchema),
+  audio_attachments: z.array(audioAttachmentSelectSchema),
+  transcripts: z.array(transcriptSelectSchema),
 })
 export type PullChanges = z.infer<typeof pullChangesSchema>
 export type PullChangeKind = keyof PullChanges
@@ -202,12 +238,37 @@ export const pullResponseSchema = z.object({
 })
 export type PullResponse = z.infer<typeof pullResponseSchema>
 
+/** Upload headers: the byte offset this request's body starts at (tus-style). */
+export const AUDIO_UPLOAD_OFFSET_HEADER = 'upload-offset'
+/** Largest body accepted per `PUT /sync/audio/:id` request; bigger files go in several. */
+export const MAX_AUDIO_CHUNK_BYTES = 4 * 1024 * 1024
+
+/**
+ * Upload protocol (idempotent by attachment id, resumable):
+ *  1. `bullet.create` declares the recording (id, size, sha256). Upload only after it is acked.
+ *  2. `GET /sync/audio/:id/status` → `received_bytes`.
+ *  3. `PUT /sync/audio/:id` with header `upload-offset: <received_bytes>` and the next bytes as
+ *     an `application/octet-stream` body. A wrong offset answers 409; re-read the status and resend
+ *     from there. The request completing the file verifies sha256 (if given): a mismatch answers
+ *     422 and resets the upload to 0.
+ *  4. Re-sending a completed upload answers 200 `uploaded` without changing anything.
+ */
+export const audioUploadStateSchema = z.object({
+  attachment_id: uuid(),
+  size_bytes: z.number().int().positive(),
+  received_bytes: z.number().int().nonnegative(),
+  upload_status: audioUploadStatusSchema,
+})
+export type AudioUploadState = z.infer<typeof audioUploadStateSchema>
+
 /** The error envelope every non-2xx response uses. */
 export const apiErrorCodeSchema = z.enum([
   'unauthorized',
   'bad_request',
   'not_found',
+  'conflict',
   'payload_too_large',
+  'unprocessable',
   'internal',
 ])
 export const apiErrorSchema = z.object({

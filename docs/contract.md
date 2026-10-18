@@ -1,6 +1,7 @@
 # Capture-loop contract
 
-**Status:** stable for slice 1 (2026-10-18). The code version lives in `@bullet/core`
+**Status:** stable for slice 1 (2026-10-18; voice-note audio and the `transcribing` state added
+the same day). The code version lives in `@bullet/core`
 (`processing.ts`, `sync.ts`). We may **add** things later (new operations, new kinds of data); we
 won't rename or remove anything below without updating this page.
 
@@ -10,11 +11,14 @@ This page is for anyone designing screens. Technical details are at the end.
 
 ## 1. The idea
 
-1. You type or dictate a thought and tap **Send**. It's saved **on the phone** straight away,
-   even with no signal.
+1. You type or speak a thought and tap **Send**. It's saved **on the phone** straight away,
+   even with no signal. When you speak, the phone **keeps the recording** and shows a live draft
+   of the words as you talk.
 2. When the phone can reach your **home server**, it sends the thought over (**sync**).
-3. The home server reads it with a local AI model, **in the background**, and works out what's
-   in it: a task, an event, a tracker reading, something you did.
+3. For a voice note, the home server first **transcribes the recording again**, more accurately
+   (it handles a mix of English, Lebanese Arabic and French). Then it reads the text with a local
+   AI model, **in the background**, and works out what's in it: a task, an event, a tracker
+   reading, something you did.
 4. What it finds comes back to the phone as **suggestions**. Safe, obvious ones are applied
    automatically (with Undo). The rest wait for you to review, whenever you like.
 
@@ -24,38 +28,45 @@ Capture never waits on any of this: Send always works right away.
 
 Each bullet has exactly **one** of these states.
 
-| State          | Plain meaning                                                | Where it exists | What it's waiting on                      |
-| -------------- | ------------------------------------------------------------ | --------------- | ----------------------------------------- |
-| `saved_local`  | Saved on this phone, not on the server yet                   | **Phone only**  | A connection to the home server           |
-| `synced`       | The server has it and it's in line to be read                | Phone + server  | The server's AI (queue)                   |
-| `processing`   | The AI is reading it now                                     | Phone + server  | Usually a few seconds; at most ~2 minutes |
-| `processed`    | Done. Anything found was applied, or there was nothing to do | Phone + server  | Nothing                                   |
-| `needs_review` | Done, and at least one suggestion is waiting for you         | Phone + server  | **You**                                   |
-| `failed`       | The server couldn't read it, even after retrying             | Phone + server  | **You** (tap Retry)                       |
+| State          | Plain meaning                                                   | Where it exists | What it's waiting on                                                |
+| -------------- | --------------------------------------------------------------- | --------------- | ------------------------------------------------------------------- |
+| `saved_local`  | Saved on this phone, not on the server yet                      | **Phone only**  | A connection to the home server                                     |
+| `synced`       | The server has it and it's in line to be read                   | Phone + server  | The server's AI (queue), or the rest of a recording still uploading |
+| `transcribing` | Voice notes only: the server is turning the recording into text | Phone + server  | Usually seconds; longer for long recordings                         |
+| `processing`   | The AI is reading it now                                        | Phone + server  | Usually a few seconds; at most ~2 minutes                           |
+| `processed`    | Done. Anything found was applied, or there was nothing to do    | Phone + server  | Nothing                                                             |
+| `needs_review` | Done, and at least one suggestion is waiting for you            | Phone + server  | **You**                                                             |
+| `failed`       | The server couldn't read it, even after retrying                | Phone + server  | **You** (tap Retry)                                                 |
 
 ```
- saved_local ──sent──▶ synced ──picked up──▶ processing ──┬──▶ processed
-                         ▲                                ├──▶ needs_review ──all reviewed──▶ processed
-                         │                                └──▶ failed
-                         │                                        │
-                         └──── retry / edit / server hiccup ◀─────┘
+                              ┌─ voice note ─▶ transcribing ─┐
+ saved_local ──sent──▶ synced ┤                              ├─▶ processing ──┬──▶ processed
+                         ▲    └─ typed ──────────────────────┘                ├──▶ needs_review ──all reviewed──▶ processed
+                         │                                                    └──▶ failed
+                         │                     (transcribing can fail too) ──▶ failed │
+                         └──────────────── retry / edit / server hiccup ◀─────────────┘
 ```
 
 ### What moves a bullet between states
 
 - **Sent** (`saved_local → synced`): the phone reached the server and the server confirmed it has
   the bullet.
-- **Picked up** (`synced → processing`): the server starts reading it. Bullets are read one at a
-  time, oldest first.
+- **Picked up** (`synced → transcribing` for a voice note with a recording, otherwise
+  `synced → processing`): the server starts on it. Bullets are handled one at a time, oldest
+  first. A voice note waits in `synced` until its whole recording has arrived.
+- **Transcribed** (`transcribing → processing`): the server's transcript replaces the draft
+  text, **unless you edited the draft** before sending (or later). Then your words stay and the
+  server's transcript is only kept alongside. Either way the bullet is then read as usual.
 - **Done** (`processing → processed` or `needs_review`): `needs_review` if at least one suggestion
   needs a decision, otherwise `processed`.
 - **All reviewed** (`needs_review → processed`): you accepted or dismissed every waiting
   suggestion.
-- **Failed** (`processing → failed`): the server tried several times and gave up (the AI was
-  down, too slow, or gave nonsense). A failed bullet is **never lost**: the text is safe, only
-  the extraction is missing.
+- **Failed** (`transcribing → failed` or `processing → failed`): the server tried several times
+  and gave up (the transcriber or the AI was down, too slow, or gave nonsense). A failed bullet
+  is **never lost**: the text and the recording are safe, only the transcript or extraction is
+  missing.
 - **Retry** (`failed → synced`): you tapped Retry.
-- **Automatic retry** (`processing → synced`): a temporary problem. The server will try again by
+- **Automatic retry** (`transcribing`/`processing → synced`): a temporary problem. The server will try again by
   itself shortly. The bullet shows how many attempts so far and when the next one is due.
 - **Edit** (`processed`/`needs_review`/`failed → synced`): you changed the text, so it's read
   again (see §4).
@@ -79,14 +90,33 @@ Every bullet carries:
   - `llm_unavailable`: the home server's AI isn't running or isn't reachable.
   - `llm_timeout`: the AI took too long.
   - `llm_bad_output`: the AI's answer was unusable.
+  - `transcription_unavailable`: the server's transcriber isn't running or isn't reachable.
+  - `transcription_timeout`: transcribing took too long.
+  - `transcription_failed`: the recording couldn't be transcribed (damaged audio, or no speech).
   - `internal`: something else went wrong on the server.
 
   A `failed` bullet always has an error. A `synced` bullet may also have one while an automatic
   retry is waiting ("Retrying…").
 
 - **Next retry time,** only while an automatic retry is waiting.
-- **Source:** `text` or `voice` (dictated), plus **when** it was captured and the phone's
-  **time zone** then. "Tomorrow 3pm" always means 3pm where you were when you said it.
+- **Source:** `text` or `voice`, plus **when** it was captured and the phone's **time zone**
+  then. "Tomorrow 3pm" always means 3pm where you were when you said it.
+- **Edited by you:** whether you changed the text by hand. Server transcripts never overwrite it.
+
+## 2b. Voice notes
+
+- The **recording is kept for good**, on the phone and on the server. It is never thrown away
+  after transcription. Deleting the bullet hides it like everything else (soft delete).
+- Each voice note has one **recording** with its length, format, size and an **upload state**:
+  `pending` (some or all of it hasn't reached the server; the phone knows how much has) or
+  `uploaded`. Big recordings go up in pieces, and an interrupted upload continues where it
+  stopped.
+- It can have two **transcripts**, both kept:
+  - the **draft** the phone made live while you spoke (Apple's on-device recognition, English);
+  - the **server transcript** (Whisper), which understands mixed English, Lebanese Arabic and
+    French. It records which engine and model made it and the languages it heard.
+- The bullet's text is the server transcript once it exists, unless you edited the text yourself.
+  The UI can always show both transcripts and play the recording.
 
 ## 3. Suggestions
 
@@ -139,8 +169,11 @@ Nothing is ever erased for good. Deletes are "soft", so they can be recovered la
 - When the app comes to the foreground, when the network comes back, and now and then in the
   background (if iOS allows), the phone:
   1. **pushes** the outbox, oldest first; then
-  2. **pulls** everything that changed on the server since last time: bullet states,
-     suggestions, and the tasks/events/trackers/entries/activities they produced.
+  2. **uploads** any recording the server doesn't fully have yet (only after the server has
+     accepted its bullet), continuing interrupted uploads where they stopped; then
+  3. **pulls** everything that changed on the server since last time: bullet states,
+     suggestions, transcripts, recordings' upload states, and the
+     tasks/events/trackers/entries/activities they produced.
 - Sending the same thing twice is harmless: the server recognises it and won't duplicate
   anything. So the phone can just resend after any network hiccup.
 - If the server **refuses** something for good (for example you edited a bullet on another phone
@@ -156,7 +189,9 @@ of it.
 
 **`POST /sync/push`** with body `{ ops: PushOp[] }` (1–100 ops, applied in order). Each op has a
 client-minted UUID `op_id`. The op types are `bullet.create` (with a client-minted bullet `id`,
-`text`, `captured_at`, `timezone`, `source`), `bullet.edit` (`text`, `edited_at`),
+`text`, `captured_at`, `timezone`, `source`, optional `text_edited_by_user`, and for a voice note
+optional `audio`: recording `id`, `mime_type`, `duration_ms`, `size_bytes`, `sha256` and the
+device `draft` transcript), `bullet.edit` (`text`, `edited_at`; marks the text user-edited),
 `bullet.delete` (`mode: cascade | keep_extractions`), `bullet.retry`, `suggestion.accept`
 (optional edited `payload`), `suggestion.reject` and `suggestion.undo`.
 
@@ -165,10 +200,20 @@ server_time }`. Rejection codes are `not_found`, `invalid`, `conflict` and `stal
 is final.
 
 **`GET /sync/pull?cursor=<opaque>&limit=<1..500>`** returns `{ changes: { bullets, suggestions,
-tasks, events, trackers, tracker_entries, activities }, cursor, has_more, server_time }`. Rows
+tasks, events, trackers, tracker_entries, activities, audio_attachments, transcripts }, cursor,
+has_more, server_time }`. Rows
 are full current versions, soft-deleted ones included (`state: 'deleted'`). Omit `cursor` for a
 full sync. Repeat while `has_more`.
 
+**Audio upload** (resumable, idempotent by recording id; only after its `bullet.create` was
+acked). `GET /sync/audio/:id/status` returns `{ attachment_id, size_bytes, received_bytes,
+upload_status }`. `PUT /sync/audio/:id` sends the next bytes (at most 4 MiB per request) as
+`application/octet-stream` with header `upload-offset: <received_bytes>`, and returns the same
+status. A wrong offset answers `409 conflict`; the client re-reads the status and resends from
+there. The request completing the file checks the
+`sha256` (if one was given); a mismatch answers `422 unprocessable` and restarts the upload at 0.
+Re-sending a finished upload is a no-op. `GET /sync/audio/:id` downloads the recording.
+
 **Timestamps** are epoch milliseconds. **IDs** are UUID v4. Errors use the envelope
-`{ error: { code, message } }` with `401 unauthorized`, `400 bad_request`, `413
-payload_too_large` and `500 internal`.
+`{ error: { code, message } }` with `401 unauthorized`, `400 bad_request`, `404 not_found`,
+`409 conflict`, `413 payload_too_large`, `422 unprocessable` and `500 internal`.

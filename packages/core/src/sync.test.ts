@@ -39,6 +39,27 @@ describe('push', () => {
     for (const op of ops) expect(pushOpSchema.safeParse(op).success, op.type).toBe(true)
   })
 
+  test('a voice capture can carry its recording and the device draft', () => {
+    const audio = {
+      id: OP,
+      mime_type: 'audio/mp4',
+      duration_ms: 4_000,
+      size_bytes: 64_000,
+      sha256: null,
+      draft: {
+        text: 'dentist thursday 3pm',
+        engine: 'apple-speechanalyzer',
+        model: null,
+        languages: ['en-US'],
+      },
+    }
+    const voice = { ...createOp, bullet: { ...createOp.bullet, audio, text_edited_by_user: true } }
+    expect(pushOpSchema.safeParse(voice).success).toBe(true)
+    // Audio only on voice bullets.
+    const typed = { ...voice, bullet: { ...voice.bullet, source: 'text' } }
+    expect(pushOpSchema.safeParse(typed).success).toBe(false)
+  })
+
   test('rejects an unknown op type and a non-uuid op_id', () => {
     expect(pushOpSchema.safeParse({ ...createOp, type: 'bullet.explode' }).success).toBe(false)
     expect(pushOpSchema.safeParse({ ...createOp, op_id: 'abc' }).success).toBe(false)
@@ -98,6 +119,7 @@ describe('pull', () => {
       captured_at: 1,
       timezone: 'UTC',
       source: 'text',
+      text_edited_by_user: false,
       processing: {
         status: 'synced',
         attempts: 0,
@@ -114,6 +136,8 @@ describe('pull', () => {
       trackers: [],
       tracker_entries: [],
       activities: [],
+      audio_attachments: [],
+      transcripts: [],
     }
     const ok = {
       cursor: '1',

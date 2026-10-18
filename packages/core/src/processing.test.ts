@@ -5,6 +5,7 @@ import {
   canTransition,
   displayStatus,
   isSettledStatus,
+  processingErrorCodeSchema,
   serverBulletProcessingStatusSchema,
 } from './processing'
 
@@ -13,6 +14,7 @@ describe('bullet processing status', () => {
     expect(bulletProcessingStatusSchema.options).toEqual([
       'saved_local',
       'synced',
+      'transcribing',
       'processing',
       'processed',
       'needs_review',
@@ -44,6 +46,15 @@ describe('bullet processing status', () => {
     expect(canTransition('processing', 'synced')).toBe(true) // auto-retry scheduled
     expect(canTransition('failed', 'synced')).toBe(true) // user retry
     expect(canTransition('processed', 'synced')).toBe(true) // edited → re-extract
+  })
+
+  test('voice bullets transcribe before processing; transcription can fail and retry', () => {
+    expect(canTransition('synced', 'transcribing')).toBe(true)
+    expect(canTransition('transcribing', 'processing')).toBe(true)
+    expect(canTransition('transcribing', 'failed')).toBe(true)
+    expect(canTransition('transcribing', 'synced')).toBe(true)
+    expect(canTransition('transcribing', 'processed')).toBe(false)
+    expect(processingErrorCodeSchema.options).toContain('transcription_failed')
   })
 
   test('nonsense transitions are refused', () => {

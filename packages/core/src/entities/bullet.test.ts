@@ -8,6 +8,7 @@ const validBullet = {
   captured_at: 1_699_999_000_000,
   timezone: 'Europe/Paris',
   source: 'text' as const,
+  text_edited_by_user: false,
   created_at: 1_700_000_000_000,
   updated_at: 1_700_000_000_000,
   state: 'active' as const,

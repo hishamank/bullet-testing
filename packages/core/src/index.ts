@@ -132,3 +132,5 @@ export {
 } from './suggestion'
 // Sync API contract (push/pull)
 export * from './sync'
+// Voice notes: audio attachments + transcripts
+export * from './entities/audio'
