@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics'
 import type { CaptureLinks } from '../../data/local'
 import { notifyLocalChange, syncNow } from '../sync/engine'
 import { voiceStoreDeps } from './device'
-import { discardSession, recoverRecordings, saveVoiceNote } from './save'
+import { createRecovery, discardSession, saveVoiceNote } from './save'
 import type { FinishedRecording } from './session'
 
 export { returnToCapture } from './return'
@@ -48,10 +48,15 @@ export function discardRecording(sessionId: string, files: string[]): void {
   discardSession(voiceStoreDeps(), sessionId, files)
 }
 
-/** Save recordings a crash or a kill interrupted. Safe to call any time (skips live ones). */
+const recover = createRecovery(voiceStoreDeps, liveSessions)
+
+/**
+ * Save recordings a crash or a kill interrupted. Safe to call any time: skips live sessions, and
+ * a call during a run joins it (app start and a recording started right after can overlap).
+ */
 export async function recoverInterruptedRecordings(): Promise<void> {
   try {
-    const saved = await recoverRecordings(voiceStoreDeps(), liveSessions)
+    const saved = await recover()
     if (saved.length > 0) afterLocalWrite()
   } catch {
     // A broken leftover stays on disk for the next attempt; never block recording on it.

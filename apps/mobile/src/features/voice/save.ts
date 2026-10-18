@@ -253,6 +253,24 @@ export async function recoverRecordings(
   return saved
 }
 
+/**
+ * Crash recovery, one run at a time: a call while a run is going joins it instead of saving the
+ * same leftovers twice. `live` is read as each folder is reached, so a recording that starts
+ * mid-run is skipped.
+ */
+export function createRecovery(
+  deps: () => VoiceStoreDeps,
+  live: ReadonlySet<string>,
+): () => Promise<string[]> {
+  let running: Promise<string[]> | null = null
+  return () => {
+    running ??= recoverRecordings(deps(), live).finally(() => {
+      running = null
+    })
+    return running
+  }
+}
+
 function parseMeta(text: string | null): SessionMeta | null {
   if (!text) return null
   try {

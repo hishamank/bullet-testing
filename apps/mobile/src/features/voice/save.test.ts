@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import { audioAttachments, bullets, outbox, transcripts } from '../../data/schema'
 import { openTestDb, T0, testDeps } from '../../test/db'
 import {
+  createRecovery,
   discardSession,
   recoverRecordings,
   saveVoiceNote,
@@ -17,6 +18,7 @@ import { parseWav } from './wav'
 
 const ROOT = 'file:///docs/recordings/'
 const S1 = '11111111-1111-4111-8111-111111111111'
+const S2 = '22222222-2222-4222-8222-222222222222'
 
 function setup() {
   const db = openTestDb()
@@ -258,5 +260,49 @@ describe('recovering after a crash', () => {
     expect(io.exists(`${dir}seg-001.wav`)).toBe(true)
     expect(io.exists(other)).toBe(false)
     expect(db.select().from(bullets).all()).toEqual([])
+  })
+})
+
+describe('recovering at app start', () => {
+  function leftover(deps: ReturnType<typeof setup>['deps'], id: string, draft: string) {
+    const dir = sessionDir(ROOT, id)
+    deps.io.ensureDir(dir)
+    writeSessionMeta(deps, { id, startedAt: T0, links: {}, draft, liveDraft: true })
+    deps.io.create(`${dir}seg-001.wav`, wavFile(1_000, { fill: 1 }))
+    return dir
+  }
+
+  test('overlapping calls share one run: each leftover is saved once', async () => {
+    const { db, deps } = setup()
+    leftover(deps, S1, 'from the crash')
+    const recover = createRecovery(() => deps, new Set())
+    const first = recover()
+    const second = recover()
+    expect(second).toBe(first)
+    expect(await first).toHaveLength(1)
+    expect(db.select().from(bullets).all()).toHaveLength(1)
+    // Once the run ends, a later call runs again (nothing left to save).
+    expect(await recover()).toEqual([])
+  })
+
+  test('skips the recording that is in progress, and saves it later if it is left behind', async () => {
+    const { db, io, deps } = setup()
+    leftover(deps, S1, 'from the crash')
+    const liveDir = leftover(deps, S2, 'recording now')
+    const live = new Set([S2])
+    const recover = createRecovery(() => deps, live)
+    expect(await recover()).toHaveLength(1)
+    expect(
+      db
+        .select()
+        .from(bullets)
+        .all()
+        .map((b) => b.text),
+    ).toEqual(['from the crash'])
+    expect(io.exists(`${liveDir}seg-001.wav`)).toBe(true)
+
+    live.delete(S2)
+    expect(await recover()).toHaveLength(1)
+    expect(db.select().from(bullets).all()).toHaveLength(2)
   })
 })
