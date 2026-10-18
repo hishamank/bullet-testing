@@ -22,6 +22,9 @@ const validSuggestion = {
   tier: 'suggest' as const,
   status: 'pending' as const,
   resolved_at: null,
+  applied_entity_id: null,
+  applied_at: null,
+  auto_applied: false,
 }
 
 test('suggestion select: valid object parses', () => {
@@ -90,6 +93,8 @@ test('suggestion insert: allows omitting id/created_at/updated_at/state and defa
   expect(res.success).toBe(true)
   if (res.success) {
     expect(res.data.status).toBe('pending')
+    expect(res.data.applied_entity_id).toBeNull()
+    expect(res.data.auto_applied).toBe(false)
   }
 })
 
@@ -241,6 +246,18 @@ test('suggestion: ACCEPTS task with tier auto', () => {
       operation: 'create',
       target_id: null,
       tier: 'auto',
+    }).success,
+  ).toBe(true)
+})
+
+test('suggestion: ACCEPTS event create with tier suggest (events are records, not definitions)', () => {
+  expect(
+    suggestionSelectSchema.safeParse({
+      ...validSuggestion,
+      target_kind: 'event',
+      operation: 'create',
+      target_id: null,
+      tier: 'suggest',
     }).success,
   ).toBe(true)
 })

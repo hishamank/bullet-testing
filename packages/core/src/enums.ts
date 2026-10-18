@@ -42,7 +42,11 @@ export type SuggestionOperation = z.infer<typeof suggestionOperationSchema>
 
 /**
  * Which entity/record type a Suggestion proposes. Designed extensibly — more kinds
- * (note, event, habit, goal, …) will be added later — but v1 ships exactly these four.
+ * (note, habit, goal, …) will be added later; slice 1 ships these five.
  */
-export const targetKindSchema = z.enum(['task', 'tracker', 'tracker_entry', 'activity'])
+export const targetKindSchema = z.enum(['task', 'event', 'tracker', 'tracker_entry', 'activity'])
 export type TargetKind = z.infer<typeof targetKindSchema>
+
+/** How a bullet was captured. Voice bullets carry the transcribed text. */
+export const bulletSourceSchema = z.enum(['text', 'voice'])
+export type BulletSource = z.infer<typeof bulletSourceSchema>

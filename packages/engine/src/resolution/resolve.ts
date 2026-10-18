@@ -89,6 +89,9 @@ export function withProvenance(
     source_bullet_id: sourceBulletId,
     status: 'pending',
     resolved_at: null,
+    applied_entity_id: null,
+    applied_at: null,
+    auto_applied: false,
     payload: {
       ...draft.payload,
       owner_id: ownerId,
