@@ -1,12 +1,10 @@
 /** One capture's waiting suggestions: its snippet, a row per suggestion, and "Accept both". */
 
-import { Link } from 'expo-router'
 import { Pressable, StyleSheet, View } from 'react-native'
 import type { CaptureGroup, DecideItem } from '@/features/inbox/model'
 import { space, type, useTheme } from '@/theme'
-import { Icon } from '../Icon'
 import { Label, TextButton, touch } from '../ui'
-import { card, DecideButton, InboxPill } from './parts'
+import { CaptureLink, card, DecideButton, InboxPill } from './parts'
 
 export interface DecideHandlers {
   onAccept: (item: DecideItem) => void
@@ -24,26 +22,11 @@ function tierHint(item: DecideItem): string | null {
 
 export function DecideGroup({ group, ...h }: { group: CaptureGroup } & DecideHandlers) {
   const t = useTheme()
-  const voice = group.source === 'voice'
   const all = group.pending.length === 2 ? 'Accept both' : 'Accept all'
   return (
     <View style={card(t.card)}>
       {group.snippet ? (
-        <Link href={{ pathname: '/capture/[id]', params: { id: group.bulletId } }} asChild>
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={`${voice ? 'Voice capture' : 'Capture'} ${group.snippet}`}
-            accessibilityHint={
-              voice ? 'Opens the capture, where you can play it' : 'Opens the capture'
-            }
-            style={({ pressed }) => [styles.source, { opacity: pressed ? 0.6 : 1 }]}
-          >
-            <Icon name={voice ? 'play' : 'text'} color={t.textSecondary} size={14} />
-            <Label tone="secondary" size={type.label} style={{ flex: 1 }} numberOfLines={3}>
-              {group.snippet}
-            </Label>
-          </Pressable>
-        </Link>
+        <CaptureLink bulletId={group.bulletId} snippet={group.snippet} source={group.source} />
       ) : null}
 
       {group.items.map((item) => (
@@ -155,7 +138,6 @@ function SuggestionRow({
 }
 
 const styles = StyleSheet.create({
-  source: { ...touch, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   row: {
     flexDirection: 'row',
     flexWrap: 'wrap',
