@@ -5,12 +5,14 @@ import { Composer } from '@/components/capture/Composer'
 import { BackHeader, IconButton, Label, Placeholder, Screen } from '@/components/ui'
 import { sendCapture } from '@/features/capture/actions'
 import { findPinned, fromLabel } from '@/features/capture/pinned'
+import { sendLoopNote } from '@/features/journal/actions'
 import { useLocalQuery } from '@/hooks'
 import { kindStyle, radius, space, type, useTheme } from '@/theme'
 
 /**
  * Answer: the capture page with a clarifying question (`?question=`) or an open loop
- * (`?thought=`) pinned on top. The answer is saved as a capture.
+ * (`?thought=`) pinned on top. The answer is saved as a capture; a loop's note also closes the
+ * loop.
  */
 export default function AnswerScreen() {
   const t = useTheme()
@@ -65,11 +67,11 @@ export default function AnswerScreen() {
           </Label>
         }
         onMic={() => router.push('/record')}
-        onSend={(text) =>
-          // An open loop's note is saved as a plain capture until the data layer can link it
-          // (`resolves_thought_id`, being added alongside `thought.resolve`).
-          sendCapture(text, pinned.kind === 'question' ? { answersQuestionId: pinned.id } : {})
-        }
+        onSend={(text) => {
+          // A loop's note is a capture that resolves the thought (`resolves_thought_id`).
+          if (pinned.kind === 'loop') sendLoopNote(text, pinned.id)
+          else sendCapture(text, { answersQuestionId: pinned.id })
+        }}
         onSavedShown={close}
       />
     </Screen>

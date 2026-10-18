@@ -37,6 +37,8 @@ export interface SyncClientOptions {
   pullLimit?: number
   /** Notified after each sync that changed local data (screens re-query). */
   onChange?: () => void
+  /** Notified with the outcome of every sync run, whoever started it (trigger, task, screen). */
+  onOutcome?: (outcome: SyncOutcome) => void
   /** Backoff after a failed sync: `min(maxMs, baseMs * 2^(failures-1))`. */
   backoff?: { baseMs: number; maxMs: number }
   /** Reads part of a local recording; without it, recordings are not uploaded. */
@@ -234,13 +236,22 @@ export function createSyncClient(opts: SyncClientOptions): SyncClient {
       uploaded = await uploadAll(t)
       pulled = await pullAll(t)
       setState(db, 'last_sync_at', String(now()))
-      return { ok: true, pushed, uploaded, pulled }
+      return report({ ok: true, pushed, uploaded, pulled })
     } catch (err) {
       const error = err instanceof TransportError ? err : new TransportError('server', String(err))
-      return { ok: false, error, pushed, uploaded, pulled }
+      return report({ ok: false, error, pushed, uploaded, pulled })
     } finally {
       if (pushed + uploaded + pulled > 0) opts.onChange?.()
     }
+  }
+
+  function report(outcome: SyncOutcome): SyncOutcome {
+    try {
+      opts.onOutcome?.(outcome)
+    } catch {
+      // A listener's bug must not turn a finished sync into a failed one.
+    }
+    return outcome
   }
 
   function sync(): Promise<SyncOutcome | null> {

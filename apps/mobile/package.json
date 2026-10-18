@@ -17,6 +17,7 @@
     "@expo/ui": "~57.0.25",
     "drizzle-orm": "catalog:",
     "expo": "~57.0.30",
+    "expo-audio": "catalog:",
     "expo-background-task": "catalog:",
     "expo-constants": "~57.0.22",
     "expo-crypto": "catalog:",

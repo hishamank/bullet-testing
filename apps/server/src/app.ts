@@ -10,7 +10,13 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { ApplyError } from './apply/apply'
 import { authenticate } from './auth/devices'
-import { ChecksumMismatchError, readAudio, receiveAudioChunk, uploadState } from './capture/audio'
+import {
+  ChecksumMismatchError,
+  parseByteRange,
+  readAudio,
+  receiveAudioChunk,
+  uploadState,
+} from './capture/audio'
 import type { AudioStore } from './storage/audio-store'
 import type { Db } from './db/client'
 import { InvalidCursorError, parseCursor, pullChanges } from './sync/changes'
@@ -136,7 +142,21 @@ export function createApp(deps: AppDeps) {
     const id = c.req.param('id')
     if (!isUuid(id)) return c.json(apiError('bad_request', 'invalid id'), 400)
     const { bytes, mimeType } = readAudio(deps.db, deps.audioStore, c.get('ownerId'), id)
-    return c.body(bytes.slice().buffer, 200, { 'content-type': mimeType })
+    // Byte ranges let a player (AVPlayer) seek without downloading the whole recording again.
+    const base = { 'content-type': mimeType, 'accept-ranges': 'bytes' }
+    const range = parseByteRange(c.req.header('range'), bytes.length)
+    if (range === 'unsatisfiable') {
+      return c.body(null, 416, { ...base, 'content-range': `bytes */${bytes.length}` })
+    }
+    if (range) {
+      const part = bytes.slice(range.start, range.end + 1)
+      return c.body(part.buffer, 206, {
+        ...base,
+        'content-length': String(part.length),
+        'content-range': `bytes ${range.start}-${range.end}/${bytes.length}`,
+      })
+    }
+    return c.body(bytes.slice().buffer, 200, { ...base, 'content-length': String(bytes.length) })
   })
 
   return app

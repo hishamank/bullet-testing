@@ -39,7 +39,8 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-background-task"
+      "expo-background-task",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
