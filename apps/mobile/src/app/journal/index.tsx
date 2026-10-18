@@ -4,6 +4,7 @@ import { RefreshControl, SectionList, StyleSheet } from 'react-native'
 import { CaptureCard } from '@/components/journal/CaptureCard'
 import { EmptyNote, SectionTitle } from '@/components/journal/parts'
 import { retryCaptures } from '@/features/capture/actions'
+import { keepAsAudio } from '@/features/journal/actions'
 import { groupByDay, listCaptureCards } from '@/features/journal/stream'
 import { syncNow } from '@/features/sync/engine'
 import { useLocalQuery } from '@/hooks'
@@ -55,6 +56,10 @@ export default function JournalStream() {
           card={item}
           onOpen={() => router.push({ pathname: '/capture/[id]', params: { id: item.id } })}
           onRetry={() => retryCaptures([item.id])}
+          onWriteDown={() =>
+            router.push({ pathname: '/capture/[id]', params: { id: item.id, write: '1' } })
+          }
+          onKeepAudio={() => keepAsAudio(item.id)}
         />
       )}
     />

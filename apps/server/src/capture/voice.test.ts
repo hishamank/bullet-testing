@@ -302,6 +302,44 @@ describe('voice notes: transcription', () => {
     expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_failed')
   })
 
+  test('an unreadable recording the user wrote down is read from their text', async () => {
+    const llm = llmByText({})
+    const h = createHarness(llm, {
+      transcriber: createScriptedTranscriber(() => {
+        throw new EngineError('TRANSCRIPTION_FAILED', 'no speech found in the recording')
+      }),
+    })
+    const { bulletId, audioId } = await captureVoice(h)
+    await put(h, audioId, 0, AUDIO)
+    for (let i = 0; i < DEFAULT_RETRY_POLICY.maxAttempts; i++) {
+      await h.worker.drain()
+      h.clock.now += DEFAULT_RETRY_POLICY.maxDelayMs
+    }
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'failed',
+      proc_error_code: 'transcription_failed',
+    })
+
+    // "Write it down": a user edit, then normal processing on their words.
+    await h.push([
+      {
+        op_id: uid(),
+        type: 'bullet.edit',
+        bullet_id: bulletId,
+        text: 'call the plumber about the sink',
+        edited_at: h.clock.now,
+      },
+    ])
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'processed',
+      text: 'call the plumber about the sink',
+      text_edited_by_user: true,
+    })
+    expect(llm.chatCalls.at(-1)?.messages[1]?.content).toContain('call the plumber about the sink')
+    expect(h.db.select().from(transcripts).where(eq(transcripts.kind, 'server')).all()).toEqual([])
+  })
+
   test('a retry after extraction failed does not transcribe again', async () => {
     let llmUp = false
     const llm = {

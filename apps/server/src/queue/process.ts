@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   type EngineConfig,
+  EngineError,
   type ExtractionSnapshot,
   type LlmClient,
   processCapture,
@@ -46,11 +47,25 @@ const LANGUAGE_HINTS = ['en', 'ar', 'fr']
 async function transcribeStage(deps: ProcessDeps, claimed: ClaimedJob): Promise<BulletRow | null> {
   const t = claimed.transcribe
   if (!t || !deps.transcriber || !deps.audioStore) return claimed.bullet
-  const result = await deps.transcriber.transcribe({
-    audio: deps.audioStore.read(t.storageKey),
-    mimeType: t.mimeType,
-    languageHints: LANGUAGE_HINTS,
-  })
+  let result: Awaited<ReturnType<Transcriber['transcribe']>>
+  try {
+    result = await deps.transcriber.transcribe({
+      audio: deps.audioStore.read(t.storageKey),
+      mimeType: t.mimeType,
+      languageHints: LANGUAGE_HINTS,
+    })
+  } catch (err) {
+    // The recording can't be transcribed (damaged, no speech), but the user wrote the text down
+    // themselves ("Write it down"): read their words as usual instead of failing again.
+    if (
+      err instanceof EngineError &&
+      err.code === 'TRANSCRIPTION_FAILED' &&
+      claimed.bullet.text_edited_by_user
+    ) {
+      return continueWithoutTranscript(deps, claimed)
+    }
+    throw err
+  }
   const now = deps.now()
   return deps.db.transaction((tx) => {
     const current = isJobCurrent(tx, claimed)
@@ -91,6 +106,27 @@ async function transcribeStage(deps: ProcessDeps, claimed: ClaimedJob): Promise<
       now,
     )
     return { ...current, text, proc_status: 'processing' as const }
+  })
+}
+
+/** Skip the transcript: the bullet goes on to `processing` with its own (user-written) text. */
+function continueWithoutTranscript(deps: ProcessDeps, claimed: ClaimedJob): BulletRow | null {
+  const now = deps.now()
+  return deps.db.transaction((tx) => {
+    const current = isJobCurrent(tx, claimed)
+    if (!current) return null
+    setBulletProc(
+      tx,
+      current,
+      {
+        proc_status: 'processing',
+        proc_error_code: current.proc_error_code,
+        proc_error_message: current.proc_error_message,
+        proc_next_retry_at: null,
+      },
+      now,
+    )
+    return { ...current, proc_status: 'processing' as const }
   })
 }
 

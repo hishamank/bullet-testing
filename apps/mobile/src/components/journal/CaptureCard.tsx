@@ -18,10 +18,16 @@ export function CaptureCard({
   card,
   onOpen,
   onRetry,
+  onWriteDown,
+  onKeepAudio,
 }: {
   card: Card
   onOpen: () => void
   onRetry: () => void
+  /** The recording can't be transcribed: type it instead (opens the capture's text edit). */
+  onWriteDown: () => void
+  /** The recording can't be transcribed: keep it as audio only (phone-local). */
+  onKeepAudio: () => void
 }) {
   const t = useTheme()
   const state = cardState(card)
@@ -38,9 +44,21 @@ export function CaptureCard({
       accessibilityRole="button"
       accessibilityLabel={cardAccessibilityLabel(card)}
       accessibilityHint="Opens the capture"
-      accessibilityActions={state.retry ? [{ name: 'retry', label: 'Retry' }] : undefined}
+      accessibilityActions={
+        state.retry
+          ? [{ name: 'retry', label: 'Retry' }]
+          : state.untranscribable
+            ? [
+                { name: 'write', label: 'Write it down' },
+                { name: 'keep', label: 'Keep as audio' },
+              ]
+            : undefined
+      }
       onAccessibilityAction={(e) => {
-        if (e.nativeEvent.actionName === 'retry') onRetry()
+        const action = e.nativeEvent.actionName
+        if (action === 'retry') onRetry()
+        else if (action === 'write') onWriteDown()
+        else if (action === 'keep') onKeepAudio()
       }}
       onPress={onOpen}
       style={({ pressed }) => [
@@ -84,6 +102,17 @@ export function CaptureCard({
           {AUDIO_READ_ERROR_TEXT}
         </Label>
       ) : null}
+      {state.untranscribable ? (
+        <View style={{ gap: 2 }}>
+          <Label tone="secondary" size={type.label}>
+            {state.reason}
+          </Label>
+          <View style={styles.actions}>
+            <TextButton title="Write it down" onPress={onWriteDown} />
+            <TextButton title="Keep as audio" tone="secondary" onPress={onKeepAudio} />
+          </View>
+        </View>
+      ) : null}
       {state.retry ? (
         <View style={styles.failed}>
           <Label tone="secondary" size={type.label} style={{ flex: 1 }}>
@@ -111,4 +140,5 @@ const styles = StyleSheet.create({
   thought: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, alignItems: 'baseline' },
   thoughtText: { flexShrink: 1, flexGrow: 1, flexBasis: 160 },
   failed: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },
 })

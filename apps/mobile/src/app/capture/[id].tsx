@@ -15,9 +15,10 @@ import {
   loadCaptureDetail,
   type TranscriptTab,
   transcriptView,
+  writeDownStart,
 } from '@/features/journal/capture'
-import { changeKind, deleteCapture, editCapture } from '@/features/journal/actions'
-import { AUDIO_READ_ERROR_TEXT } from '@/features/journal/stream'
+import { changeKind, deleteCapture, editCapture, keepAsAudio } from '@/features/journal/actions'
+import { AUDIO_READ_ERROR_TEXT, UNTRANSCRIBABLE } from '@/features/journal/stream'
 import { whenLabel } from '@/features/journal/format'
 import { type LinkedThing, THING_STATE_LABELS } from '@/features/journal/things'
 import { useLocalQuery } from '@/hooks'
@@ -31,11 +32,14 @@ import { kindStyle, radius, size, space, type, useTheme } from '@/theme'
 export default function CaptureDetailScreen() {
   const t = useTheme()
   const router = useRouter()
-  const { id } = useLocalSearchParams<{ id: string }>()
+  // `write=1`: opened from a card's "Write it down", so start in the text editor.
+  const { id, write } = useLocalSearchParams<{ id: string; write?: string }>()
   const tz = deviceDeps.timezone()
   const c = useLocalQuery((db) => loadCaptureDetail(db, id, Date.now(), tz), id)
   const [tab, setTab] = useState<TranscriptTab | null>(null)
-  const [draft, setDraft] = useState<string | null>(null)
+  const [draft, setDraft] = useState<string | null>(() =>
+    write === '1' && c ? writeDownStart(c) : null,
+  )
   const [picking, setPicking] = useState<{ id: string; text: string; kind: ThoughtKind } | null>(
     null,
   )
@@ -58,7 +62,7 @@ export default function CaptureDetailScreen() {
   const meta = [
     c.source === 'voice' ? 'Voice note' : 'Typed',
     whenLabel(c.capturedAt, Date.now(), c.timezone),
-    captureStatusLabel(c.status),
+    c.transcriptionFailure === 'kept' ? 'audio only' : captureStatusLabel(c.status),
   ].join(' · ')
 
   const save = () => {
@@ -177,6 +181,24 @@ export default function CaptureDetailScreen() {
               Not processed. {c.errorReason} Your capture is safe.
             </Label>
             <TextButton title="Retry" onPress={() => retryCaptures([c.id])} />
+          </View>
+        ) : null}
+        {c.transcriptionFailure === 'ask' && !editing ? (
+          <View style={{ gap: space.xs }}>
+            <Label tone="warning" size={type.bodySmall} style={{ fontWeight: '600' }}>
+              {UNTRANSCRIBABLE.title}
+            </Label>
+            <Label tone="secondary" size={type.bodySmall}>
+              {UNTRANSCRIBABLE.detail}
+            </Label>
+            <View style={styles.headerActions}>
+              <TextButton title="Write it down" onPress={() => setDraft(writeDownStart(c))} />
+              <TextButton
+                title="Keep as audio"
+                tone="secondary"
+                onPress={() => keepAsAudio(c.id)}
+              />
+            </View>
           </View>
         ) : null}
 

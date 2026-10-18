@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vite-plus/test'
 import { captureBullet, deleteBullet, retryBullet } from '../../data/local'
-import { bullets, outbox } from '../../data/schema'
+import { bullets, outbox, syncState } from '../../data/schema'
+import { keepAsAudioLocal } from '../journal/audio-only'
 import { openTestDb, T0, testDeps } from '../../test/db'
 import {
   canSend,
@@ -136,6 +137,11 @@ describe('capture counts', () => {
       awaitingServer: true,
       outbox: 0,
     })
+
+    // A recording kept as audio only (it couldn't be transcribed) no longer counts as failed.
+    keepAsAudioLocal(db, a)
+    expect(captureCounts(db).failedIds).toEqual([])
+    db.delete(syncState).run()
 
     // Retrying puts it back on the phone until sent; it no longer counts as failed.
     retryBullet(db, a, deps)

@@ -5,11 +5,15 @@ import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
 import { listOpenQuestions, listPendingSuggestions } from '../../data/queries'
 import { bullets, outbox } from '../../data/schema'
+import { keptAsAudio } from '../journal/audio-only'
 
 export interface CaptureCounts {
   /** Captures with a change the server hasn't confirmed ("N on this phone"). */
   onPhone: number
-  /** Failed captures (no unsent retry or edit), oldest first: Retry targets these. */
+  /**
+   * Failed captures (no unsent retry or edit), oldest first: Retry targets these. Recordings kept
+   * as audio only (after a failed transcription) are left out.
+   */
   failedIds: string[]
   /** Something sits in the server's queue or is being read: worth pulling soon. */
   awaitingServer: boolean
@@ -20,7 +24,7 @@ export interface CaptureCounts {
 export function captureCounts(db: PhoneDb): CaptureCounts {
   const pending = bulletsWithPendingChanges(db)
   const active = eq(bullets.state, 'active')
-  const failedIds = db
+  const failed = db
     .select({ id: bullets.id })
     .from(bullets)
     .where(and(active, eq(bullets.server_status, 'failed')))
@@ -28,6 +32,8 @@ export function captureCounts(db: PhoneDb): CaptureCounts {
     .all()
     .map((r) => r.id)
     .filter((id) => !pending.has(id))
+  const audioOnly = keptAsAudio(db, failed)
+  const failedIds = failed.filter((id) => !audioOnly.has(id))
   const awaiting =
     db
       .select({ n: sql<number>`count(*)` })
