@@ -321,7 +321,9 @@ upload_status }`. `PUT /sync/audio/:id` sends the next bytes (at most 4 MiB per 
 status. A wrong offset answers `409 conflict`; the client re-reads the status and resends from
 there. The request completing the file checks the
 `sha256` (if one was given); a mismatch answers `422 unprocessable` and restarts the upload at 0.
-Re-sending a finished upload is a no-op. `GET /sync/audio/:id` downloads the recording.
+Re-sending a finished upload is a no-op. `GET /sync/audio/:id` downloads the recording; it
+honours a single `Range: bytes=` request (`206` with `Content-Range`, `416` past the end) so
+players can seek.
 
 **Timestamps** are epoch milliseconds. **IDs** are UUID v4. Errors use the envelope
 `{ error: { code, message } }` with `401 unauthorized`, `400 bad_request`, `404 not_found`,

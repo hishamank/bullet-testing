@@ -15,6 +15,10 @@ const ICONS = {
   back: { ios: 'chevron.left', android: 'chevron_left', web: 'chevron_left' },
   forward: { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' },
   pause: { ios: 'pause', android: 'pause', web: 'pause' },
+  play: { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' },
+  note: { ios: 'square.and.pencil', android: 'edit_note', web: 'edit_note' },
+  expand: { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' },
+  collapse: { ios: 'chevron.up', android: 'expand_less', web: 'expand_less' },
 } satisfies Record<string, SymbolName>
 
 export type IconName = keyof typeof ICONS

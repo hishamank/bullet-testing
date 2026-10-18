@@ -7,7 +7,8 @@
  *  - iOS background task           → best-effort sync when the OS allows (often overnight);
  *                                    never relied upon.
  *
- * All the logic is in client.ts; this file only wires React Native / Expo events to it.
+ * All the logic is in client.ts; this file only wires React Native / Expo events to it. Screens
+ * hear every outcome through `addSyncOutcomeListener` instead of running syncs of their own.
  */
 
 import * as BackgroundTask from 'expo-background-task'
@@ -19,7 +20,7 @@ import { AppState } from 'react-native'
 import type { LocalDeps } from '../data/local'
 import { getDb } from '../data/open'
 import { resolveRecordingUri } from './audio-path'
-import { createSyncClient, type SyncClient } from './client'
+import { createSyncClient, type SyncClient, type SyncOutcome } from './client'
 import { loadServerSettings, type ServerSettings } from './settings'
 import { createHttpTransport, type SyncTransport } from './transport'
 
@@ -28,6 +29,22 @@ const BACKGROUND_TASK = 'bullet-background-sync'
 let settings: ServerSettings | null = null
 let transport: SyncTransport | null = null
 let client: SyncClient | null = null
+
+type OutcomeListener = (outcome: SyncOutcome) => void
+const outcomeListeners = new Set<OutcomeListener>()
+
+/**
+ * Hear the outcome of every sync, whoever started it: a trigger here, the background task, or a
+ * screen's `sync()`. Returns an unsubscribe function.
+ */
+export function addSyncOutcomeListener(listener: OutcomeListener): () => void {
+  outcomeListeners.add(listener)
+  return () => outcomeListeners.delete(listener)
+}
+
+function emitOutcome(outcome: SyncOutcome) {
+  for (const listener of outcomeListeners) listener(outcome)
+}
 
 /** Clock, ids and time zone for local writes on this device. */
 export const deviceDeps: LocalDeps = {
@@ -53,8 +70,18 @@ async function readAudioChunk(localPath: string, offset: number, length: number)
 }
 
 export function getSyncClient(): SyncClient {
-  client ??= createSyncClient({ db: getDb(), transport: () => transport, readAudioChunk })
+  client ??= createSyncClient({
+    db: getDb(),
+    transport: () => transport,
+    readAudioChunk,
+    onOutcome: emitOutcome,
+  })
   return client
+}
+
+/** The paired server's address and token (null until loaded / while unpaired). */
+export function currentServerSettings(): ServerSettings | null {
+  return settings
 }
 
 /** Re-read the server URL/token (after pairing) and sync. */

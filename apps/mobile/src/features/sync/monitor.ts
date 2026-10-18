@@ -57,13 +57,6 @@ export function recordOutcome(s: MonitorState, outcome: MonitorOutcome, now: num
   return { ...s, reachability: 'unreachable', lastError, failures, outage: s.outage + 1 }
 }
 
-/** A sync succeeded that we didn't run ourselves (the runtime's own triggers). */
-export function recordExternalSuccess(s: MonitorState, lastSyncAt: number): MonitorState {
-  if (s.lastOkAt !== null && lastSyncAt <= s.lastOkAt) return s
-  if (s.lastError && lastSyncAt < s.lastError.at) return { ...s, lastOkAt: lastSyncAt }
-  return recordOutcome(s, { ok: true }, lastSyncAt)
-}
-
 /** The device was (re-)paired: forget everything learned about the old server. */
 export function resetForNewServer(s: MonitorState): MonitorState {
   return { ...initialMonitor, outage: s.outage, noteDismissedFor: s.outage }
