@@ -31,11 +31,9 @@ export interface SnapshotTracker {
 /**
  * An open task.
  *
- * The model only ever sees `title` + `status` (see prompt.ts `renderSnapshot`), but the row
- * carries the remaining MUTABLE task fields (`notes`/`due_at`/`priority`) so the resolver can
- * build a mark-done UPDATE payload that validates against `taskInsertSchema`.
- * TODO(apply): the legacy apply engine wrote back every key present, so a stale snapshot could
- * revert user edits. The new apply engine must patch only the fields the update changes.
+ * The model only ever sees `title` + `status` (see prompt.ts `renderSnapshot`). A mark-done is a
+ * field-level patch (`{ status: 'done' }`), so these fields are never echoed back into a payload
+ * and a stale snapshot cannot revert the user's edits.
  */
 export interface SnapshotTask {
   id: string

@@ -1,10 +1,14 @@
 import { describe, expect, test } from 'vite-plus/test'
+import { validateSuggestionPayload } from '@bullet/core'
 import { ENGINE_CONFIG_DEFAULTS } from '../config'
 import type { Candidate } from '../extraction/schema'
 import type { ExtractionSnapshot } from '../extraction/snapshot'
 import { flattenFields, type ResolvedSuggestion, resolveCandidates, unwrapValue } from './resolve'
 
 const config = ENGINE_CONFIG_DEFAULTS
+// Thursday 2026-10-15 09:12 in Paris.
+const CAPTURED = Date.UTC(2026, 9, 15, 7, 12)
+const CTX = { capturedAt: CAPTURED, timezone: 'Europe/Paris' }
 const EMPTY: ExtractionSnapshot = { trackers: [], openTasks: [] }
 
 /** The first resolved suggestion, asserting one exists (satisfies noUncheckedIndexedAccess). */
@@ -38,6 +42,7 @@ describe('orientation routing', () => {
       ],
       EMPTY,
       config,
+      CTX,
     )
     expect(suggestions).toHaveLength(1)
     const s = first(suggestions)
@@ -71,6 +76,7 @@ describe('orientation routing', () => {
       ],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker_entry')
@@ -103,20 +109,16 @@ describe('orientation routing', () => {
       ],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('task')
     expect(s.operation).toBe('update')
     expect(s.target_id).toBe('task-1')
-    // The payload carries the matched task's CURRENT fields plus the only mutation (status→done),
-    // so the apply engine's full-INSERT-schema re-validation passes (a bare {status} would fail).
-    expect(s.payload).toEqual({
-      title: 'call the dentist',
-      notes: 'before noon',
-      due_at: 123,
-      priority: 'P2',
-      status: 'done',
-    })
+    // A field-level patch: ONLY the change, never a snapshot of the task's other fields (which
+    // would revert edits the user made after extraction).
+    expect(s.payload).toEqual({ status: 'done' })
+    expect(validateSuggestionPayload('task', s.payload, 'update').success).toBe(true)
   })
 
   test('future_oneoff → create a task', () => {
@@ -124,6 +126,7 @@ describe('orientation routing', () => {
       [candidate({ kind: 'task', orientation: 'future_oneoff', fields: { title: 'buy milk' } })],
       EMPTY,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('task')
@@ -142,6 +145,7 @@ describe('orientation routing', () => {
       ],
       EMPTY,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker')
@@ -155,6 +159,7 @@ describe('orientation routing', () => {
       [candidate({ orientation: 'durable_fact', text: 'I am vegetarian' })],
       EMPTY,
       config,
+      CTX,
     )
     expect(suggestions).toHaveLength(0)
     expect(skipped).toBe(1)
@@ -188,6 +193,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
       ],
       moodScale,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker_entry')
@@ -202,6 +208,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
         [candidate({ orientation: 'happened', text: `${name} today`, fields: { name, value: 5 } })],
         moodScale,
         config,
+        CTX,
       )
       const s = first(suggestions)
       expect(s.target_kind).toBe('tracker_entry')
@@ -231,6 +238,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
       ],
       runSnapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker_entry')
@@ -257,6 +265,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
       [candidate({ orientation: 'happened', text: 'called the dentist' })],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('task')
@@ -276,6 +285,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
       ],
       moodScale, // only a "mood" tracker exists — "walk" does not match it
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('activity')
@@ -312,6 +322,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
       ],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     // It still LINKS (tracker_entry append on the tired tracker)…
@@ -350,6 +361,7 @@ describe('tracker_entry value validation against the tracker config', () => {
       ],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker_entry')
@@ -380,6 +392,7 @@ describe('tracker_entry value validation against the tracker config', () => {
       ],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     // The invalid select value is NOT emitted as a broken entry; the data is preserved as an
@@ -413,6 +426,7 @@ describe('tracker_entry value validation against the tracker config', () => {
       ],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker_entry')
@@ -434,6 +448,7 @@ describe('tier assignment (§4.5)', () => {
       ],
       EMPTY,
       config,
+      CTX,
     )
     expect(first(suggestions).tier).toBe('suggest')
     expect(first(suggestions).tier).not.toBe('auto')
@@ -444,6 +459,7 @@ describe('tier assignment (§4.5)', () => {
       [candidate({ orientation: 'happened', confidence: 0.95, fields: { name: 'ran' } })],
       EMPTY,
       config,
+      CTX,
     )
     expect(first(suggestions).tier).toBe('auto')
   })
@@ -460,6 +476,7 @@ describe('tier assignment (§4.5)', () => {
       ],
       EMPTY,
       config,
+      CTX,
     )
     expect(first(suggestions).tier).toBe('suggest')
   })
@@ -476,6 +493,7 @@ describe('tier assignment (§4.5)', () => {
       ],
       EMPTY,
       { ...config, autoCreateTasks: true },
+      CTX,
     )
     expect(first(suggestions).tier).toBe('auto')
   })
@@ -485,6 +503,7 @@ describe('tier assignment (§4.5)', () => {
       [candidate({ orientation: 'happened', confidence: 0.2, fields: { name: 'x' } })],
       EMPTY,
       config,
+      CTX,
     )
     expect(first(suggestions).tier).toBe('ask')
   })
@@ -521,6 +540,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       EMPTY, // no tracker match → activity-first
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('activity')
@@ -543,6 +563,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       moodScale10,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker_entry')
@@ -567,6 +588,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       EMPTY,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('activity')
@@ -599,6 +621,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       snapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('task')
@@ -618,6 +641,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       EMPTY,
       config,
+      CTX,
     )
     expect(first(suggestions).tier).toBe('suggest')
   })
@@ -637,6 +661,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       EMPTY,
       promoted,
+      CTX,
     )
     const c = first(coffee.suggestions)
     expect(c.target_kind).toBe('activity')
@@ -655,6 +680,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       moodScale10,
       promoted,
+      CTX,
     )
     const m = first(mood.suggestions)
     expect(m.target_kind).toBe('tracker_entry')
@@ -675,6 +701,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       ],
       EMPTY,
       promoted,
+      CTX,
     )
     const d = first(definition.suggestions)
     expect(d.target_kind).toBe('tracker')
@@ -707,6 +734,7 @@ describe('confidence combination', () => {
       ],
       snapshot,
       config,
+      CTX,
     )
     // A perfect match score (1) combined with model confidence 1 stays 1; the blend is the mean.
     expect(first(suggestions).confidence).toBeGreaterThan(0.5)
@@ -740,6 +768,7 @@ describe('model-nesting normalisation (small models wrap field values one level 
       ],
       scaleSnapshot,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker_entry')
@@ -761,6 +790,7 @@ describe('model-nesting normalisation (small models wrap field values one level 
       ],
       EMPTY,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('activity')
@@ -780,6 +810,7 @@ describe('model-nesting normalisation (small models wrap field values one level 
       ],
       EMPTY,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('activity')
@@ -802,6 +833,7 @@ describe('model-nesting normalisation (small models wrap field values one level 
       ],
       scaleSnapshot,
       config,
+      CTX,
     )
     expect(first(flat.suggestions).payload.value).toBe(5)
 
@@ -828,6 +860,7 @@ describe('model-nesting normalisation (small models wrap field values one level 
       ],
       multiSnapshot,
       config,
+      CTX,
     )
     expect(first(multi.suggestions).payload.value).toEqual(['a', 'b'])
   })
@@ -844,6 +877,7 @@ describe('model-nesting normalisation (small models wrap field values one level 
       ],
       EMPTY,
       config,
+      CTX,
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('task')
@@ -889,11 +923,3 @@ describe('model-nesting normalisation (small models wrap field values one level 
     })
   })
 })
-
-/**
- * End-to-end APPLY round-trip for the mark-done UPDATE route. A draft-shape assertion is not
- * enough: the apply engine RE-VALIDATES the persisted payload against the full task INSERT
- * schema, so a bare `{ status: 'done' }` is permanently unappliable (INVALID_PAYLOAD). This
- * seeds a real open task, drives a matching 'happened' candidate, persists via withProvenance/
- * createSuggestion, and asserts acceptSuggestion succeeds AND the SAME task row flips to 'done'.
- */

@@ -8,6 +8,9 @@ import type { ExtractionSnapshot } from './snapshot'
 
 const EMPTY_SNAPSHOT: ExtractionSnapshot = { trackers: [], openTasks: [] }
 const config = ENGINE_CONFIG_DEFAULTS
+// Thursday 2026-10-15 09:12 in Paris.
+const CTX = { capturedAt: Date.UTC(2026, 9, 15, 7, 12), timezone: 'Europe/Paris' }
+const input = (text: string) => ({ text, ...CTX })
 
 describe('extraction schema → format', () => {
   test('the structured-output JSON-schema is derived from the zod schema', () => {
@@ -19,31 +22,45 @@ describe('extraction schema → format', () => {
 
 describe('buildExtractionPrompt', () => {
   test('embeds the bullet text and the inlined snapshot', () => {
-    const messages = buildExtractionPrompt('ran 5k', {
-      trackers: [
-        {
-          id: 't1',
-          name: 'mood',
-          input_type: 'scale',
-          config: { input_type: 'scale', min: 1, max: 5 },
-        },
-      ],
-      openTasks: [
-        {
-          id: 'k1',
-          title: 'call dentist',
-          status: 'todo',
-          notes: null,
-          due_at: null,
-          priority: null,
-        },
-      ],
-    })
+    const messages = buildExtractionPrompt(
+      'ran 5k',
+      {
+        trackers: [
+          {
+            id: 't1',
+            name: 'mood',
+            input_type: 'scale',
+            config: { input_type: 'scale', min: 1, max: 5 },
+          },
+        ],
+        openTasks: [
+          {
+            id: 'k1',
+            title: 'call dentist',
+            status: 'todo',
+            notes: null,
+            due_at: null,
+            priority: null,
+          },
+        ],
+      },
+      CTX,
+    )
     expect(messages[0]?.role).toBe('system')
     expect(messages[1]?.role).toBe('user')
     expect(messages[1]?.content).toContain('ran 5k')
     expect(messages[1]?.content).toContain('mood')
     expect(messages[1]?.content).toContain('call dentist')
+  })
+
+  test('tells the model when and where the bullet was written (relative dates need it)', () => {
+    const messages = buildExtractionPrompt('dentist thursday 3pm', EMPTY_SNAPSHOT, CTX)
+    expect(messages[1]?.content).toContain(
+      'Written on Thursday 2026-10-15 09:12 (time zone Europe/Paris).',
+    )
+    // …and to quote date phrases instead of computing them.
+    expect(messages[0]?.content).toMatch(/"when"/)
+    expect(messages[0]?.content).toMatch(/NEVER compute dates/)
   })
 })
 
@@ -64,7 +81,7 @@ describe('extractCandidates', () => {
         }),
     })
 
-    const candidates = await extractCandidates({ llm, config }, 'ran 5k', EMPTY_SNAPSHOT)
+    const candidates = await extractCandidates({ llm, config }, input('ran 5k'), EMPTY_SNAPSHOT)
     expect(candidates).toHaveLength(1)
     expect(candidates[0]).toMatchObject({ kind: 'activity', orientation: 'happened' })
 
@@ -78,14 +95,14 @@ describe('extractCandidates', () => {
     const llm = createScriptedLlmClient({
       chatQueue: ['this is not json', JSON.stringify({ candidates: [] })],
     })
-    const candidates = await extractCandidates({ llm, config }, 'x', EMPTY_SNAPSHOT)
+    const candidates = await extractCandidates({ llm, config }, input('x'), EMPTY_SNAPSHOT)
     expect(candidates).toEqual([])
     expect(llm.chatCalls).toHaveLength(2)
   })
 
   test('throws a typed OLLAMA_PARSE error after the retry on persistent malformed JSON', async () => {
     const llm = createScriptedLlmClient({ chat: () => 'still not json' })
-    const err = await extractCandidates({ llm, config }, 'x', EMPTY_SNAPSHOT).catch((e) => e)
+    const err = await extractCandidates({ llm, config }, input('x'), EMPTY_SNAPSHOT).catch((e) => e)
     expect(err.name).toBe('EngineError')
     expect(err.code).toBe('LLM_PARSE')
     // 1 initial + 1 retry.
@@ -97,7 +114,7 @@ describe('extractCandidates', () => {
       // Valid JSON, but `candidates` is the wrong shape.
       chat: () => JSON.stringify({ candidates: [{ kind: 'not-a-kind' }] }),
     })
-    const err = await extractCandidates({ llm, config }, 'x', EMPTY_SNAPSHOT).catch((e) => e)
+    const err = await extractCandidates({ llm, config }, input('x'), EMPTY_SNAPSHOT).catch((e) => e)
     expect(err.code).toBe('EXTRACTION_INVALID')
   })
 
@@ -117,7 +134,7 @@ describe('extractCandidates', () => {
     const llm = createScriptedLlmClient({
       chat: () => `\`\`\`json\n${VALID_RESPONSE}\n\`\`\``,
     })
-    const candidates = await extractCandidates({ llm, config }, 'call mom', EMPTY_SNAPSHOT)
+    const candidates = await extractCandidates({ llm, config }, input('call mom'), EMPTY_SNAPSHOT)
     expect(candidates).toHaveLength(1)
     expect(candidates[0]).toMatchObject({ kind: 'task', orientation: 'future_oneoff' })
     // A single (successful) attempt — tolerant parsing did NOT trigger the repair retry.
@@ -128,14 +145,14 @@ describe('extractCandidates', () => {
     const llm = createScriptedLlmClient({
       chat: () => `Sure! Here is the JSON:\n${VALID_RESPONSE}\nHope that helps.`,
     })
-    const candidates = await extractCandidates({ llm, config }, 'call mom', EMPTY_SNAPSHOT)
+    const candidates = await extractCandidates({ llm, config }, input('call mom'), EMPTY_SNAPSHOT)
     expect(candidates).toHaveLength(1)
     expect(llm.chatCalls).toHaveLength(1)
   })
 
   test('still parses pure clean JSON (regression)', async () => {
     const llm = createScriptedLlmClient({ chat: () => VALID_RESPONSE })
-    const candidates = await extractCandidates({ llm, config }, 'call mom', EMPTY_SNAPSHOT)
+    const candidates = await extractCandidates({ llm, config }, input('call mom'), EMPTY_SNAPSHOT)
     expect(candidates).toHaveLength(1)
     expect(llm.chatCalls).toHaveLength(1)
   })
@@ -145,7 +162,7 @@ describe('extractCandidates', () => {
     const llm = createScriptedLlmClient({
       chatQueue: [badContent, VALID_RESPONSE],
     })
-    const candidates = await extractCandidates({ llm, config }, 'call mom', EMPTY_SNAPSHOT)
+    const candidates = await extractCandidates({ llm, config }, input('call mom'), EMPTY_SNAPSHOT)
     expect(candidates).toHaveLength(1)
     expect(llm.chatCalls).toHaveLength(2)
 

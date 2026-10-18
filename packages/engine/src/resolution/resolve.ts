@@ -13,13 +13,19 @@
  *      • BORDERLINE tracker/task  → still LINK, but the tier is capped to 'suggest' (user confirms).
  *      • otherwise (sub-borderline, or a matched tracker that rejected the value) → create an
  *                                  UNLINKED activity ("activity-first", never drop the data).
- *  - future_oneoff   → create a task.
- *  - future_recurring → create a tracker DEFINITION.
+ *  - future_oneoff   → create an EVENT when it is a happening with a resolvable date (the model
+ *                      said `event`, or said `task` but it is an appointment-like thing at a clock
+ *                      time); otherwise create a TASK (with `due_at` when a date was given).
+ *  - future_recurring → create a tracker DEFINITION (recurring tasks/events: later slice → skipped).
  *  - durable_fact    → SKIPPED (Note is out of v1 scope) — counted, never persisted.
  *
  * Confidence: for append/update we COMBINE the model confidence with the fuse match score
  * (`combine`) so the final number is explainable; for plain creates we use the model
  * confidence directly.
+ *
+ * Time: every date is resolved against the bullet's CAPTURE context (time/when.ts) — the model's
+ * quoted `when` phrase first, else the candidate's text. Records with no date default to the
+ * capture time, never to processing time.
  */
 
 import type {
@@ -34,6 +40,7 @@ import type {
 import type { EngineConfig } from '../config'
 import type { Candidate } from '../extraction/schema'
 import type { ExtractionSnapshot, SnapshotTask, SnapshotTracker } from '../extraction/snapshot'
+import { type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
 import { type Match, matchOpenTask, matchTracker } from './match'
 import { assignTier } from './tier'
 
@@ -164,6 +171,7 @@ export function resolveCandidates(
   candidates: Candidate[],
   snapshot: ExtractionSnapshot,
   config: EngineConfig,
+  ctx: CaptureContext,
 ): ResolveOutcome {
   const suggestions: ResolvedSuggestion[] = []
   let skipped = 0
@@ -175,15 +183,22 @@ export function resolveCandidates(
     const normalized: Candidate = { ...candidate, fields: flattenFields(candidate.fields) }
     switch (normalized.orientation) {
       case 'happened': {
-        const resolved = resolveHappened(normalized, snapshot, config)
+        const resolved = resolveHappened(normalized, snapshot, config, ctx)
         suggestions.push(resolved)
         break
       }
       case 'future_oneoff': {
-        suggestions.push(resolveFutureOneoff(normalized, config))
+        suggestions.push(resolveFutureOneoff(normalized, config, ctx))
         break
       }
       case 'future_recurring': {
+        // Only trackers are recurring DEFINITIONS in slice 1; recurring tasks/events come with
+        // recurrence later. Count them (the bullet itself keeps the text) rather than mint a
+        // one-off that misrepresents them.
+        if (normalized.kind === 'task' || normalized.kind === 'event') {
+          skipped += 1
+          break
+        }
         suggestions.push(resolveFutureRecurring(normalized, config))
         break
       }
@@ -208,7 +223,9 @@ function resolveHappened(
   candidate: Candidate,
   snapshot: ExtractionSnapshot,
   config: EngineConfig,
+  ctx: CaptureContext,
 ): ResolvedSuggestion {
+  const occurredAt = recordTime(candidate, ctx)
   const trackerHit = matchTracker(candidate, snapshot.trackers)
   const taskHit = matchOpenTask(candidate, snapshot.openTasks)
 
@@ -223,7 +240,7 @@ function resolveHappened(
   // activity create rather than lost. Borderline matches are honoured as links here but have their
   // tier capped to 'suggest' inside {@link appendTrackerEntry} (the user confirms the link).
   if (trackerHit && trackerScore >= BORDERLINE_MATCH && trackerScore >= taskScore) {
-    const entry = appendTrackerEntry(candidate, trackerHit, config)
+    const entry = appendTrackerEntry(candidate, trackerHit, config, occurredAt)
     if (entry) return entry
   }
 
@@ -244,7 +261,26 @@ function resolveHappened(
   // wasn't a quantity, so `quantity` reads null) that is therefore auto-eligible again. This is
   // consistent with the value rule: no WRONG value is ever silently written — only a value-less
   // record can auto-apply.
-  return createActivity(candidate, config)
+  return createActivity(candidate, config, occurredAt)
+}
+
+/**
+ * When a 'happened' record happened: the quoted `when` phrase, else a date/time phrase in the
+ * candidate's text, else the CAPTURE time. A record cannot be in the future, so a resolution
+ * past the capture time is clamped to it.
+ */
+function recordTime(candidate: Candidate, ctx: CaptureContext): number {
+  const when = whenFor(candidate, ctx, 'past')
+  return when ? Math.min(when.at, ctx.capturedAt) : ctx.capturedAt
+}
+
+/** Resolve the candidate's date phrase: the model's quoted `when` first, then its text slice. */
+function whenFor(candidate: Candidate, ctx: CaptureContext, direction: 'future' | 'past') {
+  const quoted = stringFieldOrNull(candidate.fields, ['when', 'date', 'due', 'starts'])
+  return (
+    (quoted ? resolveWhen(quoted, ctx, direction) : null) ??
+    resolveWhen(candidate.text, ctx, direction)
+  )
 }
 
 /**
@@ -258,8 +294,11 @@ function appendTrackerEntry(
   candidate: Candidate,
   trackerHit: Match<SnapshotTracker>,
   config: EngineConfig,
+  loggedAt: number,
 ): ResolvedSuggestion | null {
   const value = coerceEntryValue(candidate.fields, trackerHit.item.input_type)
+  // No usable value (e.g. "checked my weight" against a number tracker) → never invent one.
+  if (value === null) return null
   // Validate/clamp against the tracker's config (@bullet/db defers this to us — see snapshot.ts).
   // `null` means "no valid value for this tracker" → caller falls back to activity-first.
   const validated = validateEntryValue(value, trackerHit.item.config)
@@ -272,7 +311,7 @@ function appendTrackerEntry(
     // The apply engine overrides it from target_id, so the two always agree.
     tracker_id: trackerHit.item.id,
     value: validated,
-    logged_at: timestampField(candidate.fields, ['logged_at', 'occurred_at'], Date.now()),
+    logged_at: loggedAt,
   }
   return {
     target_kind: 'tracker_entry',
@@ -294,29 +333,21 @@ function markTaskDone(
   config: EngineConfig,
 ): ResolvedSuggestion {
   const confidence = clamp01(combine(candidate.confidence, taskHit.score))
-  const task = taskHit.item
-  // The apply engine RE-VALIDATES this payload against the FULL task INSERT schema
-  // (taskInsertSchema requires title + the keys notes/due_at/priority present), so a bare
-  // `{ status: 'done' }` would fail INVALID_PAYLOAD and the mark-done could never be applied.
-  // We carry the matched task's CURRENT field values unchanged alongside the only mutation we
-  // intend (status → 'done'); `applyUpdate` patches every key the raw payload proposes, so
-  // re-supplying the existing values is a no-op on those fields while satisfying validation.
-  const payload: SuggestionPayload = {
-    title: task.title,
-    notes: task.notes,
-    due_at: task.due_at,
-    priority: task.priority,
-    status: 'done',
-  }
+  // A field-level PATCH: only what changes. The apply engine validates it against the task UPDATE
+  // schema and writes just these keys, so it can never revert edits the user made after the
+  // snapshot was taken (the legacy full-snapshot payload did).
+  const payload: SuggestionPayload = { status: 'done' }
+  const tier = tierForLink('task', 'update', confidence, taskHit.score, config, false)
   return {
     target_kind: 'task',
     operation: 'update',
-    target_id: task.id,
+    target_id: taskHit.item.id,
     payload,
     confidence,
-    // A task mark-done carries NO value (a status flip) → not value-bearing: eligible for auto when
-    // confident AND the match is STRONG; a borderline match caps the tier at 'suggest'.
-    tier: tierForLink('task', 'update', confidence, taskHit.score, config, false),
+    // A mark-done carries no value, so it may auto — but only on an EXACT title match. A
+    // containment match ("called mom" vs "call mom about the trip") is plausible, not certain:
+    // closing the wrong task silently is worse than one tap, so it is capped at 'suggest'.
+    tier: taskHit.score >= 1 ? tier : capToSuggest(tier),
   }
 }
 
@@ -327,7 +358,11 @@ function markTaskDone(
  * a link. `tracker_id` is therefore `null` (the domain permits linked activities; the resolver just
  * never mints one from an uncertain match).
  */
-function createActivity(candidate: Candidate, config: EngineConfig): ResolvedSuggestion {
+function createActivity(
+  candidate: Candidate,
+  config: EngineConfig,
+  occurredAt: number,
+): ResolvedSuggestion {
   const name = stringField(candidate.fields, ['name', 'title'], candidate.text)
   // A quantity makes the activity VALUE-BEARING (e.g. "drank 3 coffees") → the tier is capped to
   // 'suggest' by default (a value is never auto-applied silently). A quantity-less activity ("went
@@ -335,7 +370,7 @@ function createActivity(candidate: Candidate, config: EngineConfig): ResolvedSug
   const quantity = numberFieldOrNull(candidate.fields, ['quantity', 'value'])
   const payload: SuggestionPayload = {
     name,
-    occurred_at: timestampField(candidate.fields, ['occurred_at', 'logged_at'], Date.now()),
+    occurred_at: occurredAt,
     tracker_id: null,
     notes: stringFieldOrNull(candidate.fields, ['notes']),
     quantity,
@@ -352,12 +387,33 @@ function createActivity(candidate: Candidate, config: EngineConfig): ResolvedSug
   }
 }
 
-/** future_oneoff → create a task. */
-function resolveFutureOneoff(candidate: Candidate, config: EngineConfig): ResolvedSuggestion {
+/**
+ * Appointment-like nouns: a future one-off naming one of these AT A CLOCK TIME is a happening (an
+ * Event) even when the model labelled it a task. Deterministic backstop for small models.
+ */
+const EVENT_NOUNS =
+  /\b(appointment|appt|meeting|interview|dinner|lunch|breakfast|brunch|party|wedding|concert|flight|train|game|match|class|lesson|session|show|movie|date|checkup|check-up|dentist|doctor)\b/i
+
+/** future_oneoff → an Event (a happening with a date) or a Task. */
+function resolveFutureOneoff(
+  candidate: Candidate,
+  config: EngineConfig,
+  ctx: CaptureContext,
+): ResolvedSuggestion {
+  const when = whenFor(candidate, ctx, 'future')
   const title = stringField(candidate.fields, ['title', 'name'], candidate.text)
+  const isHappening =
+    candidate.kind === 'event' ||
+    (candidate.kind === 'task' &&
+      when?.hasTime === true &&
+      EVENT_NOUNS.test(`${title} ${candidate.text}`))
+  // An event needs a date; one without falls back to a task (nothing is lost, the user can date it).
+  if (isHappening && when) return createEvent(candidate, config, ctx, title, when)
+
   const payload: SuggestionPayload = {
     title,
-    due_at: numberFieldOrNull(candidate.fields, ['due_at']),
+    // Date-only due dates are stored at local midnight starting that day.
+    due_at: when?.at ?? null,
     priority: priorityFieldOrNull(candidate.fields),
     notes: stringFieldOrNull(candidate.fields, ['notes']),
     status: 'todo',
@@ -370,6 +426,34 @@ function resolveFutureOneoff(candidate: Candidate, config: EngineConfig): Resolv
     payload,
     confidence,
     tier: assignTier('task', 'create', confidence, config),
+  }
+}
+
+/** A future happening with a resolved start → create an Event. */
+function createEvent(
+  candidate: Candidate,
+  config: EngineConfig,
+  ctx: CaptureContext,
+  title: string,
+  when: { at: number; hasTime: boolean },
+): ResolvedSuggestion {
+  const endPhrase = stringFieldOrNull(candidate.fields, ['end_when', 'end', 'until'])
+  const payload: SuggestionPayload = {
+    title,
+    starts_at: when.at,
+    ends_at: endPhrase ? resolveEnd(endPhrase, when.at, ctx.timezone) : null,
+    all_day: !when.hasTime,
+    location: stringFieldOrNull(candidate.fields, ['location', 'place', 'where']),
+    notes: stringFieldOrNull(candidate.fields, ['notes']),
+  }
+  const confidence = clamp01(candidate.confidence)
+  return {
+    target_kind: 'event',
+    operation: 'create',
+    target_id: null,
+    payload,
+    confidence,
+    tier: assignTier('event', 'create', confidence, config),
   }
 }
 
@@ -472,12 +556,6 @@ function numberFieldOrNull(fields: Record<string, unknown>, keys: string[]): num
   return null
 }
 
-/** Read an epoch-ms timestamp field; fall back to `fallback` when absent/invalid. */
-function timestampField(fields: Record<string, unknown>, keys: string[], fallback: number): number {
-  const n = numberFieldOrNull(fields, keys)
-  return n !== null && n >= 0 ? n : fallback
-}
-
 /** Read a task priority (P1..P4) if present, else null. */
 function priorityFieldOrNull(fields: Record<string, unknown>): 'P1' | 'P2' | 'P3' | 'P4' | null {
   const v = fields.priority
@@ -536,20 +614,29 @@ function defaultConfigFor(
   }
 }
 
-/** Coerce a tracker-entry value from the candidate fields to match the tracker's input_type. */
+/**
+ * Coerce a tracker-entry value from the candidate fields to match the tracker's input_type.
+ * Returns null when there is no usable value: a scale/number reading with no number must NOT
+ * default to 0 (which the scale clamp then turned into the minimum — "mood" logged as 1).
+ */
 function coerceEntryValue(
   fields: Record<string, unknown>,
   inputType: TrackerInputType,
-): number | string | boolean | string[] {
+): number | string | boolean | string[] | null {
   const raw = fields.value
   switch (inputType) {
     case 'scale':
     case 'number': {
       const n = numberFieldOrNull(fields, ['value', 'quantity'])
-      return n ?? (typeof raw === 'number' ? raw : 0)
+      if (n !== null) return n
+      // A numeric string ("4", "72.5") is fine; anything else is not a reading.
+      const parsed = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : Number.NaN
+      return Number.isFinite(parsed) ? parsed : null
     }
     case 'boolean':
-      return typeof raw === 'boolean' ? raw : raw === 'true' || raw === 1
+      // Mentioning a yes/no tracker as something that happened ("took my meds") means yes.
+      if (raw === undefined || raw === null) return true
+      return typeof raw === 'boolean' ? raw : raw === 'true' || raw === 1 || raw === 'yes'
     case 'multi_select':
       return Array.isArray(raw)
         ? raw.filter((x): x is string => typeof x === 'string')

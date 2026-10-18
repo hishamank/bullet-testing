@@ -6,6 +6,7 @@
 /** Stable machine codes for the failure modes the engine raises. */
 export type EngineErrorCode =
   | 'LLM_HTTP' // the LLM call failed (transport, non-OK response, scripted client exhausted)
+  | 'LLM_TIMEOUT' // the LLM did not answer within the deadline
   | 'LLM_PARSE' // the model returned content that is not valid JSON
   | 'EXTRACTION_INVALID' // the model's JSON did not satisfy the extraction schema
 

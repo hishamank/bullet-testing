@@ -11,6 +11,7 @@ import type { EngineConfig } from '../config'
 import type { LlmClient } from '../llm/types'
 import { EngineError } from '../errors'
 import type { LlmMessage } from '../llm/types'
+import type { CaptureContext } from '../time/when'
 import { buildExtractionPrompt } from './prompt'
 import { type Candidate, extractionJsonSchema, extractionResponseSchema } from './schema'
 import type { ExtractionSnapshot } from './snapshot'
@@ -108,6 +109,11 @@ function buildRepairMessages(
   ]
 }
 
+/** What extraction needs to know about a bullet: its text and when/where it was captured. */
+export interface ExtractionInput extends CaptureContext {
+  text: string
+}
+
 /**
  * Run extraction for `bullet` against `snapshot`. Returns the validated candidates.
  *
@@ -120,10 +126,10 @@ function buildRepairMessages(
  */
 export async function extractCandidates(
   deps: { llm: LlmClient; config: EngineConfig },
-  bullet: string,
+  bullet: ExtractionInput,
   snapshot: ExtractionSnapshot,
 ): Promise<Candidate[]> {
-  const baseMessages = buildExtractionPrompt(bullet, snapshot)
+  const baseMessages = buildExtractionPrompt(bullet.text, snapshot, bullet)
   let lastError: EngineError | undefined
   let previousContent: string | undefined
 

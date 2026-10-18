@@ -7,3 +7,4 @@ export {
   type ScriptedLlmClient,
 } from './scripted'
 export { createOpenAiCompatibleClient, type OpenAiCompatibleOptions } from './openai-compatible'
+export { withLlmTimeout } from './timeout'
