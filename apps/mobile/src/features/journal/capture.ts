@@ -15,6 +15,7 @@ import {
 import { and, eq } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { ENTITY_TABLES, bulletsWithPendingChanges } from '../../data/mirror'
+import { listRejections } from '../../data/rejections'
 import {
   audioAttachments,
   bullets,
@@ -23,6 +24,7 @@ import {
   trackers,
   transcripts,
 } from '../../data/schema'
+import { type InboxNotice, noticeText, summaryContext } from '../inbox/model'
 import { errorReason, unreadableRecordings } from './stream'
 import { type LinkedThing, linkedThing, type SuggestionRow } from './things'
 
@@ -54,6 +56,8 @@ export interface CaptureDetail {
   transcripts: TranscriptRow[]
   thoughts: { id: string; kind: ThoughtKind; kindSource: 'engine' | 'user'; text: string }[]
   things: LinkedThing[]
+  /** Calm notes for an Undo of one of its things the server refused (e.g. edited since). */
+  notices: InboxNotice[]
 }
 
 export function loadCaptureDetail(
@@ -125,7 +129,27 @@ export function loadCaptureDetail(
     transcripts: ts,
     thoughts: th.map((t) => ({ id: t.id, kind: t.kind, kindSource: t.kind_source, text: t.text })),
     things: ss.map((s) => linkedThing(s as SuggestionRow, look, now, tz)),
+    notices: undoNotices(db, ss, now, tz),
   }
+}
+
+/** Refused Undos of this capture's things, worded like the Inbox's notices. */
+function undoNotices(
+  db: PhoneDb,
+  rows: (typeof suggestions.$inferSelect)[],
+  now: number,
+  tz: string,
+): InboxNotice[] {
+  const named = new Map(rows.map((s) => [s.id, s]))
+  const refused = listRejections(db).filter(
+    (r) => r.type === 'suggestion.undo' && r.suggestion_id !== null && named.has(r.suggestion_id),
+  )
+  if (refused.length === 0) return []
+  const ctx = summaryContext(db, rows, now, tz)
+  return refused.flatMap((r) => {
+    const text = noticeText(r, named, ctx)
+    return text ? [{ key: r.key, text }] : []
+  })
 }
 
 // ---- pure ----

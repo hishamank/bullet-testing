@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vite-plus/test'
+import { undoSuggestion } from '../../data/local'
 import { setState } from '../../data/mirror'
+import { recordRejection } from '../../data/rejections'
 import { audioReadErrorKey } from '../../sync/client'
-import { openTestDb, T0 } from '../../test/db'
+import { openTestDb, T0, testDeps } from '../../test/db'
 import {
   audioSource,
   deleteChoices,
@@ -59,6 +61,44 @@ describe('capture detail', () => {
       ['Task · x', 'dismissed', null],
     ])
     expect(d?.things[0]?.thoughtId).toBe(th)
+  })
+
+  test('only things done for you offer Undo; a refused Undo reads calmly', () => {
+    const db = openTestDb()
+    const b = seedBullet(db, T0)
+    const run = seedSuggestion(db, b, {
+      target_kind: 'activity',
+      payload: { name: 'Run', quantity: 5, unit: 'km' },
+      status: 'accepted',
+      auto_applied: true,
+      applied_at: T0 - 3 * 86_400_000, // days ago: still undoable here
+      applied_entity_id: 'not-pulled-yet',
+    })
+    seedSuggestion(db, b, {
+      target_kind: 'task',
+      payload: { title: 'Call the plumber' },
+      status: 'accepted',
+      applied_entity_id: 'also-not-pulled',
+    })
+    let d = loadCaptureDetail(db, b, T0, TZ)
+    expect(d?.things.map((t) => [t.state, t.undoable])).toEqual([
+      ['done_for_you', true],
+      ['added', false],
+    ])
+    expect(d?.notices).toEqual([])
+
+    undoSuggestion(db, run, testDeps())
+    recordRejection(
+      db,
+      { op_id: 'op-1', type: 'suggestion.undo', suggestion_id: run, question_id: null },
+      'conflict',
+      'edited since',
+      T0,
+    )
+    d = loadCaptureDetail(db, b, T0, TZ)
+    expect(d?.notices.map((n) => n.text)).toEqual([
+      "“Run” stays as you left it: you changed it after it was added, so Undo won't overwrite your edit.",
+    ])
   })
 
   test('a deleted thing reads as deleted and links nowhere', () => {
