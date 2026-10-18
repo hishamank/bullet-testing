@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { describe, expect, test } from 'vite-plus/test'
 import { audioAttachments, bullets, jobs, transcripts } from '../db/schema'
 import { DEFAULT_RETRY_POLICY } from '../queue/jobs'
+import { parseByteRange } from './audio'
 import { candidate, createHarness, llmByText, T0, uid } from '../test/helpers'
 
 const AUDIO = new Uint8Array(Array.from({ length: 10 }, (_, i) => i + 1))
@@ -127,6 +128,43 @@ describe('voice notes: upload', () => {
     const dl = await h.request(`/sync/audio/${audioId}`, { headers: auth(h) })
     expect(dl.headers.get('content-type')).toBe('audio/mp4')
     expect(new Uint8Array(await dl.arrayBuffer())).toEqual(AUDIO)
+  })
+})
+
+describe('voice notes: ranged download (seeking)', () => {
+  test('parses single byte ranges', () => {
+    expect(parseByteRange(undefined, 10)).toBeNull()
+    expect(parseByteRange('bytes=2-5', 10)).toEqual({ start: 2, end: 5 })
+    expect(parseByteRange('bytes=4-', 10)).toEqual({ start: 4, end: 9 })
+    expect(parseByteRange('bytes=-3', 10)).toEqual({ start: 7, end: 9 })
+    expect(parseByteRange('bytes=8-99', 10)).toEqual({ start: 8, end: 9 })
+    expect(parseByteRange('bytes=10-', 10)).toBe('unsatisfiable')
+    expect(parseByteRange('bytes=5-2', 10)).toBeNull()
+    expect(parseByteRange('bytes=0-1,4-5', 10)).toBeNull()
+    expect(parseByteRange('items=0-1', 10)).toBeNull()
+  })
+
+  test('206 with the asked bytes, 416 past the end, 200 + Accept-Ranges otherwise', async () => {
+    const h = createHarness()
+    const { audioId } = await captureVoice(h)
+    await put(h, audioId, 0, AUDIO)
+    const get = (range?: string) =>
+      h.request(`/sync/audio/${audioId}`, { headers: { ...auth(h), ...(range ? { range } : {}) } })
+
+    const whole = await get()
+    expect(whole.status).toBe(200)
+    expect(whole.headers.get('accept-ranges')).toBe('bytes')
+    expect(whole.headers.get('content-length')).toBe(String(AUDIO.length))
+
+    const part = await get('bytes=2-4')
+    expect(part.status).toBe(206)
+    expect(part.headers.get('content-range')).toBe(`bytes 2-4/${AUDIO.length}`)
+    expect(part.headers.get('content-length')).toBe('3')
+    expect(new Uint8Array(await part.arrayBuffer())).toEqual(AUDIO.slice(2, 5))
+
+    const past = await get(`bytes=${AUDIO.length}-`)
+    expect(past.status).toBe(416)
+    expect(past.headers.get('content-range')).toBe(`bytes */${AUDIO.length}`)
   })
 })
 
