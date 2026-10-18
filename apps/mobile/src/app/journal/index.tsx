@@ -1,46 +1,61 @@
-import { Link } from 'expo-router'
-import { FlatList, Pressable, StyleSheet, View } from 'react-native'
-import { Label, Placeholder } from '@/components/ui'
-import { listBullets } from '@/data/queries'
-import { captureStatusLabel } from '@/features/capture/notice'
+import { useRouter } from 'expo-router'
+import { useState } from 'react'
+import { RefreshControl, SectionList, StyleSheet } from 'react-native'
+import { CaptureCard } from '@/components/journal/CaptureCard'
+import { EmptyNote, SectionTitle } from '@/components/journal/parts'
+import { retryCaptures } from '@/features/capture/actions'
+import { groupByDay, listCaptureCards } from '@/features/journal/stream'
+import { syncNow } from '@/features/sync/engine'
 import { useLocalQuery } from '@/hooks'
-import { radius, space, type, useTheme } from '@/theme'
+import { deviceDeps } from '@/sync/runtime'
+import { space, useTheme } from '@/theme'
 
-/**
- * Journal · stream. Minimal stand-in (text + state, linking to the capture); the real stream —
- * cards grouped by day with their thoughts and kind labels — is built in its own session.
- */
+const PAGE = 40
+
+/** Journal · stream: captures grouped by day, newest first, loaded a page at a time. */
 export default function JournalStream() {
   const t = useTheme()
-  const captures = useLocalQuery((db) => listBullets(db, 100))
+  const router = useRouter()
+  const [limit, setLimit] = useState(PAGE)
+  const [refreshing, setRefreshing] = useState(false)
+  const page = useLocalQuery((db) => listCaptureCards(db, limit), limit)
+  const sections = groupByDay(page.cards, (c) => c.capturedAt, Date.now(), deviceDeps.timezone())
+
   return (
-    <FlatList
-      data={captures}
-      keyExtractor={(b) => b.id}
+    <SectionList
+      sections={sections}
+      keyExtractor={(c) => c.id}
       contentContainerStyle={styles.list}
-      ListEmptyComponent={<Placeholder title="Your captures will show up here." />}
+      stickySectionHeadersEnabled={false}
+      initialNumToRender={8}
+      windowSize={7}
+      onEndReachedThreshold={0.5}
+      onEndReached={() => {
+        if (page.hasMore) setLimit((l) => l + PAGE)
+      }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          tintColor={t.textSecondary}
+          onRefresh={() => {
+            setRefreshing(true)
+            void syncNow().finally(() => setRefreshing(false))
+          }}
+        />
+      }
+      ListEmptyComponent={<EmptyNote>Your captures will show up here, grouped by day.</EmptyNote>}
+      renderSectionHeader={({ section }) => <SectionTitle>{section.title}</SectionTitle>}
       renderItem={({ item }) => (
-        <Link href={{ pathname: '/capture/[id]', params: { id: item.id } }} asChild>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityHint="Opens the capture"
-            style={[styles.card, { backgroundColor: t.card }]}
-          >
-            <Label numberOfLines={3}>{item.text}</Label>
-            <View style={styles.meta}>
-              <Label tone={item.status === 'failed' ? 'warning' : 'muted'} size={type.label}>
-                {captureStatusLabel(item.status)}
-              </Label>
-            </View>
-          </Pressable>
-        </Link>
+        <CaptureCard
+          card={item}
+          onOpen={() => router.push({ pathname: '/capture/[id]', params: { id: item.id } })}
+          onRetry={() => retryCaptures([item.id])}
+        />
       )}
     />
   )
 }
 
 const styles = StyleSheet.create({
-  list: { padding: space.lg, gap: space.md },
-  card: { borderRadius: radius.card, padding: space.lg, gap: space.sm },
-  meta: { flexDirection: 'row', gap: space.sm },
+  list: { paddingHorizontal: space.lg, paddingBottom: space.xxl, gap: space.md },
 })

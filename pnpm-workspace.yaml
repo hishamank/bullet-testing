@@ -8,6 +8,7 @@ catalog:
   better-sqlite3: ^13.0.3
   drizzle-kit: ^0.31.11
   drizzle-orm: ^0.45.4
+  expo-audio: ~57.0.5
   expo-background-task: ~57.0.21
   expo-crypto: ~57.0.4
   expo-file-system: ~57.0.7
