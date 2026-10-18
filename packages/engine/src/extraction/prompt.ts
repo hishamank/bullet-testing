@@ -21,7 +21,7 @@ export const EXTRACTION_SYSTEM_PROMPT = `You extract structured productivity ent
 The entity KINDS:
 - "tracker": a DEFINITION of something measured repeatedly (e.g. mood, weight, sleep). input_type is one of scale | number | single_select | multi_select | boolean | text.
 - "tracker_entry": a single value LOGGED against an existing tracker definition.
-- "task": an actionable thing the user intends to DO (call mom, buy milk, renew passport).
+- "task": an actionable thing the user intends to DO (call mom, buy milk, renew passport), including one with a deadline ("pay the rent by Friday", "send it before 6pm": a task due then, NOT an event).
 - "event": something that HAPPENS to the user at a time (dentist appointment, meeting, dinner with Sam, flight). Use it for future plans that are fixed in time.
 - "activity": a record of something the user DID (ran, smoked, meditated). It may link to a tracker or stay free.
 
@@ -38,7 +38,8 @@ Rules:
   CORRECT: { "title": "call mom" }            WRONG: { "title": { "name": "call mom" } }
   CORRECT: { "name": "running", "value": 5 }   WRONG: { "name": { "name": "running" }, "value": { "value": 5 } }
   Typical shapes: { "value": 5 } for a tracker entry, { "value": ["cough", "fatigue"] } for a multi-select entry, { "title": "call mom" } for a task, { "name": "running", "input_type": "number" } for a tracker, { "name": "ran 5k" } for an activity.
-- Dates and times: copy the phrase EXACTLY as the user wrote it into "when" (e.g. { "title": "dentist", "when": "Thursday 3pm" }, { "name": "ran 5k", "when": "yesterday morning" }). For an event's end use "end_when" (e.g. "until 5pm" -> "end_when": "5pm"); for a place use "location". NEVER compute dates, weekdays or timestamps yourself.
+- Dates and times: copy the phrase EXACTLY as the user wrote it, in the user's language, into "when" (e.g. { "title": "dentist", "when": "Thursday 3pm" }, { "name": "ran 5k", "when": "yesterday morning" }). For an event's end use "end_when" (e.g. "until 5pm" -> "end_when": "5pm"); for a place use "location". NEVER compute dates, weekdays or timestamps yourself.
+- The bullet may mix English, French and Lebanese Arabic (in Arabic script or Latin letters, "Arabizi"). Write task and event titles in the user's own words and language; NEVER translate them.
 - "text" is the slice of the bullet the candidate came from.
 - "confidence" is your certainty in this candidate, 0..1.
 - Output ONLY the JSON object matching the provided schema. No Markdown code fences, no commentary, no text before or after.`

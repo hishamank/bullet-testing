@@ -4,7 +4,13 @@ import type { Candidate } from './extraction/schema'
 import { createScriptedLlmClient } from './llm/scripted'
 import type { LlmChatRequest } from './llm/types'
 import { processCapture } from './pipeline'
-import { chunkText, SEGMENTATION_SYSTEM_PROMPT, segmentCapture } from './segmentation/segment'
+import {
+  chunkText,
+  driftedFrom,
+  SEGMENTATION_SYSTEM_PROMPT,
+  segmentationJsonSchema,
+  segmentCapture,
+} from './segmentation/segment'
 
 const config = ENGINE_CONFIG_DEFAULTS
 // Thursday 2026-10-15 09:12 in Paris.
@@ -117,6 +123,142 @@ describe('segmentCapture', () => {
     for (const [i, t] of thoughts.entries()) {
       expect(text.slice(t.span?.start, t.span?.end)).toBe(parts[i])
     }
+  })
+})
+
+// Replays of Qwen3.5-4B Q4_K_M on llama-server (2026-10-18): it translated mixed
+// Arabizi / French / English captures to English (and mistranslated them) in `text`, while
+// `quote` stayed verbatim.
+describe("segmentation keeps the user's own words", () => {
+  test('the wire schema asks for the verbatim quote first, then the text', () => {
+    const item = (segmentationJsonSchema as any).properties.thoughts.items
+    expect(Object.keys(item.properties)).toEqual(['quote', 'text', 'kind'])
+    expect(item.required).toEqual(['quote', 'text', 'kind'])
+    expect(SEGMENTATION_SYSTEM_PROMPT).toMatch(/NEVER TRANSLATE/)
+  })
+
+  test('a translated text falls back to the verbatim words (Arabizi, French, Arabic)', async () => {
+    const text =
+      "lezem 2a3mol call la mama bukra, w j'ai oublié de payer le loyer. And I need to take the car to the garage before 10am. لازم اتصل بالبنك"
+    const llm = scripted(() => [
+      {
+        quote: 'lezem 2a3mol call la mama bukra',
+        text: 'I need to make a call to my mother tomorrow.',
+        kind: 'task',
+      },
+      {
+        quote: "w j'ai oublié de payer le loyer",
+        text: 'I forgot to pay the rent.',
+        kind: 'worry',
+      },
+      {
+        quote: 'And I need to take the car to the garage before 10am',
+        text: 'I need to take the car to the garage before 10am.',
+        kind: 'task',
+      },
+      { quote: 'لازم اتصل بالبنك', text: 'Call the bank.', kind: 'task' },
+    ])
+    const thoughts = await segmentCapture({ llm, config }, { text, ...CTX })
+    expect(thoughts.map((t) => t.text)).toEqual([
+      'lezem 2a3mol call la mama bukra',
+      "w j'ai oublié de payer le loyer",
+      // An English cleanup of English words is kept.
+      'I need to take the car to the garage before 10am.',
+      'لازم اتصل بالبنك',
+    ])
+    for (const t of thoughts) expect(t.span).not.toBeNull()
+  })
+
+  test('a mistranslation is replaced too ("kont 3am fakker" is not "3 AM")', async () => {
+    const text = 'kont 3am fakker eza lezem ghayyir el shighel... je sais pas trop.'
+    const llm = scripted(() => [
+      {
+        quote: text,
+        text: "Work is scheduled for 3 AM tomorrow, but I don't know exactly what that is yet.",
+        kind: 'note',
+      },
+    ])
+    const [t] = await segmentCapture({ llm, config }, { text, ...CTX })
+    expect(t).toMatchObject({ text, span: { start: 0, end: text.length } })
+  })
+
+  test("respelled Arabizi is not the user's spelling: the verbatim words are kept", async () => {
+    const text = 'kont 3am fakker eza lezem ghayyir el shighel... je sais pas trop'
+    const llm = scripted(() => [
+      {
+        quote: text,
+        text: 'kunt 3am fakker eza lizem ghayyir el shghel je sais pas trop',
+        kind: 'worry',
+      },
+    ])
+    const [t] = await segmentCapture({ llm, config }, { text, ...CTX })
+    expect(t?.text).toBe(text)
+  })
+
+  test('a light cleanup in the same languages is kept', async () => {
+    const text = 'um, euh, lezem lezem 2a3mol call la mama bukra'
+    const llm = scripted(() => [
+      { quote: text, text: 'lezem 2a3mol call la mama bukra', kind: 'task' },
+    ])
+    const [t] = await segmentCapture({ llm, config }, { text, ...CTX })
+    expect(t?.text).toBe('lezem 2a3mol call la mama bukra')
+  })
+
+  test('quotes are located despite curly apostrophes, case and an added period', async () => {
+    const text = 'Feeling anxious about the exam, j’ai peur de rater'
+    const llm = scripted(() => [
+      { quote: "j'ai peur de rater.", text: 'I am afraid of failing.', kind: 'worry' },
+    ])
+    const [t] = await segmentCapture({ llm, config }, { text, ...CTX })
+    expect(t?.span).toEqual({ start: text.indexOf('j’ai'), end: text.length })
+    expect(t?.text).toBe('j’ai peur de rater')
+  })
+
+  test("an unlocated quote is used only when it reads as the capture's words", async () => {
+    const text = 'slept 6 hours, ana ktir ta3ban lyom'
+    // Quote paraphrased (not found), text translated: the quote still is the user's words.
+    const a = scripted(() => [
+      {
+        quote: 'slept 6 hours ana ktir ta3ban',
+        text: 'Slept 6 hours, very tired.',
+        kind: 'tracker',
+      },
+    ])
+    const [ta] = await segmentCapture({ llm: a, config }, { text, ...CTX })
+    expect(ta).toMatchObject({ text: 'slept 6 hours ana ktir ta3ban', span: null })
+    // Quote translated, text verbatim: keep the text.
+    const b = scripted(() => [
+      { quote: 'I slept 6 hours, I am very tired', text: 'ana ktir ta3ban lyom', kind: 'note' },
+    ])
+    const [tb] = await segmentCapture({ llm: b, config }, { text, ...CTX })
+    expect(tb?.text).toBe('ana ktir ta3ban lyom')
+  })
+
+  test('driftedFrom', () => {
+    expect(
+      driftedFrom('Meeting with Karim tomorrow at 15h.', 'Demain réunion avec Karim à 15h'),
+    ).toBe(true)
+    expect(driftedFrom('demain reunion avec Karim', 'Demain réunion avec Karim à 15h')).toBe(false)
+    expect(driftedFrom('Call the bank tomorrow.', 'لازم اتصل بالبنك بكرا')).toBe(true)
+    expect(driftedFrom('اتصل بالبنك', 'لازم اتصل بالبنك بكرا')).toBe(false)
+    expect(driftedFrom('I should call mom', 'um so like I think I should, I should call mom')).toBe(
+      false,
+    )
+  })
+
+  test('the thought reaches extraction in its own words and its date still resolves', async () => {
+    const text = 'lezem 2a3mol call la mama bukra'
+    const llm = scripted(
+      () => [{ quote: text, text: 'I need to call my mother tomorrow.', kind: 'task' }],
+      (thought) => [{ fields: { title: thought, when: 'bukra' } }],
+    )
+    const out = await processCapture({ llm, config }, { text, ...CTX }, EMPTY)
+    expect(body(llm.chatCalls[1] as LlmChatRequest)).toBe(text)
+    expect(out.things[0]?.payload).toMatchObject({
+      title: text,
+      due_at: Date.UTC(2026, 9, 15, 22), // Friday 00:00 in Paris
+    })
+    expect(out.questions).toEqual([])
   })
 })
 

@@ -112,6 +112,78 @@ describe('relative dates resolve against capture time + zone', () => {
 })
 
 describe('future happenings route to Event vs Task', () => {
+  // Qwen3.5-4B, 2026-10-18: "take the car to the garage before 10am" came back as an event.
+  test('an "event" with a deadline ("before 10am") is a task due then', () => {
+    const s = one(
+      candidate({
+        kind: 'event',
+        orientation: 'future_oneoff',
+        text: 'take the car to the garage before 10am',
+        fields: { title: 'take the car to the garage', when: 'before 10am' },
+      }),
+    )
+    expect(s.target_kind).toBe('task')
+    expect(s.payload).toMatchObject({
+      title: 'take the car to the garage',
+      due_at: paris(10, 15, 10),
+    })
+  })
+
+  test('deadlines in French and Arabizi too', () => {
+    for (const [text, when] of [
+      ['wadde l sayyara 3al garage 2abel l 5amis', '2abel l 5amis'],
+      ['rendre le dossier avant jeudi', 'avant jeudi'],
+    ]) {
+      const s = one(
+        candidate({
+          kind: 'event',
+          orientation: 'future_oneoff',
+          text,
+          fields: { title: text, when },
+        }),
+      )
+      expect(s.target_kind).toBe('task')
+      expect(s.payload.due_at).toBe(paris(10, 15))
+    }
+  })
+
+  test('an appointment "before" a time stays an event ("dinner with Sam before 8pm")', () => {
+    const s = one(
+      candidate({
+        kind: 'event',
+        orientation: 'future_oneoff',
+        text: 'dinner with Sam before 8pm',
+        fields: { title: 'dinner with Sam', when: 'before 8pm' },
+      }),
+    )
+    expect(s.target_kind).toBe('event')
+  })
+
+  test('"réunion avec Karim demain à 15h" → an event at 15:00 tomorrow', () => {
+    const s = one(
+      candidate({
+        kind: 'event',
+        orientation: 'future_oneoff',
+        text: 'Demain réunion avec Karim à 15h',
+        fields: { title: 'réunion avec Karim', when: 'Demain à 15h' },
+      }),
+    )
+    expect(s.payload).toMatchObject({ starts_at: paris(10, 16, 15), all_day: false })
+  })
+
+  // Qwen3.5-4B, 2026-10-18: it quoted only "Demain" and the meeting became all-day.
+  test('a quoted day without its time takes the time from the text ("Demain" + "à 15h")', () => {
+    const s = one(
+      candidate({
+        kind: 'event',
+        orientation: 'future_oneoff',
+        text: 'Demain réunion avec Karim à 15h',
+        fields: { title: 'réunion avec Karim', when: 'Demain' },
+      }),
+    )
+    expect(s.payload).toMatchObject({ starts_at: paris(10, 16, 15), all_day: false })
+  })
+
   test('an event with only a date is an all-day event', () => {
     const s = one(
       candidate({
@@ -230,11 +302,33 @@ describe('record timestamps default to capture time, not processing time', () =>
     expect(s.payload.logged_at).toBe(CAPTURED)
   })
 
-  test('"ran 5k yesterday" → occurred yesterday (local midnight)', () => {
+  test('"ran 5k yesterday" → occurred yesterday at noon, not at its midnight', () => {
     const s = one(
       candidate({ text: 'ran 5k yesterday', fields: { name: 'ran 5k', when: 'yesterday' } }),
     )
-    expect(s.payload.occurred_at).toBe(paris(10, 14))
+    expect(s.payload.occurred_at).toBe(paris(10, 14, 12))
+  })
+
+  // Qwen3.5-4B, 2026-10-18: "mood 3/10 today" / "slept 6 hours" were dated at local midnight.
+  test('a record dated "today" (no time of day) → the capture time, not midnight', () => {
+    const s = one(
+      candidate({ text: 'mood 3/10 today', fields: { name: 'mood', value: 3, when: 'today' } }),
+    )
+    expect(s.payload.occurred_at).toBe(CAPTURED)
+    const slept = one(candidate({ text: 'slept 6 hours', fields: { name: 'sleep', when: 'lyom' } }))
+    expect(slept.payload.occurred_at).toBe(CAPTURED)
+  })
+
+  test('"slept 6 hours last night" keeps its time of day (yesterday 20:00)', () => {
+    const s = one(
+      candidate({ text: 'slept 6 hours', fields: { name: 'sleep', value: 6, when: 'last night' } }),
+    )
+    expect(s.payload.occurred_at).toBe(paris(10, 14, 20))
+  })
+
+  test('a French / Arabizi date phrase dates a record', () => {
+    const s = one(candidate({ text: 'rkadet 5k mbere7', fields: { name: 'run', when: 'mbere7' } }))
+    expect(s.payload.occurred_at).toBe(paris(10, 14, 12))
   })
 
   test('"ran at 7am" → 07:00 today local', () => {

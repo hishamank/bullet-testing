@@ -206,3 +206,10 @@ time + zone and dates resolve deterministically; a matched scale/number tracker 
 no longer defaults to the minimum (falls back to an unlinked activity); mark-done is a
 `{ status: 'done' }` patch; only an exact title match may auto-apply mark-done; record
 timestamps default to capture time. Add new findings here.
+
+- **Real-model run (2026-10-18, Qwen3.5-4B Q4_K_M; Gemma 4 26B compared):** segmentation
+  translated mixed Arabizi/French/English thoughts to English (and mistranslated them). Fixed:
+  `quote` is decoded before `text`, the prompt forbids translating, and a `text` that drifted from
+  the verbatim words (`driftedFrom`) falls back to them. Dates now read French, Arabizi and Arabic
+  day words and "15h"; a deadline ("before 10am") is a task, not an event; a date-only record is
+  dated at capture time (today) or noon (earlier days), never midnight.

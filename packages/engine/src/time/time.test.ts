@@ -131,6 +131,42 @@ describe('resolveWhen — records (past)', () => {
   })
 })
 
+describe('resolveWhen — French and Lebanese Arabic (Arabizi) day words', () => {
+  const f = (text: string) => resolveWhen(text, ctx, 'future')
+  const p = (text: string) => resolveWhen(text, ctx, 'past')
+
+  test('days', () => {
+    for (const w of ['bukra', 'bokra', 'demain', 'Demain']) expect(f(w)?.at).toBe(paris(10, 16))
+    for (const w of ['ba3d bukra', 'après-demain', 'apres demain'])
+      expect(f(w)?.at).toBe(paris(10, 17))
+    for (const w of ['mbere7', 'embare7', 'hier']) expect(p(w)?.at).toBe(paris(10, 14))
+    expect(p('avant-hier')?.at).toBe(paris(10, 13))
+    for (const w of ['بكرا', 'بكرة', 'لازم اتصل بالبنك بكرا.']) expect(f(w)?.at).toBe(paris(10, 16))
+    expect(p('مبارح')?.at).toBe(paris(10, 14))
+    expect(f('اليوم')?.at).toBe(paris(10, 15))
+    for (const w of ['lyom', 'el yom', "aujourd'hui", 'aujourd’hui'])
+      expect(f(w)?.at).toBe(paris(10, 15))
+  })
+
+  test('weekdays and times', () => {
+    expect(f('jeudi à 15h')).toEqual({ at: paris(10, 15, 15), hasTime: true })
+    expect(f('jeudi prochain')?.at).toBe(paris(10, 22))
+    expect(f('el jem3a')?.at).toBe(paris(10, 16))
+    expect(f('yom el sabt')?.at).toBe(paris(10, 17))
+    expect(f('demain à 9h30')).toEqual({ at: paris(10, 16, 9, 30), hasTime: true })
+    expect(f('15h')).toEqual({ at: paris(10, 15, 15), hasTime: true })
+    expect(p('hier soir')).toEqual({ at: paris(10, 14, 20), hasTime: true })
+    expect(f('dans 2 heures')?.at).toBe(CAPTURED + 2 * 3_600_000)
+    expect(p('il y a 3 jours')?.at).toBe(paris(10, 12))
+  })
+
+  test('look-alikes are not dates', () => {
+    expect(p('slept 6h')).toBeNull()
+    expect(f('wa7ad')).toBeNull()
+    expect(f('yom hilo')).toBeNull()
+  })
+})
+
 describe('resolveEnd', () => {
   test('a bare end time lands on the start day', () => {
     const start = paris(10, 16, 15)

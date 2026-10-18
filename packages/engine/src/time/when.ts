@@ -4,7 +4,9 @@
  * to the bullet's CAPTURE time and time zone — never processing time (CLAUDE.md §5).
  *
  * The LLM is not trusted with calendar arithmetic: it quotes the phrase, this module does the math.
- * English only for now. Unknown phrases return null (the caller decides the fallback).
+ * Phrases are English, plus the common French and Lebanese Arabic (Arabizi) day words, which are
+ * mapped to English first ("bukra" → "tomorrow", "jeudi à 15h" → "thursday à 15h"). Unknown
+ * phrases return null (the caller decides the fallback).
  */
 
 import { addDays, safeTimezone, zonedParts, zonedToEpoch } from './zoned'
@@ -113,6 +115,11 @@ function parseTime(s: string, partOfDay: boolean): LocalTime | null {
   }
   const clock = /\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/.exec(s)
   if (clock) return { hour: Number(clock[1]), minute: Number(clock[2]) }
+  // French "15h": only after "à"/"at"/"vers"…, or alone, so "slept 6h" is not a time of day.
+  for (const m of s.matchAll(
+    /(?:^|\s)(?:(à|a|at|vers|avant|before|by|until|till|@|3al|3a)\s*)?([01]?\d|2[0-3])h\b/g,
+  ))
+    if (m[1] !== undefined || s.trim() === m[0].trim()) return { hour: Number(m[2]), minute: 0 }
   if (/\b(noon|midday)\b/.test(s)) return { hour: 12, minute: 0 }
   if (/\bmidnight\b/.test(s)) return { hour: 0, minute: 0 }
   const bare = /\bat\s+(\d{1,2})\b(?!\s*(?:%|[.,]\d))/.exec(s)
@@ -168,6 +175,42 @@ function parseDate(s: string, today: LocalDate & { weekday: number }, dir: WhenD
   return null
 }
 
+const W = (words: string) => new RegExp(`(?<![\\p{L}\\p{N}])(?:${words})(?![\\p{L}\\p{N}])`, 'gu')
+
+/** French, Arabizi and Arabic date words → English, longest phrases first. Input is lowercased. */
+const DATE_WORDS: [RegExp, string][] = [
+  [W('apr[eè]s[- ]demain|ba3e?d bu?o?kra|بعد بكر[اةه]'), 'day after tomorrow'],
+  [W('avant[- ]hier|aw+al mbe?a?re7|اول امبارح'), 'day before yesterday'],
+  [W('hier soir'), 'last night'],
+  [W('bu?o?krah?|demain|بكر[اةه]'), 'tomorrow'],
+  [W('e?mb[ae]re?7|mberi7|hier|ا?مبارح|البارحة'), 'yesterday'],
+  [W('ce soir|cette nuit|(?:e?l ?)?leyle|الليلة'), 'tonight'],
+  [W('ce matin|(?:e?l ?)?sob7|(?:e?l ?)?saba7|الصبح'), 'this morning'],
+  [W('cet apr[eè]s[- ]midi'), 'this afternoon'],
+  [W("aujourd['’]?hui|(?:e?l ?)y(?:o|ou|aw)m|اليوم"), 'today'],
+  [W('midi'), 'noon'],
+  [W('minuit'), 'midnight'],
+  [W('lundi'), 'monday'],
+  [W('mardi'), 'tuesday'],
+  [W('mercredi'), 'wednesday'],
+  [W('jeudi|(?:e?l ?)?(?:kh|5)amis'), 'thursday'],
+  [W('vendredi|(?:e?l ?)?j[eou]m(?:3a|aa)'), 'friday'],
+  [W('samedi|(?:e?l ?)?sabt'), 'saturday'],
+  [W('dimanche|(?:e?l ?)?a[7h]ad'), 'sunday'],
+  [W('(sunday|monday|tuesday|wednesday|thursday|friday|saturday) prochaine?'), 'next $1'],
+  [W('(sunday|monday|tuesday|wednesday|thursday|friday|saturday) derni[eè]re?'), 'last $1'],
+  [W('dans (\\d+) (minute|heure|jour|semaine)s?'), 'in $1 $2s'],
+  [W('il y a (\\d+) (minute|heure|jour|semaine)s?'), '$1 $2s ago'],
+  [W('heures?'), 'hours'],
+  [W('jours?'), 'days'],
+  [W('semaines?'), 'weeks'],
+]
+
+/** Map French / Arabizi date words in a lowercased phrase to the English ones parsed below. */
+export function englishDateWords(s: string): string {
+  return DATE_WORDS.reduce((acc, [re, en]) => acc.replace(re, en), s)
+}
+
 /**
  * Resolve the date/time phrase in `text` (which may be a whole sentence) against the capture
  * context. Returns null when the text names no date or time.
@@ -177,7 +220,7 @@ export function resolveWhen(
   ctx: CaptureContext,
   direction: WhenDirection,
 ): ResolvedWhen | null {
-  const s = text.toLowerCase().replace(/\s+/g, ' ')
+  const s = englishDateWords(text.toLowerCase().replace(/\s+/g, ' '))
   const timezone = safeTimezone(ctx.timezone)
   const now = zonedParts(ctx.capturedAt, timezone)
   const today = { year: now.year, month: now.month, day: now.day, weekday: now.weekday }
@@ -232,7 +275,7 @@ export function resolveEnd(text: string, startsAt: number, timezone: string): nu
  * still picks today; this only lets the engine ask.
  */
 export function ambiguousWeekday(text: string, ctx: CaptureContext): string | null {
-  const s = text.toLowerCase()
+  const s = englishDateWords(text.toLowerCase())
   const wd = WEEKDAY_RE.exec(s)
   if (!wd || (wd[1] !== undefined && wd[1] !== 'on')) return null
   if (/\b(today|tonight|tomorrow|this (morning|afternoon|evening))\b/.test(s)) return null
