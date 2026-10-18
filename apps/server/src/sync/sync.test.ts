@@ -25,11 +25,13 @@ describe('push is idempotent', () => {
     expect(h.db.select().from(bullets).all()).toHaveLength(1)
   })
 
-  test('a bullet id reused with different content is refused', async () => {
+  test('a bullet id reused for a different capture is refused', async () => {
     const h = createHarness()
     const id = uid()
     await h.push([create(id, 'one')])
-    const res = (await h.push([create(id, 'two')])).results[0]
+    const other = create(id, 'two')
+    const res = (await h.push([{ ...other, bullet: { ...other.bullet, captured_at: T0 + 1 } }]))
+      .results[0]
     expect(res).toMatchObject({ status: 'rejected', error: { code: 'invalid' } })
   })
 

@@ -10,7 +10,7 @@ import type { ProcessingErrorCode } from '@bullet/core'
 import { EngineError } from '@bullet/engine'
 import { and, asc, eq, lte } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { bullets, jobs } from '../db/schema'
+import { audioAttachments, bullets, jobs, transcripts } from '../db/schema'
 import { touch } from '../sync/changes'
 
 export type BulletRow = typeof bullets.$inferSelect
@@ -42,7 +42,7 @@ type BulletProc = Pick<
   'proc_status' | 'proc_error_code' | 'proc_error_message' | 'proc_next_retry_at'
 > & { proc_attempts?: number }
 
-function setBulletProc(
+export function setBulletProc(
   db: Db,
   bullet: Pick<BulletRow, 'id' | 'owner_id'>,
   p: BulletProc,
@@ -60,11 +60,25 @@ function setBulletProc(
  * the run's attempt counter; the bullet shows `synced`.
  */
 export function enqueue(db: Db, bullet: BulletRow, now: number): void {
+  // A voice bullet waits for its whole recording before anything runs.
+  const waiting =
+    db
+      .select({ id: audioAttachments.id })
+      .from(audioAttachments)
+      .where(
+        and(
+          eq(audioAttachments.bullet_id, bullet.id),
+          eq(audioAttachments.state, 'active'),
+          eq(audioAttachments.upload_status, 'pending'),
+        ),
+      )
+      .get() !== undefined
+  const status = waiting ? ('waiting_audio' as const) : ('queued' as const)
   db.insert(jobs)
     .values({
       bullet_id: bullet.id,
       owner_id: bullet.owner_id,
-      status: 'queued',
+      status,
       attempts: 0,
       text_version: bullet.text_version,
       run_after: now,
@@ -74,7 +88,7 @@ export function enqueue(db: Db, bullet: BulletRow, now: number): void {
     .onConflictDoUpdate({
       target: jobs.bullet_id,
       set: {
-        status: 'queued',
+        status,
         attempts: 0,
         text_version: bullet.text_version,
         run_after: now,
@@ -109,10 +123,52 @@ export function cancelJob(db: Db, bulletId: string, now: number): void {
 export interface ClaimedJob {
   job: JobRow
   bullet: BulletRow
+  /** Set when this run must transcribe the recording first (status `transcribing`). */
+  transcribe: { attachmentId: string; storageKey: string; mimeType: string } | null
 }
 
-/** Claim the oldest ready job: job → running, bullet → processing, attempts + 1. */
-export function claimNextJob(db: Db, now: number): ClaimedJob | null {
+export interface ClaimOptions {
+  /** False when no transcriber is configured: voice bullets use their device draft. */
+  canTranscribe: boolean
+}
+
+/** A voice bullet's uploaded recording that has no server transcript yet. */
+function needsTranscription(db: Db, bulletId: string): ClaimedJob['transcribe'] {
+  const a = db
+    .select()
+    .from(audioAttachments)
+    .where(
+      and(
+        eq(audioAttachments.bullet_id, bulletId),
+        eq(audioAttachments.state, 'active'),
+        eq(audioAttachments.upload_status, 'uploaded'),
+      ),
+    )
+    .get()
+  if (!a) return null
+  const done = db
+    .select({ id: transcripts.id })
+    .from(transcripts)
+    .where(
+      and(
+        eq(transcripts.attachment_id, a.id),
+        eq(transcripts.kind, 'server'),
+        eq(transcripts.state, 'active'),
+      ),
+    )
+    .get()
+  return done ? null : { attachmentId: a.id, storageKey: a.storage_key, mimeType: a.mime_type }
+}
+
+/**
+ * Claim the oldest ready job: job → running, attempts + 1, bullet → `transcribing` (a voice
+ * bullet whose recording still needs the server transcript) or `processing`.
+ */
+export function claimNextJob(
+  db: Db,
+  now: number,
+  opts: ClaimOptions = { canTranscribe: false },
+): ClaimedJob | null {
   return db.transaction((tx) => {
     const ready = () =>
       tx
@@ -145,11 +201,13 @@ export function claimNextJob(db: Db, now: number): ClaimedJob | null {
       .where(eq(jobs.bullet_id, job.bullet_id))
       .run()
     const attempts = bullet.proc_attempts + 1
+    const transcribe = opts.canTranscribe ? needsTranscription(tx, bullet.id) : null
+    const procStatus = transcribe ? ('transcribing' as const) : ('processing' as const)
     setBulletProc(
       tx,
       bullet,
       {
-        proc_status: 'processing',
+        proc_status: procStatus,
         proc_attempts: attempts,
         proc_error_code: bullet.proc_error_code,
         proc_error_message: bullet.proc_error_message,
@@ -159,7 +217,8 @@ export function claimNextJob(db: Db, now: number): ClaimedJob | null {
     )
     return {
       job: claimed,
-      bullet: { ...bullet, proc_status: 'processing', proc_attempts: attempts },
+      bullet: { ...bullet, proc_status: procStatus, proc_attempts: attempts },
+      transcribe,
     }
   })
 }
@@ -206,6 +265,12 @@ export function classifyError(err: unknown): { code: ProcessingErrorCode; messag
       case 'LLM_PARSE':
       case 'EXTRACTION_INVALID':
         return { code: 'llm_bad_output', message }
+      case 'TRANSCRIBER_HTTP':
+        return { code: 'transcription_unavailable', message }
+      case 'TRANSCRIBER_TIMEOUT':
+        return { code: 'transcription_timeout', message }
+      case 'TRANSCRIPTION_FAILED':
+        return { code: 'transcription_failed', message }
     }
   }
   return { code: 'internal', message }

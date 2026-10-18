@@ -1,7 +1,17 @@
-import { type ApiError, MAX_PULL_LIMIT, pullQuerySchema, pushRequestSchema } from '@bullet/core'
+import {
+  type ApiError,
+  AUDIO_UPLOAD_OFFSET_HEADER,
+  MAX_AUDIO_CHUNK_BYTES,
+  MAX_PULL_LIMIT,
+  pullQuerySchema,
+  pushRequestSchema,
+} from '@bullet/core'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
+import { ApplyError } from './apply/apply'
 import { authenticate } from './auth/devices'
+import { ChecksumMismatchError, readAudio, receiveAudioChunk, uploadState } from './capture/audio'
+import type { AudioStore } from './storage/audio-store'
 import type { Db } from './db/client'
 import { InvalidCursorError, parseCursor, pullChanges } from './sync/changes'
 import { pushOps } from './sync/push'
@@ -13,6 +23,7 @@ import { pushOps } from './sync/push'
 
 export interface AppDeps {
   db: Db
+  audioStore: AudioStore
   now?: () => number
   /** Called after a push queued processing work (wakes the worker). */
   onWorkQueued?: () => void
@@ -30,6 +41,19 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<Env>()
 
   app.onError((err, c) => {
+    if (err instanceof ApplyError) {
+      const status = { not_found: 404, conflict: 409, invalid: 400, stale: 409 } as const
+      const code = {
+        not_found: 'not_found',
+        conflict: 'conflict',
+        invalid: 'bad_request',
+        stale: 'conflict',
+      } as const
+      return c.json(apiError(code[err.code], err.message), status[err.code])
+    }
+    if (err instanceof ChecksumMismatchError) {
+      return c.json(apiError('unprocessable', err.message), 422)
+    }
     deps.onError?.(err)
     return c.json(apiError('internal', 'internal error'), 500)
   })
@@ -78,6 +102,41 @@ export function createApp(deps: AppDeps) {
     }
     const page = pullChanges(deps.db, c.get('ownerId'), cursor, parsed.data.limit ?? MAX_PULL_LIMIT)
     return c.json({ ...page, server_time: now() })
+  })
+
+  const isUuid = (id: string) => /^[0-9a-f-]{36}$/i.test(id)
+
+  app.get('/sync/audio/:id/status', (c) => {
+    const id = c.req.param('id')
+    if (!isUuid(id)) return c.json(apiError('bad_request', 'invalid id'), 400)
+    return c.json(uploadState(deps.db, c.get('ownerId'), id))
+  })
+
+  app.put(
+    '/sync/audio/:id',
+    bodyLimit({
+      maxSize: MAX_AUDIO_CHUNK_BYTES,
+      onError: (c) => c.json(apiError('payload_too_large', 'audio chunk over 4 MiB'), 413),
+    }),
+    async (c) => {
+      const id = c.req.param('id')
+      const offset = Number(c.req.header(AUDIO_UPLOAD_OFFSET_HEADER))
+      if (!isUuid(id) || !Number.isInteger(offset) || offset < 0) {
+        return c.json(apiError('bad_request', `invalid id or ${AUDIO_UPLOAD_OFFSET_HEADER}`), 400)
+      }
+      const bytes = new Uint8Array(await c.req.arrayBuffer())
+      const owner = c.get('ownerId')
+      const state = receiveAudioChunk(deps.db, deps.audioStore, owner, id, offset, bytes, now())
+      if (state.upload_status === 'uploaded') deps.onWorkQueued?.()
+      return c.json(state)
+    },
+  )
+
+  app.get('/sync/audio/:id', (c) => {
+    const id = c.req.param('id')
+    if (!isUuid(id)) return c.json(apiError('bad_request', 'invalid id'), 400)
+    const { bytes, mimeType } = readAudio(deps.db, deps.audioStore, c.get('ownerId'), id)
+    return c.body(bytes.slice().buffer, 200, { 'content-type': mimeType })
   })
 
   return app

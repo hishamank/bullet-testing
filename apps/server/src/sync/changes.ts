@@ -8,9 +8,10 @@
 import type { PullChangeKind, PullChanges } from '@bullet/core'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { toSuggestion, toSyncedBullet } from '../db/rows'
+import { toAudioAttachment, toSuggestion, toSyncedBullet } from '../db/rows'
 import {
   activities,
+  audioAttachments,
   bullets,
   events,
   suggestions,
@@ -19,6 +20,7 @@ import {
   tasks,
   trackerEntries,
   trackers,
+  transcripts,
 } from '../db/schema'
 
 /** Record that `kind`/`id` changed. Call inside the same transaction as the write. */
@@ -56,6 +58,8 @@ const emptyChanges = (): PullChanges => ({
   trackers: [],
   tracker_entries: [],
   activities: [],
+  audio_attachments: [],
+  transcripts: [],
 })
 
 /** Load the current rows for `ids` of one kind, already in contract shape. */
@@ -123,6 +127,25 @@ function loadRows(db: Db, ownerId: string, kind: PullChangeKind, ids: string[], 
           .select()
           .from(activities)
           .where(and(eq(activities.owner_id, ownerId), inArray(activities.id, ids)))
+          .all(),
+      )
+      return
+    case 'audio_attachments':
+      out.audio_attachments.push(
+        ...db
+          .select()
+          .from(audioAttachments)
+          .where(and(eq(audioAttachments.owner_id, ownerId), inArray(audioAttachments.id, ids)))
+          .all()
+          .map(toAudioAttachment),
+      )
+      return
+    case 'transcripts':
+      out.transcripts.push(
+        ...db
+          .select()
+          .from(transcripts)
+          .where(and(eq(transcripts.owner_id, ownerId), inArray(transcripts.id, ids)))
           .all(),
       )
       return

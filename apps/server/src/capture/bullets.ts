@@ -6,7 +6,8 @@
 import type { BulletDeleteMode, PushOp } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { bullets, suggestions } from '../db/schema'
+import { audioAttachments, bullets, suggestions, transcripts } from '../db/schema'
+import { declareAudio } from './audio'
 import { ApplyError } from '../apply/apply'
 import { ENTITY_KINDS, listActiveBySource, softDeleteEntity } from '../apply/entities'
 import { retireSuggestion } from '../apply/reconcile'
@@ -26,8 +27,9 @@ function getBullet(db: Db, ownerId: string, id: string): BulletRow {
 }
 
 /**
- * Store a new capture and queue it. Idempotent by the client-minted id: the same bullet again is
- * a `duplicate`; the same id with different content is refused.
+ * Store a new capture (and a voice note's recording metadata + draft) and queue it. Idempotent by
+ * the client-minted id: the same bullet again is a `duplicate` (its text may have changed since,
+ * by an edit or a transcript); the same id with a different capture is refused.
  */
 export function createBullet(
   db: Db,
@@ -40,7 +42,7 @@ export function createBullet(
     const same =
       existing.owner_id === ownerId &&
       existing.captured_at === input.captured_at &&
-      (existing.text === input.text || existing.text_version > 1)
+      existing.source === input.source
     if (same) return 'duplicate'
     throw new ApplyError('invalid', `bullet id ${input.id} is already used`)
   }
@@ -54,6 +56,7 @@ export function createBullet(
     captured_at: input.captured_at,
     timezone: input.timezone,
     source: input.source,
+    text_edited_by_user: input.text_edited_by_user ?? false,
     text_updated_at: input.captured_at,
     text_version: 1,
     proc_status: 'synced',
@@ -64,6 +67,7 @@ export function createBullet(
     proc_updated_at: now,
   }
   db.insert(bullets).values(row).run()
+  if (input.audio) declareAudio(db, ownerId, row.id, input.audio, input.captured_at, now)
   enqueue(db, row, now)
   return 'applied'
 }
@@ -83,12 +87,20 @@ export function editBullet(
     throw new ApplyError('stale', 'a newer version of this bullet exists')
   }
   if (text === b.text) return
-  const next = { ...b, text, text_updated_at: editedAt, text_version: b.text_version + 1 }
+  const next = {
+    ...b,
+    text,
+    text_updated_at: editedAt,
+    text_version: b.text_version + 1,
+    text_edited_by_user: true,
+  }
   db.update(bullets)
     .set({
       text,
       text_updated_at: editedAt,
       text_version: next.text_version,
+      // From now on the user's words win over any server transcript.
+      text_edited_by_user: true,
       // New content, new count: the attempts shown are for this text.
       proc_attempts: 0,
       updated_at: now,
@@ -126,6 +138,26 @@ export function deleteBullet(
         softDeleteEntity(db, kind, ownerId, e.id, now)
       }
     }
+  }
+  // The recording and its transcripts belong to the bullet (not extractions): they go with it in
+  // both modes — soft-deleted, the audio file itself is kept.
+  for (const a of db
+    .select()
+    .from(audioAttachments)
+    .where(eq(audioAttachments.bullet_id, b.id))
+    .all()) {
+    db.update(audioAttachments)
+      .set({ state: 'deleted', updated_at: now })
+      .where(eq(audioAttachments.id, a.id))
+      .run()
+    touch(db, ownerId, 'audio_attachments', a.id)
+  }
+  for (const t of db.select().from(transcripts).where(eq(transcripts.bullet_id, b.id)).all()) {
+    db.update(transcripts)
+      .set({ state: 'deleted', updated_at: now })
+      .where(eq(transcripts.id, t.id))
+      .run()
+    touch(db, ownerId, 'transcripts', t.id)
   }
   db.update(bullets).set({ state: 'deleted', updated_at: now }).where(eq(bullets.id, b.id)).run()
   touch(db, ownerId, 'bullets', b.id)

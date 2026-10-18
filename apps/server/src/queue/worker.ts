@@ -4,7 +4,14 @@
  * and the bullet — the loop itself never throws.
  */
 
-import { type EngineConfig, type LlmClient, withLlmTimeout } from '@bullet/engine'
+import {
+  type EngineConfig,
+  type LlmClient,
+  type Transcriber,
+  withLlmTimeout,
+  withTranscriberTimeout,
+} from '@bullet/engine'
+import type { AudioStore } from '../storage/audio-store'
 import type { Db } from '../db/client'
 import { claimNextJob, DEFAULT_RETRY_POLICY, markJobFailed, type RetryPolicy } from './jobs'
 import { processClaimedJob } from './process'
@@ -17,6 +24,10 @@ export interface WorkerOptions {
   /** Deadline for one model call (the extraction may make two: initial + repair). */
   llmTimeoutMs?: number
   retry?: RetryPolicy
+  /** Speech-to-text for voice notes; without it, voice bullets use their device draft. */
+  transcriber?: Transcriber
+  audioStore?: AudioStore
+  transcriberTimeoutMs?: number
   /** Called with each unexpected error, for logging. */
   onError?: (err: unknown) => void
 }
@@ -38,12 +49,17 @@ export function createWorker(opts: WorkerOptions): Worker {
     llm: withLlmTimeout(opts.llm, opts.llmTimeoutMs ?? 120_000),
     engine: opts.engine,
     now,
+    transcriber: opts.transcriber
+      ? withTranscriberTimeout(opts.transcriber, opts.transcriberTimeoutMs ?? 10 * 60_000)
+      : undefined,
+    audioStore: opts.audioStore,
   }
+  const canTranscribe = deps.transcriber !== undefined && deps.audioStore !== undefined
   let timer: ReturnType<typeof setInterval> | undefined
   let busy: Promise<number> | null = null
 
   async function runOne(): Promise<boolean> {
-    const claimed = claimNextJob(opts.db, now())
+    const claimed = claimNextJob(opts.db, now(), { canTranscribe })
     if (!claimed) return false
     try {
       await processClaimedJob(deps, claimed)

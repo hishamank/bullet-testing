@@ -1,29 +1,96 @@
 /**
- * Processing one claimed bullet: snapshot current state → ask the model (with a deadline) →
- * resolve → in ONE transaction, if the job is still current: reconcile suggestions, auto-apply,
- * set the bullet's final status and complete the job.
+ * Processing one claimed bullet:
+ *  1. voice bullets with a recording: transcribe it (with a deadline) and, in one transaction,
+ *     store the server transcript and — unless the user edited the text — make it the bullet text;
+ *  2. snapshot current state → ask the model (with a deadline) → resolve → in ONE transaction, if
+ *     the job is still current: reconcile suggestions, auto-apply, set the final status, finish.
+ * A failure in either stage is recorded by the worker; a retry skips a finished transcription.
  */
 
+import { randomUUID } from 'node:crypto'
 import {
   type EngineConfig,
   type ExtractionSnapshot,
   extractCandidates,
   type LlmClient,
   resolveCandidates,
+  type Transcriber,
 } from '@bullet/engine'
 import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import type { Db } from '../db/client'
-import { bullets, tasks, trackers } from '../db/schema'
+import { bullets, tasks, trackers, transcripts } from '../db/schema'
+import type { AudioStore } from '../storage/audio-store'
 import { hasPendingSuggestions, reconcileSuggestions } from '../apply/reconcile'
 import { touch } from '../sync/changes'
-import { type BulletRow, type ClaimedJob, isJobCurrent, markJobDone } from './jobs'
+import { type BulletRow, type ClaimedJob, isJobCurrent, markJobDone, setBulletProc } from './jobs'
 
 export interface ProcessDeps {
   db: Db
   llm: LlmClient
   engine: EngineConfig
   now: () => number
+  /** Absent → voice bullets are processed on their device draft. */
+  transcriber?: Transcriber
+  audioStore?: AudioStore
+}
+
+/** The user mixes these; the transcriber auto-detects, the hints only bias it. */
+const LANGUAGE_HINTS = ['en', 'ar', 'fr']
+
+/**
+ * Stage 1: transcribe the recording, then store the server transcript and (unless the user edited
+ * the text) replace the bullet text. Returns the bullet to extract from, or null if stale.
+ */
+async function transcribeStage(deps: ProcessDeps, claimed: ClaimedJob): Promise<BulletRow | null> {
+  const t = claimed.transcribe
+  if (!t || !deps.transcriber || !deps.audioStore) return claimed.bullet
+  const result = await deps.transcriber.transcribe({
+    audio: deps.audioStore.read(t.storageKey),
+    mimeType: t.mimeType,
+    languageHints: LANGUAGE_HINTS,
+  })
+  const now = deps.now()
+  return deps.db.transaction((tx) => {
+    const current = isJobCurrent(tx, claimed)
+    if (!current) return null
+    const id = randomUUID()
+    tx.insert(transcripts)
+      .values({
+        id,
+        owner_id: current.owner_id,
+        bullet_id: current.id,
+        attachment_id: t.attachmentId,
+        kind: 'server',
+        text: result.text,
+        engine: result.engine,
+        model: result.model,
+        languages: result.languages,
+        transcribed_at: now,
+        created_at: now,
+        updated_at: now,
+      })
+      .run()
+    touch(tx, current.owner_id, 'transcripts', id)
+    // The user's own words win over any transcript. A server-made text change is not an edit:
+    // text_version stays, so this same job carries on to extraction.
+    const text = current.text_edited_by_user ? current.text : result.text
+    if (text !== current.text) {
+      tx.update(bullets).set({ text, updated_at: now }).where(eq(bullets.id, current.id)).run()
+    }
+    setBulletProc(
+      tx,
+      current,
+      {
+        proc_status: 'processing',
+        proc_error_code: current.proc_error_code,
+        proc_error_message: current.proc_error_message,
+        proc_next_retry_at: null,
+      },
+      now,
+    )
+    return { ...current, text, proc_status: 'processing' as const }
+  })
 }
 
 /**
@@ -78,7 +145,8 @@ export async function processClaimedJob(
   deps: ProcessDeps,
   claimed: ClaimedJob,
 ): Promise<ProcessOutcome> {
-  const { bullet } = claimed
+  const bullet = await transcribeStage(deps, claimed)
+  if (!bullet) return 'stale'
   const snapshot = buildSnapshot(deps.db, bullet)
   const ctx = { capturedAt: bullet.captured_at, timezone: bullet.timezone }
   const candidates = await extractCandidates(

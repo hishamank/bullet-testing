@@ -6,6 +6,7 @@
  */
 
 import type {
+  AudioUploadStatus,
   BulletSource,
   ProcessingErrorCode,
   RecordState,
@@ -20,6 +21,7 @@ import type {
   TrackerConfig,
   TrackerEntryValue,
   TrackerInputType,
+  TranscriptKind,
 } from '@bullet/core'
 import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -61,6 +63,10 @@ export const bullets = sqliteTable(
     captured_at: integer('captured_at').notNull(),
     timezone: text('timezone').notNull(),
     source: text('source').$type<BulletSource>().notNull(),
+    /** The user typed/edited this text: server transcripts never overwrite it. */
+    text_edited_by_user: integer('text_edited_by_user', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     /** Client clock of the latest accepted text (capture or edit); older edits are `stale`. */
     text_updated_at: integer('text_updated_at').notNull(),
     /** Bumped on every text change, so a job started on an older text discards its result. */
@@ -75,7 +81,8 @@ export const bullets = sqliteTable(
   (t) => [index('bullets_owner_idx').on(t.owner_id, t.captured_at)],
 )
 
-export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+/** `waiting_audio`: a voice bullet whose recording has not fully arrived; queued on completion. */
+export type JobStatus = 'waiting_audio' | 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
 
 /**
  * The durable processing queue: at most one job per bullet (re-enqueueing resets it). `attempts`
@@ -190,6 +197,46 @@ export const activities = sqliteTable('activities', {
   unit: text('unit'),
 })
 
+/** A voice note's recording. The bytes live in the audio store under `storage_key`. */
+export const audioAttachments = sqliteTable(
+  'audio_attachments',
+  {
+    ...ownedFields(),
+    bullet_id: text('bullet_id')
+      .notNull()
+      .references(() => bullets.id),
+    mime_type: text('mime_type').notNull(),
+    duration_ms: integer('duration_ms').notNull(),
+    size_bytes: integer('size_bytes').notNull(),
+    sha256: text('sha256'),
+    storage_key: text('storage_key').notNull(),
+    received_bytes: integer('received_bytes').notNull().default(0),
+    upload_status: text('upload_status').$type<AudioUploadStatus>().notNull(),
+  },
+  (t) => [index('audio_bullet_idx').on(t.bullet_id)],
+)
+
+/** Transcripts of a recording: the device draft and the server's (Whisper) transcript. */
+export const transcripts = sqliteTable(
+  'transcripts',
+  {
+    ...ownedFields(),
+    bullet_id: text('bullet_id')
+      .notNull()
+      .references(() => bullets.id),
+    attachment_id: text('attachment_id')
+      .notNull()
+      .references(() => audioAttachments.id),
+    kind: text('kind').$type<TranscriptKind>().notNull(),
+    text: text('text').notNull(),
+    engine: text('engine').notNull(),
+    model: text('model'),
+    languages: text('languages', { mode: 'json' }).$type<string[]>().notNull(),
+    transcribed_at: integer('transcribed_at').notNull(),
+  },
+  (t) => [index('transcripts_attachment_idx').on(t.attachment_id)],
+)
+
 /** Push idempotency: the outcome of every op_id already handled, per owner. */
 export const syncOps = sqliteTable(
   'sync_ops',
@@ -238,6 +285,8 @@ export const schema = {
   trackers,
   trackerEntries,
   activities,
+  audioAttachments,
+  transcripts,
   syncOps,
   syncChanges,
   syncCounter,

@@ -6,6 +6,8 @@ export interface ServerConfig {
   port: number
   /** SQLite database file. */
   dbPath: string
+  /** Directory holding voice-note recordings (kept forever). */
+  audioDir: string
   /** llama.cpp `llama-server` root URL. */
   llmBaseUrl: string
   llmModel: string
@@ -20,6 +22,7 @@ export function loadServerConfig(env: Record<string, string | undefined>): Serve
     host: env.HOST?.trim() || '127.0.0.1',
     port: Number(env.PORT) || 3001,
     dbPath: env.DB_PATH?.trim() || './data/bullet.db',
+    audioDir: env.AUDIO_DIR?.trim() || './data/audio',
     llmBaseUrl: env.LLM_BASE_URL?.trim() || 'http://127.0.0.1:8080',
     llmModel: env.LLM_MODEL?.trim() || 'default',
     llmApiKey: env.LLM_API_KEY?.trim() || undefined,

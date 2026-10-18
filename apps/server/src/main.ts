@@ -5,9 +5,11 @@ import { loadServerConfig } from './config'
 import { openDb } from './db/client'
 import { recoverStuckJobs } from './queue/jobs'
 import { createWorker } from './queue/worker'
+import { createFileAudioStore } from './storage/audio-store'
 
 const config = loadServerConfig(process.env)
 const { db } = openDb(config.dbPath)
+const audioStore = createFileAudioStore(config.audioDir)
 
 const recovered = recoverStuckJobs(db, Date.now())
 if (recovered > 0) console.log(`recovered ${recovered} job(s) interrupted by the last shutdown`)
@@ -22,6 +24,8 @@ const worker = createWorker({
   }),
   engine: { ...ENGINE_CONFIG_DEFAULTS, model: config.llmModel },
   llmTimeoutMs: config.llmTimeoutMs,
+  // No transcriber is wired yet (whisper.cpp comes next): voice bullets use their device draft.
+  audioStore,
   // Processing failures are recorded on the bullet; the log line is for the operator.
   onError: (err) => console.error('[worker]', err instanceof Error ? err.message : err),
 })
@@ -29,6 +33,7 @@ worker.start()
 
 const app = createApp({
   db,
+  audioStore,
   onWorkQueued: () => worker.kick(),
   onError: (err) => console.error('[http]', err),
 })

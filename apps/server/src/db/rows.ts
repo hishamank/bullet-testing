@@ -1,7 +1,7 @@
 /** Row ↔ contract mapping: what a database row looks like on the wire (`@bullet/core` shapes). */
 
-import type { Suggestion, SyncedBullet } from '@bullet/core'
-import type { bullets, suggestions } from './schema'
+import type { AudioAttachment, Suggestion, SyncedBullet } from '@bullet/core'
+import type { audioAttachments, bullets, suggestions } from './schema'
 
 type BulletRow = typeof bullets.$inferSelect
 type SuggestionRow = typeof suggestions.$inferSelect
@@ -17,6 +17,7 @@ export function toSyncedBullet(row: BulletRow): SyncedBullet {
     captured_at: row.captured_at,
     timezone: row.timezone,
     source: row.source,
+    text_edited_by_user: row.text_edited_by_user,
     processing: {
       status: row.proc_status,
       attempts: row.proc_attempts,
@@ -34,5 +35,12 @@ export function toSuggestion(row: SuggestionRow): Suggestion {
   const { applied_before, applied_after, ...rest } = row
   void applied_before
   void applied_after
+  return rest
+}
+
+/** The server's storage key is internal: not part of the contract. */
+export function toAudioAttachment(row: typeof audioAttachments.$inferSelect): AudioAttachment {
+  const { storage_key, ...rest } = row
+  void storage_key
   return rest
 }

@@ -11,6 +11,7 @@ import { createApp } from '../app'
 import { addDevice } from '../auth/devices'
 import { openDb } from '../db/client'
 import { createWorker, type WorkerOptions } from '../queue/worker'
+import { createMemoryAudioStore } from '../storage/audio-store'
 
 // Thursday 2026-10-15 09:12 in Paris.
 export const T0 = Date.UTC(2026, 9, 15, 7, 12)
@@ -43,6 +44,7 @@ export function candidate(c: Partial<Candidate>): Candidate {
 
 export interface Harness {
   db: ReturnType<typeof openDb>['db']
+  audioStore: ReturnType<typeof createMemoryAudioStore>
   clock: { now: number }
   token: string
   ownerId: string
@@ -65,14 +67,23 @@ export function createHarness(
   const clock = { now: T0 }
   const now = () => clock.now
   const device = addDevice(db, 'test phone', now())
-  const worker = createWorker({ db, llm, engine: ENGINE_CONFIG_DEFAULTS, now, ...workerOpts })
-  const app = createApp({ db, now })
+  const audioStore = createMemoryAudioStore()
+  const worker = createWorker({
+    db,
+    llm,
+    engine: ENGINE_CONFIG_DEFAULTS,
+    now,
+    audioStore,
+    ...workerOpts,
+  })
+  const app = createApp({ db, now, audioStore })
   const auth = (token: string) => ({ authorization: `Bearer ${token}` })
 
   const request = (path: string, init: RequestInit = {}) => Promise.resolve(app.request(path, init))
 
   const h: Harness = {
     db,
+    audioStore,
     clock,
     token: device.token,
     ownerId: device.ownerId,
