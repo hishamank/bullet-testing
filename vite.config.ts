@@ -10,6 +10,7 @@ export default defineConfig({
       'apps/mobile/android/**',
       '**/expo-env.d.ts',
       '**/drizzle/meta/**',
+      '**/*.gen.ts',
     ],
   },
   lint: {

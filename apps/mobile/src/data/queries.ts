@@ -1,0 +1,55 @@
+/** Read models for the (future) screens. Pure functions over the local database. */
+
+import { type BulletProcessingStatus, displayStatus, type ProcessingError } from '@bullet/core'
+import { and, desc, eq } from 'drizzle-orm'
+import type { PhoneDb } from './db'
+import { bulletsWithPendingChanges } from './mirror'
+import { bullets, suggestions } from './schema'
+
+export interface BulletView {
+  id: string
+  text: string
+  capturedAt: number
+  source: 'text' | 'voice'
+  status: BulletProcessingStatus
+  attempts: number
+  error: ProcessingError | null
+  nextRetryAt: number | null
+  /** The server refused a change to this bullet for good (rare; the pull restores its version). */
+  syncRejection: string | null
+}
+
+/** The journal stream, newest first, with the status the UI should show. */
+export function listBullets(db: PhoneDb, limit = 200): BulletView[] {
+  const pending = bulletsWithPendingChanges(db)
+  return db
+    .select()
+    .from(bullets)
+    .where(eq(bullets.state, 'active'))
+    .orderBy(desc(bullets.captured_at))
+    .limit(limit)
+    .all()
+    .map((b) => ({
+      id: b.id,
+      text: b.text,
+      capturedAt: b.captured_at,
+      source: b.source,
+      status: displayStatus(b.server_status, pending.has(b.id)),
+      attempts: b.server_attempts,
+      error: b.server_error_code
+        ? { code: b.server_error_code, message: b.server_error_message ?? '' }
+        : null,
+      nextRetryAt: b.server_next_retry_at,
+      syncRejection: b.sync_rejection,
+    }))
+}
+
+/** Suggestions waiting for the user, oldest first. */
+export function listPendingSuggestions(db: PhoneDb) {
+  return db
+    .select()
+    .from(suggestions)
+    .where(and(eq(suggestions.state, 'active'), eq(suggestions.status, 'pending')))
+    .orderBy(suggestions.created_at)
+    .all()
+}
