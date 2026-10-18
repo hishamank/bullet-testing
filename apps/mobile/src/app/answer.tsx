@@ -64,7 +64,14 @@ export default function AnswerScreen() {
             Your answer is saved as a capture too.
           </Label>
         }
-        onMic={() => router.push('/record')}
+        onMic={() =>
+          // A voice answer links like a typed one (or closes the loop), see app/record.tsx.
+          router.push({
+            pathname: '/record',
+            params: pinned.kind === 'question' ? { question: pinned.id } : { thought: pinned.id },
+          })
+        }
+        voiceContext={pinned.id}
         onSend={(text) =>
           // An open loop's note is saved as a plain capture until the data layer can link it
           // (`resolves_thought_id`, being added alongside `thought.resolve`).

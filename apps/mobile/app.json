@@ -39,7 +39,23 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-background-task"
+      "expo-background-task",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Bullet records your voice notes. Recordings are kept on this iPhone and on your home server, and nowhere else.",
+          "speechRecognitionPermission": "Bullet shows a live English draft while you speak, recognised on this iPhone. Your recording is transcribed again at home."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Bullet records your voice notes. Recordings are kept on this iPhone and on your home server, and nowhere else.",
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -32,6 +32,15 @@ describe('composer', () => {
     ).toBe('typing')
   })
 
+  it('shows Saved after a voice note without dropping a typed draft', () => {
+    expect(composerMode(play([{ type: 'saved_elsewhere', at: 0 }]))).toBe('saved')
+    const typed = play([
+      { type: 'change', text: 'half a thought' },
+      { type: 'saved_elsewhere', at: 0 },
+    ])
+    expect(typed.text).toBe('half a thought')
+  })
+
   it('clears the page and shows Saved for about two seconds after Send', () => {
     const sent = play([{ type: 'focus' }, { type: 'change', text: 'hi' }, { type: 'sent', at: 0 }])
     expect(sent.text).toBe('')

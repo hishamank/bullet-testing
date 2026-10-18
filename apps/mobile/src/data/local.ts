@@ -71,13 +71,40 @@ function appendOp(
     .run()
 }
 
-export interface CaptureInput {
+export interface CaptureInput extends CaptureLinks {
   text: string
   source?: BulletSource
+}
+
+/** What a capture links to: it answers a question or closes an open loop "with a note". */
+export interface CaptureLinks {
   /** This capture answers a clarifying question. */
   answersQuestionId?: string
   /** This capture closes an open-loop thought "with a note" (it is resolved at once, locally). */
   resolvesThoughtId?: string
+}
+
+function linkFields(links: CaptureLinks) {
+  return {
+    ...(links.answersQuestionId ? { answers_question_id: links.answersQuestionId } : {}),
+    ...(links.resolvesThoughtId ? { resolves_thought_id: links.resolvesThoughtId } : {}),
+  }
+}
+
+/** Mirror locally what the server does for a linked capture: answer the question, close the loop. */
+function applyLinks(db: PhoneDb, links: CaptureLinks, bulletId: string, now: number) {
+  if (links.answersQuestionId) {
+    db.update(questions)
+      .set({ status: 'answered', answer_bullet_id: bulletId, resolved_at: now, updated_at: now })
+      .where(eq(questions.id, links.answersQuestionId))
+      .run()
+  }
+  if (links.resolvesThoughtId) {
+    db.update(thoughts)
+      .set({ resolved_at: now, resolved_by_bullet_id: bulletId, updated_at: now })
+      .where(and(eq(thoughts.id, links.resolvesThoughtId), isNull(thoughts.resolved_at)))
+      .run()
+  }
 }
 
 /** Save a capture on the device (status `saved_local`) and queue it for sync. Returns its id. */
@@ -92,25 +119,13 @@ export function captureBullet(db: PhoneDb, input: CaptureInput, deps: LocalDeps)
     captured_at: now,
     timezone: deps.timezone(),
     source: input.source ?? 'text',
-    ...(input.answersQuestionId ? { answers_question_id: input.answersQuestionId } : {}),
-    ...(input.resolvesThoughtId ? { resolves_thought_id: input.resolvesThoughtId } : {}),
+    ...linkFields(input),
   }
   db.transaction((tx) => {
     tx.insert(bullets)
       .values({ ...bullet, created_at: now, updated_at: now })
       .run()
-    if (input.answersQuestionId) {
-      tx.update(questions)
-        .set({ status: 'answered', answer_bullet_id: id, resolved_at: now, updated_at: now })
-        .where(eq(questions.id, input.answersQuestionId))
-        .run()
-    }
-    if (input.resolvesThoughtId) {
-      tx.update(thoughts)
-        .set({ resolved_at: now, resolved_by_bullet_id: id, updated_at: now })
-        .where(and(eq(thoughts.id, input.resolvesThoughtId), isNull(thoughts.resolved_at)))
-        .run()
-    }
+    applyLinks(tx, input, id, now)
     appendOp(
       tx,
       { op_id: deps.uuid(), type: 'bullet.create', bullet },
@@ -124,7 +139,7 @@ export function captureBullet(db: PhoneDb, input: CaptureInput, deps: LocalDeps)
   return id
 }
 
-export interface VoiceCaptureInput {
+export interface VoiceCaptureInput extends CaptureLinks {
   /** What the user sends: the live draft, or their edit of it. */
   text: string
   /** True when the user changed the draft before sending: the server transcript won't replace it. */
@@ -137,7 +152,7 @@ export interface VoiceCaptureInput {
     sizeBytes: number
     sha256: string | null
   }
-  /** The live on-device transcript (Apple SpeechAnalyzer). */
+  /** The live on-device transcript (Apple SFSpeechRecognizer, on-device only). */
   draft: { text: string; engine: string; model: string | null; languages: string[] }
 }
 
@@ -159,6 +174,7 @@ export function captureVoiceBullet(db: PhoneDb, input: VoiceCaptureInput, deps: 
     timezone: deps.timezone(),
     source: 'voice' as const,
     text_edited_by_user: input.textEditedByUser,
+    ...linkFields(input),
   }
   db.transaction((tx) => {
     tx.insert(bullets)
@@ -190,6 +206,7 @@ export function captureVoiceBullet(db: PhoneDb, input: VoiceCaptureInput, deps: 
         updated_at: now,
       })
       .run()
+    applyLinks(tx, input, id, now)
     appendOp(
       tx,
       {
@@ -207,7 +224,10 @@ export function captureVoiceBullet(db: PhoneDb, input: VoiceCaptureInput, deps: 
           },
         },
       },
-      { bullet_id: id },
+      {
+        bullet_id: id,
+        ...(input.resolvesThoughtId ? { thought_id: input.resolvesThoughtId } : {}),
+      },
       now,
     )
   })
