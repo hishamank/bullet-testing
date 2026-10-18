@@ -4,23 +4,36 @@
  * The UI reflects the change at once; the server's answer arrives with the next pull.
  */
 
-import type {
-  BulletDeleteMode,
-  BulletSource,
-  PushOp,
-  SuggestionPayload,
-  ThoughtKind,
+import {
+  type BulletDeleteMode,
+  type BulletSource,
+  type EventManualPatch,
+  entryValueFits,
+  eventManualPatchSchema,
+  type PushOp,
+  RESOLVABLE_THOUGHT_KINDS,
+  type SuggestionPayload,
+  type TaskManualPatch,
+  type ThoughtKind,
+  type TrackerEntryValue,
+  taskManualPatchSchema,
+  trackerEntryValueSchema,
 } from '@bullet/core'
-import { and, eq } from 'drizzle-orm'
+import { dateAnswerFields, yesNoAnswer } from '@bullet/engine'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { ENTITY_TABLES } from './mirror'
 import {
   audioAttachments,
   bullets,
+  events,
   outbox,
   questions,
   suggestions,
+  tasks,
   thoughts,
+  trackerEntries,
+  trackers,
   transcripts,
 } from './schema'
 
@@ -34,7 +47,13 @@ export interface LocalDeps {
 function appendOp(
   db: PhoneDb,
   op: PushOp,
-  refs: { bullet_id?: string; suggestion_id?: string; thought_id?: string; question_id?: string },
+  refs: {
+    bullet_id?: string
+    suggestion_id?: string
+    thought_id?: string
+    question_id?: string
+    entity_id?: string
+  },
   now: number,
 ) {
   db.insert(outbox)
@@ -45,6 +64,7 @@ function appendOp(
       suggestion_id: refs.suggestion_id ?? null,
       thought_id: refs.thought_id ?? null,
       question_id: refs.question_id ?? null,
+      entity_id: refs.entity_id ?? null,
       op,
       created_at: now,
     })
@@ -56,6 +76,8 @@ export interface CaptureInput {
   source?: BulletSource
   /** This capture answers a clarifying question. */
   answersQuestionId?: string
+  /** This capture closes an open-loop thought "with a note" (it is resolved at once, locally). */
+  resolvesThoughtId?: string
 }
 
 /** Save a capture on the device (status `saved_local`) and queue it for sync. Returns its id. */
@@ -71,6 +93,7 @@ export function captureBullet(db: PhoneDb, input: CaptureInput, deps: LocalDeps)
     timezone: deps.timezone(),
     source: input.source ?? 'text',
     ...(input.answersQuestionId ? { answers_question_id: input.answersQuestionId } : {}),
+    ...(input.resolvesThoughtId ? { resolves_thought_id: input.resolvesThoughtId } : {}),
   }
   db.transaction((tx) => {
     tx.insert(bullets)
@@ -82,7 +105,21 @@ export function captureBullet(db: PhoneDb, input: CaptureInput, deps: LocalDeps)
         .where(eq(questions.id, input.answersQuestionId))
         .run()
     }
-    appendOp(tx, { op_id: deps.uuid(), type: 'bullet.create', bullet }, { bullet_id: id }, now)
+    if (input.resolvesThoughtId) {
+      tx.update(thoughts)
+        .set({ resolved_at: now, resolved_by_bullet_id: id, updated_at: now })
+        .where(and(eq(thoughts.id, input.resolvesThoughtId), isNull(thoughts.resolved_at)))
+        .run()
+    }
+    appendOp(
+      tx,
+      { op_id: deps.uuid(), type: 'bullet.create', bullet },
+      {
+        bullet_id: id,
+        ...(input.resolvesThoughtId ? { thought_id: input.resolvesThoughtId } : {}),
+      },
+      now,
+    )
   })
   return id
 }
@@ -372,4 +409,222 @@ export function dismissQuestion(db: PhoneDb, questionId: string, deps: LocalDeps
       now,
     )
   })
+}
+
+/** Close an open loop (a `to_check` / `question` thought). Throws for any other kind. */
+export function resolveThought(db: PhoneDb, thoughtId: string, deps: LocalDeps): void {
+  const now = deps.now()
+  db.transaction((tx) => {
+    const t = tx.select().from(thoughts).where(eq(thoughts.id, thoughtId)).get()
+    if (!t || t.state !== 'active') throw new Error(`thought ${thoughtId} not found`)
+    if (!(RESOLVABLE_THOUGHT_KINDS as readonly ThoughtKind[]).includes(t.kind)) {
+      throw new Error(`a ${t.kind} thought is not an open loop`)
+    }
+    if (t.resolved_at === null) {
+      tx.update(thoughts)
+        .set({ resolved_at: now, resolved_by_bullet_id: null, updated_at: now })
+        .where(eq(thoughts.id, thoughtId))
+        .run()
+    }
+    appendOp(
+      tx,
+      { op_id: deps.uuid(), type: 'thought.resolve', thought_id: thoughtId },
+      { thought_id: thoughtId },
+      now,
+    )
+  })
+}
+
+/** Re-open a resolved thought. */
+export function unresolveThought(db: PhoneDb, thoughtId: string, deps: LocalDeps): void {
+  const now = deps.now()
+  db.transaction((tx) => {
+    tx.update(thoughts)
+      .set({ resolved_at: null, resolved_by_bullet_id: null, updated_at: now })
+      .where(eq(thoughts.id, thoughtId))
+      .run()
+    appendOp(
+      tx,
+      { op_id: deps.uuid(), type: 'thought.unresolve', thought_id: thoughtId },
+      { thought_id: thoughtId },
+      now,
+    )
+  })
+}
+
+/**
+ * Answer a clarifying question by tapping one of its options. Shown at once: the question is
+ * answered and its suggestion accepted (a `date` answer also moves the task/event's date; a
+ * `new_tracker` "No" dismisses it). The server applies it for real; the next pull brings that.
+ */
+export function answerQuestion(
+  db: PhoneDb,
+  questionId: string,
+  option: string,
+  deps: LocalDeps,
+): void {
+  const now = deps.now()
+  db.transaction((tx) => {
+    const q = tx.select().from(questions).where(eq(questions.id, questionId)).get()
+    if (!q || q.state !== 'active') throw new Error(`question ${questionId} not found`)
+    if (!q.options.includes(option)) throw new Error(`"${option}" is not an option`)
+    tx.update(questions)
+      .set({ status: 'answered', answer_option: option, resolved_at: now, updated_at: now })
+      .where(eq(questions.id, questionId))
+      .run()
+
+    const refs: Parameters<typeof appendOp>[2] = { question_id: questionId }
+    const s = q.suggestion_id
+      ? tx.select().from(suggestions).where(eq(suggestions.id, q.suggestion_id)).get()
+      : undefined
+    if (s && s.state === 'active') {
+      refs.suggestion_id = s.id
+      const setSuggestion = (patch: Partial<typeof suggestions.$inferInsert>) =>
+        tx
+          .update(suggestions)
+          .set({ ...patch, updated_at: now })
+          .where(eq(suggestions.id, s.id))
+          .run()
+      if (q.topic === 'date' && (s.target_kind === 'task' || s.target_kind === 'event')) {
+        const kind = s.target_kind
+        const b = tx.select().from(bullets).where(eq(bullets.id, s.source_bullet_id)).get()
+        const ctx = { capturedAt: b?.captured_at ?? now, timezone: b?.timezone ?? deps.timezone() }
+        if (s.status === 'pending') {
+          const fields = dateAnswerFields(kind, s.payload, option, ctx)
+          if (fields) {
+            const payload = { ...s.payload, ...fields }
+            const edited = JSON.stringify(payload) !== JSON.stringify(s.payload)
+            setSuggestion({ status: edited ? 'edited' : 'accepted', payload, resolved_at: now })
+          }
+        } else if (s.applied_entity_id) {
+          const table = kind === 'task' ? tasks : events
+          const row = tx.select().from(table).where(eq(table.id, s.applied_entity_id)).get()
+          const fields = row ? dateAnswerFields(kind, row, option, ctx) : null
+          if (row && fields) {
+            tx.update(table)
+              .set({ ...fields, updated_at: now })
+              .where(eq(table.id, row.id))
+              .run()
+            setSuggestion({ payload: { ...s.payload, ...fields } })
+            refs.entity_id = row.id
+          }
+        }
+      } else if (q.topic === 'new_tracker' && s.status === 'pending') {
+        const yes = yesNoAnswer(option)
+        if (yes !== null) setSuggestion({ status: yes ? 'accepted' : 'rejected', resolved_at: now })
+      }
+    }
+    appendOp(
+      tx,
+      { op_id: deps.uuid(), type: 'question.answer', question_id: questionId, option },
+      refs,
+      now,
+    )
+  })
+}
+
+// --- light manual editing: tasks, events, tracker entries (no manual creation in slice 1) ---
+
+type ManualTable = typeof tasks
+
+/**
+ * Write a hand edit (or delete) locally — stamping `user_edited_at` like the server will — and
+ * queue its op, in one transaction. Throws when the row is unknown or already deleted.
+ */
+function editByHand(
+  db: PhoneDb,
+  table: unknown,
+  id: string,
+  fields: Record<string, unknown>,
+  check: (row: Record<string, unknown>) => void,
+  op: PushOp,
+  deps: LocalDeps,
+): void {
+  const t = table as ManualTable
+  const now = deps.now()
+  db.transaction((tx) => {
+    const row = tx.select().from(t).where(eq(t.id, id)).get() as Record<string, unknown> | undefined
+    if (!row || row.state !== 'active') throw new Error(`${op.type}: ${id} not found`)
+    check({ ...row, ...fields })
+    tx.update(t)
+      .set({ ...fields, user_edited_at: now, updated_at: now } as Partial<
+        ManualTable['$inferInsert']
+      >)
+      .where(eq(t.id, id))
+      .run()
+    appendOp(tx, op, { entity_id: id }, now)
+  })
+}
+
+const noCheck = () => {}
+
+/** Complete / reopen (`status: 'done' | 'todo'`), reschedule (`due_at`, null clears) or rename. */
+export function updateTask(
+  db: PhoneDb,
+  taskId: string,
+  patch: TaskManualPatch,
+  deps: LocalDeps,
+): void {
+  const p = taskManualPatchSchema.parse(patch)
+  const op: PushOp = { op_id: deps.uuid(), type: 'task.update', task_id: taskId, patch: p }
+  editByHand(db, tasks, taskId, p, noCheck, op, deps)
+}
+
+export function deleteTask(db: PhoneDb, taskId: string, deps: LocalDeps): void {
+  const op: PushOp = { op_id: deps.uuid(), type: 'task.delete', task_id: taskId }
+  editByHand(db, tasks, taskId, { state: 'deleted' }, noCheck, op, deps)
+}
+
+/** Move (`starts_at`, `ends_at`; null clears the end) or rename. Throws if it would end first. */
+export function updateEvent(
+  db: PhoneDb,
+  eventId: string,
+  patch: EventManualPatch,
+  deps: LocalDeps,
+): void {
+  const p = eventManualPatchSchema.parse(patch)
+  const op: PushOp = { op_id: deps.uuid(), type: 'event.update', event_id: eventId, patch: p }
+  const check = (e: Record<string, unknown>) => {
+    if (typeof e.ends_at === 'number' && e.ends_at < Number(e.starts_at)) {
+      throw new Error('an event cannot end before it starts')
+    }
+  }
+  editByHand(db, events, eventId, p, check, op, deps)
+}
+
+export function deleteEvent(db: PhoneDb, eventId: string, deps: LocalDeps): void {
+  const op: PushOp = { op_id: deps.uuid(), type: 'event.delete', event_id: eventId }
+  editByHand(db, events, eventId, { state: 'deleted' }, noCheck, op, deps)
+}
+
+/** Correct a reading. Throws when the value doesn't fit its tracker. */
+export function updateTrackerEntry(
+  db: PhoneDb,
+  entryId: string,
+  value: TrackerEntryValue,
+  deps: LocalDeps,
+): void {
+  const v = trackerEntryValueSchema.parse(value)
+  const op: PushOp = {
+    op_id: deps.uuid(),
+    type: 'tracker_entry.update',
+    tracker_entry_id: entryId,
+    patch: { value: v },
+  }
+  const check = (e: Record<string, unknown>) => {
+    const tracker = db
+      .select()
+      .from(trackers)
+      .where(eq(trackers.id, String(e.tracker_id)))
+      .get()
+    if (tracker && !entryValueFits(v, tracker.config)) {
+      throw new Error(`value does not fit tracker "${tracker.name}"`)
+    }
+  }
+  editByHand(db, trackerEntries, entryId, { value: v }, check, op, deps)
+}
+
+export function deleteTrackerEntry(db: PhoneDb, entryId: string, deps: LocalDeps): void {
+  const op: PushOp = { op_id: deps.uuid(), type: 'tracker_entry.delete', tracker_entry_id: entryId }
+  editByHand(db, trackerEntries, entryId, { state: 'deleted' }, noCheck, op, deps)
 }

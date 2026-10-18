@@ -55,6 +55,7 @@ export const bullets = sqliteTable(
       .notNull()
       .default(false),
     answers_question_id: text('answers_question_id'),
+    resolves_thought_id: text('resolves_thought_id'),
     server_status: text('server_status').$type<ServerBulletProcessingStatus>(),
     server_attempts: integer('server_attempts').notNull().default(0),
     server_error_code: text('server_error_code').$type<ProcessingErrorCode>(),
@@ -77,6 +78,8 @@ export const outbox = sqliteTable(
     suggestion_id: text('suggestion_id'),
     thought_id: text('thought_id'),
     question_id: text('question_id'),
+    /** A task / event / tracker entry the op edits by hand. */
+    entity_id: text('entity_id'),
     op: text('op', { mode: 'json' }).$type<PushOp>().notNull(),
     created_at: integer('created_at').notNull(),
     attempts: integer('attempts').notNull().default(0),
@@ -85,6 +88,7 @@ export const outbox = sqliteTable(
   (t) => [
     index('outbox_bullet_idx').on(t.bullet_id),
     index('outbox_suggestion_idx').on(t.suggestion_id),
+    index('outbox_entity_idx').on(t.entity_id),
   ],
 )
 
@@ -122,6 +126,8 @@ export const tasks = sqliteTable('tasks', {
   notes: text('notes'),
   due_at: integer('due_at'),
   priority: text('priority').$type<TaskPriority>(),
+  /** Last manual edit/delete (null if never): nothing automatic overwrites it after that. */
+  user_edited_at: integer('user_edited_at'),
 })
 
 export const events = sqliteTable('events', {
@@ -133,6 +139,7 @@ export const events = sqliteTable('events', {
   all_day: integer('all_day', { mode: 'boolean' }).notNull(),
   location: text('location'),
   notes: text('notes'),
+  user_edited_at: integer('user_edited_at'),
 })
 
 export const trackers = sqliteTable('trackers', {
@@ -149,6 +156,7 @@ export const trackerEntries = sqliteTable('tracker_entries', {
   tracker_id: text('tracker_id').notNull(),
   value: text('value', { mode: 'json' }).$type<TrackerEntryValue>().notNull(),
   logged_at: integer('logged_at').notNull(),
+  user_edited_at: integer('user_edited_at'),
 })
 
 export const activities = sqliteTable('activities', {
@@ -210,6 +218,9 @@ export const thoughts = sqliteTable(
     span_end: integer('span_end'),
     kind: text('kind').$type<ThoughtKind>().notNull(),
     kind_source: text('kind_source').$type<'engine' | 'user'>().notNull(),
+    /** Open loops (`to_check` / `question`): when resolved, and the note capture that did it. */
+    resolved_at: integer('resolved_at'),
+    resolved_by_bullet_id: text('resolved_by_bullet_id'),
   },
   (t) => [index('thoughts_bullet_idx').on(t.source_bullet_id)],
 )
@@ -228,6 +239,7 @@ export const questions = sqliteTable(
     options: text('options', { mode: 'json' }).$type<string[]>().notNull(),
     status: text('status').$type<QuestionStatus>().notNull(),
     answer_bullet_id: text('answer_bullet_id'),
+    answer_option: text('answer_option'),
     resolved_at: integer('resolved_at'),
   },
   (t) => [index('questions_bullet_idx').on(t.source_bullet_id)],

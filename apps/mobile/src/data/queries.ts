@@ -1,7 +1,12 @@
 /** Read models for the (future) screens. Pure functions over the local database. */
 
-import { type BulletProcessingStatus, displayStatus, type ProcessingError } from '@bullet/core'
-import { and, desc, eq } from 'drizzle-orm'
+import {
+  type BulletProcessingStatus,
+  displayStatus,
+  type ProcessingError,
+  RESOLVABLE_THOUGHT_KINDS,
+} from '@bullet/core'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { bulletsWithPendingChanges } from './mirror'
 import { bullets, questions, suggestions, thoughts } from './schema'
@@ -71,5 +76,21 @@ export function listOpenQuestions(db: PhoneDb) {
     .from(questions)
     .where(and(eq(questions.state, 'active'), eq(questions.status, 'open')))
     .orderBy(questions.created_at)
+    .all()
+}
+
+/** Open loops: unresolved `to_check` / `question` thoughts, oldest first. */
+export function listOpenLoops(db: PhoneDb) {
+  return db
+    .select()
+    .from(thoughts)
+    .where(
+      and(
+        eq(thoughts.state, 'active'),
+        inArray(thoughts.kind, [...RESOLVABLE_THOUGHT_KINDS]),
+        isNull(thoughts.resolved_at),
+      ),
+    )
+    .orderBy(thoughts.created_at)
     .all()
 }
