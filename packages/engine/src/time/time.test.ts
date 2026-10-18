@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vite-plus/test'
-import { resolveEnd, resolveWhen } from './when'
+import { resolveDateAnswer, resolveEnd, resolveWhen } from './when'
 import { safeTimezone, zonedParts, zonedToEpoch } from './zoned'
 
 // Thursday 2026-10-15 09:12 in Paris (CEST, UTC+2) = 07:12Z.
@@ -176,5 +176,22 @@ describe('resolveEnd', () => {
   test('an end before the start is dropped', () => {
     const start = paris(10, 16, 15)
     expect(resolveEnd('yesterday', start, PARIS)).toBeNull()
+  })
+})
+
+describe('resolveDateAnswer', () => {
+  test('"Today" / "Next Thursday" move the day and keep the time of day', () => {
+    const at = paris(10, 15, 15)
+    expect(resolveDateAnswer('Today', at, ctx)).toBe(at)
+    expect(resolveDateAnswer('Next Thursday', at, ctx)).toBe(paris(10, 22, 15))
+  })
+
+  test('without a current value a day is its local midnight; an option with a time wins', () => {
+    expect(resolveDateAnswer('Next Thursday', null, ctx)).toBe(paris(10, 22))
+    expect(resolveDateAnswer('tomorrow 8am', paris(10, 15, 15), ctx)).toBe(paris(10, 16, 8))
+  })
+
+  test('an option naming no date is null', () => {
+    expect(resolveDateAnswer('Yes', null, ctx)).toBeNull()
   })
 })

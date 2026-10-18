@@ -3,6 +3,7 @@
 export {
   ambiguousWeekday,
   type CaptureContext,
+  resolveDateAnswer,
   resolveEnd,
   resolveWhen,
   type ResolvedWhen,
