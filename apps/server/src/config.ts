@@ -1,5 +1,7 @@
 /** Server configuration, read from the environment once at startup. */
 
+import { ENGINE_CONFIG_DEFAULTS, type EngineConfig } from '@bullet/engine'
+
 export interface ServerConfig {
   /** Interface to bind. Defaults to loopback; expose over Tailscale deliberately. */
   host: string
@@ -26,6 +28,16 @@ export interface ServerConfig {
   whisperPrompt: string | undefined
   /** Deadline for one transcription. */
   transcribeTimeoutMs: number
+  /**
+   * Let confident readings with a value (mood 4, weight 72, ran 5 km) apply automatically.
+   * Default false: they wait for a tap, so a wrong value is never written silently.
+   */
+  autoApplyValueRecords: boolean
+}
+
+/** "true", "1", "yes" or "on" (any case) → true; anything else, or unset → false. */
+export function envFlag(value: string | undefined): boolean {
+  return ['true', '1', 'yes', 'on'].includes(value?.trim().toLowerCase() ?? '')
 }
 
 export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
@@ -42,5 +54,15 @@ export function loadServerConfig(env: Record<string, string | undefined>): Serve
     whisperModel: env.WHISPER_MODEL?.trim() || 'large-v3-turbo',
     whisperPrompt: env.WHISPER_PROMPT?.trim() || undefined,
     transcribeTimeoutMs: Number(env.TRANSCRIBE_TIMEOUT_MS) || 600_000,
+    autoApplyValueRecords: envFlag(env.AUTO_APPLY_VALUE_RECORDS),
+  }
+}
+
+/** The engine's settings from the server's: the model label and the auto-apply gates. */
+export function engineConfig(config: ServerConfig): EngineConfig {
+  return {
+    ...ENGINE_CONFIG_DEFAULTS,
+    model: config.llmModel,
+    autoApplyValueRecords: config.autoApplyValueRecords,
   }
 }

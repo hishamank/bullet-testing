@@ -108,20 +108,21 @@ cp apps/server/.env.example apps/server/.env
 
 Edit `apps/server/.env` (git-ignored; `start`, `dev` and the `device:*` scripts load it):
 
-| Variable                | Default                 | Notes                                                |
-| ----------------------- | ----------------------- | ---------------------------------------------------- |
-| `HOST`                  | `127.0.0.1`             | Keep loopback; Tailscale serve proxies to it         |
-| `PORT`                  | `3001`                  |                                                      |
-| `DB_PATH`               | `./data/bullet.db`      | Relative to `apps/server`                            |
-| `AUDIO_DIR`             | `./data/audio`          | Recordings, kept forever. Back this up with the DB   |
-| `LLM_BASE_URL`          | `http://127.0.0.1:8080` | llama-server root                                    |
-| `LLM_MODEL`             | `default`               | Label sent as `model`; match `--alias`               |
-| `LLM_API_KEY`           | unset                   | Only if llama-server has `--api-key`                 |
-| `LLM_TIMEOUT_MS`        | `120000`                | Per model call; `180000` suits the iGPU              |
-| `WHISPER_BASE_URL`      | unset                   | Unset = no server transcription (device drafts only) |
-| `WHISPER_MODEL`         | `large-v3-turbo`        | Recorded on each server transcript                   |
-| `WHISPER_PROMPT`        | unset                   | Optional initial prompt (names, spelling style)      |
-| `TRANSCRIBE_TIMEOUT_MS` | `600000`                | Per recording                                        |
+| Variable                   | Default                 | Notes                                                                                                                |
+| -------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `HOST`                     | `127.0.0.1`             | Keep loopback; Tailscale serve proxies to it                                                                         |
+| `PORT`                     | `3001`                  |                                                                                                                      |
+| `DB_PATH`                  | `./data/bullet.db`      | Relative to `apps/server`                                                                                            |
+| `AUDIO_DIR`                | `./data/audio`          | Recordings, kept forever. Back this up with the DB                                                                   |
+| `LLM_BASE_URL`             | `http://127.0.0.1:8080` | llama-server root                                                                                                    |
+| `LLM_MODEL`                | `default`               | Label sent as `model`; match `--alias`                                                                               |
+| `LLM_API_KEY`              | unset                   | Only if llama-server has `--api-key`                                                                                 |
+| `LLM_TIMEOUT_MS`           | `120000`                | Per model call; `180000` suits the iGPU                                                                              |
+| `WHISPER_BASE_URL`         | unset                   | Unset = no server transcription (device drafts only)                                                                 |
+| `WHISPER_MODEL`            | `large-v3-turbo`        | Recorded on each server transcript                                                                                   |
+| `WHISPER_PROMPT`           | unset                   | Optional initial prompt (names, spelling style)                                                                      |
+| `TRANSCRIBE_TIMEOUT_MS`    | `600000`                | Per recording                                                                                                        |
+| `AUTO_APPLY_VALUE_RECORDS` | `false`                 | `true`: confident readings with a value (mood 4, 5 km) apply automatically, with Undo; otherwise they wait for a tap |
 
 Create a token for the phone (shown once; it is stored hashed):
 
