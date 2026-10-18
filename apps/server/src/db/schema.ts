@@ -73,6 +73,8 @@ export const bullets = sqliteTable(
       .default(false),
     /** This capture answers a clarifying question. */
     answers_question_id: text('answers_question_id'),
+    /** This capture closes an open-loop thought "with a note". */
+    resolves_thought_id: text('resolves_thought_id'),
     /** Client clock of the latest accepted text (capture or edit); older edits are `stale`. */
     text_updated_at: integer('text_updated_at').notNull(),
     /** Bumped on every text change, so a job started on an older text discards its result. */
@@ -161,6 +163,9 @@ export const thoughts = sqliteTable(
     span_end: integer('span_end'),
     kind: text('kind').$type<ThoughtKind>().notNull(),
     kind_source: text('kind_source').$type<'engine' | 'user'>().notNull(),
+    /** Open loops (`to_check` / `question`): when the user closed it, and the note that did. */
+    resolved_at: integer('resolved_at'),
+    resolved_by_bullet_id: text('resolved_by_bullet_id'),
   },
   (t) => [index('thoughts_bullet_idx').on(t.source_bullet_id)],
 )
@@ -181,6 +186,8 @@ export const questions = sqliteTable(
     options: text('options', { mode: 'json' }).$type<string[]>().notNull(),
     status: text('status').$type<QuestionStatus>().notNull(),
     answer_bullet_id: text('answer_bullet_id'),
+    /** The option the user tapped (`question.answer`). */
+    answer_option: text('answer_option'),
     resolved_at: integer('resolved_at'),
   },
   (t) => [index('questions_bullet_idx').on(t.source_bullet_id)],
@@ -196,6 +203,8 @@ export const tasks = sqliteTable(
     notes: text('notes'),
     due_at: integer('due_at'),
     priority: text('priority').$type<TaskPriority>(),
+    /** Last manual edit/delete; nothing automatic overwrites the row after it. */
+    user_edited_at: integer('user_edited_at'),
   },
   (t) => [index('tasks_owner_idx').on(t.owner_id, t.status)],
 )
@@ -211,6 +220,7 @@ export const events = sqliteTable(
     all_day: integer('all_day', { mode: 'boolean' }).notNull(),
     location: text('location'),
     notes: text('notes'),
+    user_edited_at: integer('user_edited_at'),
   },
   (t) => [index('events_owner_idx').on(t.owner_id, t.starts_at)],
 )
@@ -231,6 +241,7 @@ export const trackerEntries = sqliteTable('tracker_entries', {
     .references(() => trackers.id),
   value: text('value', { mode: 'json' }).$type<TrackerEntryValue>().notNull(),
   logged_at: integer('logged_at').notNull(),
+  user_edited_at: integer('user_edited_at'),
 })
 
 export const activities = sqliteTable('activities', {

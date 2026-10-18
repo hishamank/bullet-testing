@@ -8,8 +8,10 @@ import { nonEmptyString, uuid } from '../primitives'
  * optional: ignoring one changes nothing, and the related suggestion stays reviewable as is.
  * Reflective, open-ended questions are slice 2 (and will be optional and never nagging).
  *
- * At most {@link MAX_QUESTIONS_PER_CAPTURE} per capture. Answering is itself a capture: a bullet
- * whose `answers_question_id` points here (the question then becomes `answered`).
+ * At most {@link MAX_QUESTIONS_PER_CAPTURE} per capture. The user answers either with a capture (a
+ * bullet whose `answers_question_id` points here) or by tapping one of the `options`
+ * (`question.answer`, which acts on the linked suggestion with no model call). Either way the
+ * question becomes `answered`.
  */
 export const MAX_QUESTIONS_PER_CAPTURE = 3
 
@@ -41,8 +43,10 @@ export const questionSelectSchema = z.object({
   /** Quick answers to offer as buttons; empty for free text. */
   options: z.array(nonEmptyString()).max(4),
   status: questionStatusSchema,
-  /** The capture that answered it. */
+  /** The capture that answered it (a typed or spoken answer). */
   answer_bullet_id: uuid().nullable(),
+  /** The option the user tapped (`question.answer`), if answered that way. */
+  answer_option: nonEmptyString().nullable().default(null),
   resolved_at: z.number().int().nonnegative().nullable(),
 })
 export type Question = z.infer<typeof questionSelectSchema>

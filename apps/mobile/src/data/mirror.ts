@@ -1,7 +1,8 @@
 /**
  * Merging a pull into the local mirror. Server rows replace local ones — except where the user
  * has a change still in the outbox: then the local version wins until the server acknowledges it
- * (only the server's processing fields are taken for such a bullet). Runs in one transaction with
+ * (only the server's processing fields are taken for such a bullet). That covers hand edits of
+ * tasks, events and tracker entries too (the outbox's `entity_id`). Runs in one transaction with
  * the cursor update, so a crash can never skip or half-apply a page.
  */
 
@@ -60,8 +61,14 @@ function local<T extends { owner_id: string }>(row: T): Omit<T, 'owner_id'> {
   return rest
 }
 
-function upsert(db: PhoneDb, table: typeof tasks, rows: { id: string }[]): void {
+function upsert(
+  db: PhoneDb,
+  table: typeof tasks,
+  rows: { id: string }[],
+  pending: Set<unknown> = new Set(),
+): void {
   for (const row of rows) {
+    if (pending.has(row.id)) continue
     const values = row as typeof tasks.$inferInsert
     db.insert(table).values(values).onConflictDoUpdate({ target: table.id, set: values }).run()
   }
@@ -75,6 +82,7 @@ export function applyPull(db: PhoneDb, page: PullResponse): void {
         suggestion_id: outbox.suggestion_id,
         thought_id: outbox.thought_id,
         question_id: outbox.question_id,
+        entity_id: outbox.entity_id,
       })
       .from(outbox)
       .all()
@@ -82,6 +90,7 @@ export function applyPull(db: PhoneDb, page: PullResponse): void {
     const pendingSuggestions = new Set(pending.map((p) => p.suggestion_id).filter(Boolean))
     const pendingThoughts = new Set(pending.map((p) => p.thought_id).filter(Boolean))
     const pendingQuestions = new Set(pending.map((p) => p.question_id).filter(Boolean))
+    const pendingEntities = new Set(pending.map((p) => p.entity_id).filter(Boolean))
 
     for (const b of page.changes.bullets) {
       const proc = serverProcessing(b)
@@ -109,11 +118,11 @@ export function applyPull(db: PhoneDb, page: PullResponse): void {
 
     // The generic upsert treats every mirror table alike (same id/state/timestamps columns).
     const t = (table: unknown) => table as typeof tasks
-    upsert(tx, tasks, page.changes.tasks.map(local))
-    upsert(tx, t(events), page.changes.events.map(local))
-    upsert(tx, t(trackers), page.changes.trackers.map(local))
-    upsert(tx, t(trackerEntries), page.changes.tracker_entries.map(local))
-    upsert(tx, t(activities), page.changes.activities.map(local))
+    upsert(tx, tasks, page.changes.tasks.map(local), pendingEntities)
+    upsert(tx, t(events), page.changes.events.map(local), pendingEntities)
+    upsert(tx, t(trackers), page.changes.trackers.map(local), pendingEntities)
+    upsert(tx, t(trackerEntries), page.changes.tracker_entries.map(local), pendingEntities)
+    upsert(tx, t(activities), page.changes.activities.map(local), pendingEntities)
 
     // Recordings: the server's view of the upload wins; the local file path is ours to keep.
     for (const a of page.changes.audio_attachments) {
@@ -131,7 +140,7 @@ export function applyPull(db: PhoneDb, page: PullResponse): void {
         .run()
     }
 
-    // Thoughts and questions: local re-classify/dismiss wins until acknowledged.
+    // Thoughts and questions: local re-classify/resolve/dismiss/answer wins until acknowledged.
     for (const t of page.changes.thoughts) {
       if (pendingThoughts.has(t.id)) continue
       const { span, ...rest } = local(t)

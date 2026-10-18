@@ -284,3 +284,25 @@ export function ambiguousWeekday(text: string, ctx: CaptureContext): string | nu
   const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
   return names[now.weekday] ?? null
 }
+
+/**
+ * A tapped answer to a date clarifying question ("Today", "Next Thursday"): the day it names,
+ * against the capture context, keeping the time of day `current` already had (in the capture's
+ * zone) when the option names only a day. Null when the option names no date.
+ */
+export function resolveDateAnswer(
+  option: string,
+  current: number | null,
+  ctx: CaptureContext,
+): number | null {
+  const when = resolveWhen(option, ctx, 'future')
+  if (!when) return null
+  if (when.hasTime || current === null) return when.at
+  const timezone = safeTimezone(ctx.timezone)
+  const day = zonedParts(when.at, timezone)
+  const time = zonedParts(current, timezone)
+  return zonedToEpoch(
+    { year: day.year, month: day.month, day: day.day, hour: time.hour, minute: time.minute },
+    timezone,
+  )
+}

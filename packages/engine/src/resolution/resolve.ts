@@ -82,6 +82,12 @@ export interface ResolveOutcome {
 type Ask = (q: Omit<QuestionDraft, 'suggestionIndex'>) => void
 
 /**
+ * Offers an extra suggestion alongside the one being resolved, with a question about it (e.g. a
+ * tracker definition with "Start tracking X?"). It is placed right after the resolved suggestion.
+ */
+type Offer = (s: ResolvedSuggestion, q: Omit<QuestionDraft, 'suggestionIndex'>) => void
+
+/**
  * Turn a {@link ResolvedSuggestion} draft into a full Suggestion INSERT, attaching provenance.
  *
  * The apply/commit engine RE-VALIDATES the payload against the target kind's INSERT schema, and
@@ -202,6 +208,14 @@ export function resolveCandidates(
   let skipped = 0
   // A question raised while resolving a candidate is about the suggestion it pushes next.
   const ask: Ask = (q) => questions.push({ ...q, suggestionIndex: suggestions.length })
+  const offers: Parameters<Offer>[] = []
+  const offer: Offer = (o, q) => offers.push([o, q])
+  const flushOffers = () => {
+    for (const [o, q] of offers.splice(0)) {
+      questions.push({ ...q, suggestionIndex: suggestions.length })
+      suggestions.push(o)
+    }
+  }
 
   for (const candidate of candidates) {
     // Small local models (e.g. gemma3:4b) sometimes WRAP field values one level deep under
@@ -210,8 +224,9 @@ export function resolveCandidates(
     const normalized: Candidate = { ...candidate, fields: flattenFields(candidate.fields) }
     switch (normalized.orientation) {
       case 'happened': {
-        const resolved = resolveHappened(normalized, snapshot, config, ctx, ask)
+        const resolved = resolveHappened(normalized, snapshot, config, ctx, offer)
         suggestions.push(resolved)
+        flushOffers()
         break
       }
       case 'future_oneoff': {
@@ -251,7 +266,7 @@ function resolveHappened(
   snapshot: ExtractionSnapshot,
   config: EngineConfig,
   ctx: CaptureContext,
-  ask: Ask,
+  offer: Offer,
 ): ResolvedSuggestion {
   const occurredAt = recordTime(candidate, ctx)
   const trackerHit = matchTracker(candidate, snapshot.trackers)
@@ -290,16 +305,30 @@ function resolveHappened(
   // consistent with the value rule: no WRONG value is ever silently written — only a value-less
   // record can auto-apply.
   const activity = createActivity(candidate, config, occurredAt)
-  // A reading with a number but no tracker to log it under: offer to start tracking it.
+  // A reading with a number but no tracker to log it under: offer to start tracking it. The
+  // reading itself stays an activity (activity-first); the offer is a tracker DEFINITION, which is
+  // never auto-applied — answering "Yes" is the user's confirmation.
   if (
     candidate.kind === 'tracker_entry' &&
     numberFieldOrNull(candidate.fields, ['value', 'quantity']) !== null
   ) {
-    ask({
-      topic: 'new_tracker',
-      text: `Start tracking "${String(activity.payload.name)}"?`,
-      options: ['Yes', 'No'],
-    })
+    const name = String(activity.payload.name)
+    const unit = typeof activity.payload.unit === 'string' ? activity.payload.unit : undefined
+    offer(
+      {
+        target_kind: 'tracker',
+        operation: 'create',
+        target_id: null,
+        payload: {
+          name,
+          input_type: 'number',
+          config: { input_type: 'number', ...(unit ? { unit } : {}) },
+        },
+        confidence: activity.confidence,
+        tier: assignTier('tracker', 'create', activity.confidence, config),
+      },
+      { topic: 'new_tracker', text: `Start tracking "${name}"?`, options: ['Yes', 'No'] },
+    )
   }
   return activity
 }

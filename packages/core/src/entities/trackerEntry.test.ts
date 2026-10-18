@@ -16,6 +16,7 @@ const validEntry = {
   tracker_id: '33333333-3333-4333-8333-333333333333',
   value: 4,
   logged_at: 1_700_000_000_000,
+  user_edited_at: null,
 }
 
 test('tracker entry select: valid numeric value parses', () => {

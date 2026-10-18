@@ -10,6 +10,7 @@ const validBullet = {
   source: 'text' as const,
   text_edited_by_user: false,
   answers_question_id: null,
+  resolves_thought_id: null,
   created_at: 1_700_000_000_000,
   updated_at: 1_700_000_000_000,
   state: 'active' as const,

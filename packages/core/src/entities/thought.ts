@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { ownedTimestampedStateFields } from '../base'
-import { nonEmptyString, uuid } from '../primitives'
+import { nonEmptyString, timestampMs, uuid } from '../primitives'
 
 /**
  * Thought — one separate thing the user said or typed within a capture ("capture → thoughts →
@@ -37,6 +37,15 @@ export const thoughtKindSchema = z.enum([
 ])
 export type ThoughtKind = z.infer<typeof thoughtKindSchema>
 
+/**
+ * Open loops: the kinds the user can mark resolved ("checked it", "answered it"), either directly
+ * or with a note (a capture with `resolves_thought_id`).
+ */
+export const RESOLVABLE_THOUGHT_KINDS = [
+  'to_check',
+  'question',
+] as const satisfies readonly ThoughtKind[]
+
 /** Who set the kind: the engine's classification, or the user's re-classification (sticky). */
 export const thoughtKindSourceSchema = z.enum(['engine', 'user'])
 
@@ -58,5 +67,9 @@ export const thoughtSelectSchema = z.object({
   span: textSpanSchema.nullable(),
   kind: thoughtKindSchema,
   kind_source: thoughtKindSourceSchema,
+  /** When the user closed this open loop (`to_check` / `question`); null while open. */
+  resolved_at: timestampMs().nullable().default(null),
+  /** The capture that closed it "with a note", if any. */
+  resolved_by_bullet_id: uuid().nullable().default(null),
 })
 export type Thought = z.infer<typeof thoughtSelectSchema>

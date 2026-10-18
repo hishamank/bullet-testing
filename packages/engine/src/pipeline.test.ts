@@ -325,11 +325,21 @@ describe('processCapture: capture → thoughts → things', () => {
       ],
     )
     const out = await processCapture({ llm, config }, { text: 'slept 6 hours', ...CTX }, EMPTY)
-    expect(out.things[0]?.target_kind).toBe('activity')
+    // The reading stays an activity; the offer is a tracker definition the question is about.
+    expect(out.things.map((t) => [t.target_kind, t.tier])).toEqual([
+      ['activity', 'suggest'],
+      ['tracker', expect.not.stringMatching(/^auto$/)],
+    ])
+    expect(out.things[1]?.payload).toEqual({
+      name: 'sleep',
+      input_type: 'number',
+      config: { input_type: 'number' },
+    })
     expect(out.questions[0]).toMatchObject({
       topic: 'new_tracker',
       text: 'Start tracking "sleep"?',
       options: ['Yes', 'No'],
+      thingIndex: 1,
     })
   })
 
@@ -339,7 +349,8 @@ describe('processCapture: capture → thoughts → things', () => {
       (t) => [{ kind: 'tracker_entry', orientation: 'happened', fields: { name: t, value: 1 } }],
     )
     const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
-    expect(out.things).toHaveLength(5)
+    // Each reading: an activity plus a tracker offer.
+    expect(out.things).toHaveLength(10)
     expect(out.questions).toHaveLength(3)
   })
 })

@@ -64,6 +64,7 @@ export {
   type TrackerEntry,
   type TrackerEntryInsert,
   type TrackerEntryValue,
+  entryValueFits,
   trackerEntryInsertSchema,
   trackerEntrySelectSchema,
   trackerEntryValueSchema,

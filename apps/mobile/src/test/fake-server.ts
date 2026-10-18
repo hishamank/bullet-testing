@@ -100,6 +100,7 @@ export class FakeServer implements SyncTransport {
           ...bullet,
           text_edited_by_user: bullet.text_edited_by_user ?? false,
           answers_question_id: bullet.answers_question_id ?? null,
+          resolves_thought_id: bullet.resolves_thought_id ?? null,
           owner_id: OWNER,
           created_at: this.now,
           updated_at: this.now,

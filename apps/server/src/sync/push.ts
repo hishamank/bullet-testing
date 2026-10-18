@@ -16,8 +16,15 @@ import {
   rejectSuggestion,
   undoSuggestion,
 } from '../apply/apply'
+import { answerQuestionWithOption } from '../apply/answer'
+import { deleteByHand, editByHand } from '../apply/manual'
 import { createBullet, deleteBullet, editBullet, retryBullet } from '../capture/bullets'
-import { dismissQuestion, reclassifyThought } from '../capture/thoughts'
+import {
+  dismissQuestion,
+  reclassifyThought,
+  resolveThought,
+  unresolveThought,
+} from '../capture/thoughts'
 
 function suggestionOrThrow(db: Db, ownerId: string, id: string) {
   const s = getSuggestion(db, ownerId, id)
@@ -63,6 +70,32 @@ function executeOp(db: Db, ownerId: string, op: PushOp, now: number): 'applied' 
       return 'applied'
     case 'question.dismiss':
       dismissQuestion(db, ownerId, op.question_id, now)
+      return 'applied'
+    case 'question.answer':
+      return answerQuestionWithOption(db, ownerId, op.question_id, op.option, now)
+    case 'thought.resolve':
+      resolveThought(db, ownerId, op.thought_id, now)
+      return 'applied'
+    case 'thought.unresolve':
+      unresolveThought(db, ownerId, op.thought_id, now)
+      return 'applied'
+    case 'task.update':
+      editByHand(db, 'task', ownerId, op.task_id, op.patch, now)
+      return 'applied'
+    case 'task.delete':
+      deleteByHand(db, 'task', ownerId, op.task_id, now)
+      return 'applied'
+    case 'event.update':
+      editByHand(db, 'event', ownerId, op.event_id, op.patch, now)
+      return 'applied'
+    case 'event.delete':
+      deleteByHand(db, 'event', ownerId, op.event_id, now)
+      return 'applied'
+    case 'tracker_entry.update':
+      editByHand(db, 'tracker_entry', ownerId, op.tracker_entry_id, op.patch, now)
+      return 'applied'
+    case 'tracker_entry.delete':
+      deleteByHand(db, 'tracker_entry', ownerId, op.tracker_entry_id, now)
       return 'applied'
     default: {
       const never: never = op

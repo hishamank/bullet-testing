@@ -1,7 +1,8 @@
 # Capture-loop contract
 
 **Status:** stable for slice 1 (2026-10-18; voice-note audio, the `transcribing` state, and
-thoughts + clarifying questions were added the same day). The code version lives in `@bullet/core`
+thoughts + clarifying questions were added the same day; light manual editing, closing open loops
+and tap-to-answer questions were added 2026-10-19). The code version lives in `@bullet/core`
 (`processing.ts`, `sync.ts`). We may **add** things later (new operations, new kinds of data); we
 won't rename or remove anything below without updating this page.
 
@@ -89,8 +90,9 @@ Each bullet has exactly **one** of these states.
   that version, **whatever its previous state was**. So an edited `processed` bullet goes back to
   `saved_local`, then `synced`, and so on.
 - Everything else shows the state the server last reported.
-- The phone keeps working fully offline: capture, edit, delete, accept/dismiss suggestions. It
-  all queues up and goes out on the next sync.
+- The phone keeps working fully offline: capture, edit, delete, accept/dismiss suggestions, edit
+  tasks/events/readings, resolve thoughts, answer questions. It all queues up and goes out on the
+  next sync.
 
 ### Extra details the UI may use
 
@@ -152,6 +154,20 @@ Rules the design can rely on:
 - Long recordings work: the capture is split in pieces for the AI and the thoughts are put back
   together in order.
 
+### Open loops
+
+Thoughts of kind `to_check` and `question` are **open loops**: things you meant to look into or
+answer. You can close one:
+
+- **Resolve** it directly ("done, checked it"). It gets a **resolved** time. You can **re-open** it,
+  which clears that time.
+- **Resolve it with a note:** capture something (typed or spoken) as the follow-up. That capture
+  points at the thought and closes it once the server has it. The note is an ordinary capture: it
+  is split into thoughts and things are extracted from it like any other.
+
+Only `to_check` and `question` thoughts can be resolved; the server refuses the others. Resolving
+survives the capture being processed again.
+
 ## 2d. Clarifying questions
 
 Sometimes a thing is ambiguous. The app may then ask a **clarifying question**: short, concrete,
@@ -163,8 +179,14 @@ about one thing. Examples: "Which Thursday: today or next week?", "Start trackin
   suggestion it is about.
 - **Optional, never blocking:** the suggestion it is about stays reviewable as usual. Status:
   `open`, `answered` or `dismissed`.
-- **Answering is itself a capture** (typed or spoken) that points at the question. The question
-  becomes `answered`.
+- **Answer by tapping an option** (no AI involved, works offline and syncs later):
+  - **Date** questions ("Which Thursday: Today or Next Thursday?"): the day you tap is set on the
+    task or event the question is about (keeping its time of day), and it is **applied**. It then
+    shows as applied, with **Undo**, like anything done for you.
+  - **"Start tracking X?"**: **Yes** creates the tracker (your tap is the OK a new tracker always
+    needs). **No** dismisses that suggestion. The reading you said stays as an activity either way.
+- **Or answer with a capture** (typed or spoken) that points at the question.
+- Either way the question becomes `answered` (with the option you tapped, if any).
 - There are no open-ended or reflective questions in slice 1. Those come later, are optional, and
   never nag.
 
@@ -197,6 +219,22 @@ Rules the design can rely on:
 - **Undo** works on anything that was applied. It removes what was created, or puts back what was
   changed. If you've since edited that thing by hand, Undo is refused rather than overwriting
   your change.
+
+## 3b. Editing what the app found
+
+Slice 1 has light manual editing of things (there is no manual creation yet):
+
+| Thing           | You can change                                                     | Delete |
+| --------------- | ------------------------------------------------------------------ | ------ |
+| Task            | complete / reopen (`done` ↔ `todo`), due date (or none), title     | yes    |
+| Event           | start, end (or none), title                                        | yes    |
+| Tracker reading | the value (it must fit the tracker: in range, one of its options…) | yes    |
+
+- Every hand edit or delete marks the thing **edited by you** (with when). From then on nothing
+  automatic overwrites it: processing the capture again leaves it alone, and **Undo** of the
+  suggestion that made it is refused.
+- Deletes are soft, like everywhere else.
+- An event can't end before it starts; a change that would do that is refused.
 
 ## 4. Editing and deleting a bullet
 
@@ -244,17 +282,30 @@ of it.
 client-minted UUID `op_id`. The op types are `bullet.create` (with a client-minted bullet `id`,
 `text`, `captured_at`, `timezone`, `source`, optional `text_edited_by_user`, and for a voice note
 optional `audio`: recording `id`, `mime_type`, `duration_ms`, `size_bytes`, `sha256` and the
-device `draft` transcript, and optional `answers_question_id`), `bullet.edit` (`text`, `edited_at`; marks the text user-edited),
-`bullet.delete` (`mode: cascade | keep_extractions`), `bullet.retry`, `suggestion.accept`
-(optional edited `payload`), `suggestion.reject`, `suggestion.undo`, `thought.reclassify`
-(`thought_id`, `kind`) and `question.dismiss` (`question_id`).
+device `draft` transcript, optional `answers_question_id`, and optional `resolves_thought_id`),
+`bullet.edit` (`text`, `edited_at`; marks the text user-edited), `bullet.delete`
+(`mode: cascade | keep_extractions`), `bullet.retry`, `suggestion.accept` (optional edited
+`payload`), `suggestion.reject`, `suggestion.undo`, `thought.reclassify` (`thought_id`, `kind`),
+`thought.resolve` / `thought.unresolve` (`thought_id`), `question.dismiss` (`question_id`),
+`question.answer` (`question_id`, `option`), and the manual edits: `task.update` (`task_id`,
+`patch` of `status: todo | done`, `due_at`, `title`), `task.delete` (`task_id`), `event.update`
+(`event_id`, `patch` of `starts_at`, `ends_at`, `title`), `event.delete` (`event_id`),
+`tracker_entry.update` (`tracker_entry_id`, `patch: { value }`) and `tracker_entry.delete`
+(`tracker_entry_id`). A `patch` carries only what changes (at least one field, no others).
+
+Who changed what by hand: tasks, events and tracker entries carry `user_edited_at` (null until a
+manual edit or delete). Thoughts carry `resolved_at` and `resolved_by_bullet_id`; questions
+carry `answer_option`; bullets carry `resolves_thought_id`. Older rows without them read as null.
 
 Provenance: every thing and suggestion carries `source_bullet_id` (the capture) and
 `source_thought_id` (the thought; null for things made by hand or before thoughts existed).
 
 The response is `{ results: [{ op_id, status: applied | duplicate | rejected, error? }],
 server_time }`. Rejection codes are `not_found`, `invalid`, `conflict` and `stale`. A rejected op
-is final.
+is final. For the new ops: editing or resolving something deleted, a reading that doesn't fit its
+tracker, resolving a thought that isn't `to_check`/`question`, or an option the question doesn't
+offer are `invalid`; answering a question whose suggestion is no longer waiting (dismissed, or its
+result edited by you) is `conflict`. Re-sending the same answer, resolve or edit is harmless.
 
 **`GET /sync/pull?cursor=<opaque>&limit=<1..500>`** returns `{ changes: { bullets, suggestions,
 tasks, events, trackers, tracker_entries, activities, audio_attachments, transcripts,

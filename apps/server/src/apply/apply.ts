@@ -9,14 +9,15 @@
  *  - Field-level updates: an UPDATE writes only the fields in its patch, so it never reverts edits
  *    made since extraction. The previous values are kept for undo.
  *  - Undo: reverts an applied suggestion (soft-deletes what it created, restores what it changed),
- *    refusing with `conflict` when the user has changed that thing by hand since.
+ *    refusing with `conflict` when the user has changed that thing by hand since (its
+ *    `user_edited_at`, or for kinds without one, any write after the apply).
  *
  * Plain functions over a Db/transaction; routes and the queue are thin callers.
  */
 
 import {
+  entryValueFits,
   type PushRejectCode,
-  type TrackerConfig,
   type TrackerEntryValue,
   targetKindInsertSchemas,
   targetKindUpdateSchemas,
@@ -49,7 +50,7 @@ export function getSuggestion(db: Db, ownerId: string, id: string): SuggestionRo
     .get()
 }
 
-function updateSuggestionRow(
+export function updateSuggestionRow(
   db: Db,
   s: SuggestionRow,
   patch: Partial<SuggestionRow>,
@@ -64,29 +65,8 @@ function updateSuggestionRow(
   return next
 }
 
-/** Does `value` fit the tracker's input type and bounds? */
-export function entryValueFits(value: TrackerEntryValue, config: TrackerConfig): boolean {
-  switch (config.input_type) {
-    case 'scale':
-      return typeof value === 'number' && value >= config.min && value <= config.max
-    case 'number':
-      return (
-        typeof value === 'number' &&
-        (config.min === undefined || value >= config.min) &&
-        (config.max === undefined || value <= config.max)
-      )
-    case 'boolean':
-      return typeof value === 'boolean'
-    case 'text':
-      return typeof value === 'string'
-    case 'single_select':
-      return typeof value === 'string' && config.options.includes(value)
-    case 'multi_select':
-      return Array.isArray(value) && value.every((v) => config.options.includes(v))
-    default:
-      return false
-  }
-}
+/** Re-exported from `@bullet/core`, where the phone shares it. */
+export { entryValueFits }
 
 function activeTracker(db: Db, ownerId: string, id: string) {
   const t = db
@@ -252,6 +232,14 @@ export function undoSuggestion(db: Db, s: SuggestionRow, now: number): Suggestio
     throw new ApplyError('invalid', 'suggestion is not applied')
   }
   const entity = getEntity(db, s.target_kind, s.owner_id, s.applied_entity_id)
+  // Changed (or deleted) by hand since it was applied: the user's version stays.
+  if (
+    entity &&
+    typeof entity.user_edited_at === 'number' &&
+    entity.user_edited_at >= s.applied_at
+  ) {
+    throw new ApplyError('conflict', `${s.target_kind} was edited by you since; not undone`)
+  }
   if (s.operation === 'update') {
     if (entity) {
       for (const [k, v] of Object.entries(s.applied_after ?? {})) {

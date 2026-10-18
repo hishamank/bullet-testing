@@ -37,6 +37,8 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         span: null,
         kind: 'task',
         kind_source: 'engine',
+        resolved_at: null,
+        resolved_by_bullet_id: null,
       },
       {
         ...base,
@@ -47,6 +49,8 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         span: { start: 0, end: 18 },
         kind: 'worry',
         kind_source: 'engine',
+        resolved_at: null,
+        resolved_by_bullet_id: null,
       },
     ],
     questions: [
@@ -62,6 +66,7 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         options: ['Today', 'Next Thursday'],
         status: 'open',
         answer_bullet_id: null,
+        answer_option: null,
         resolved_at: null,
       },
     ],
