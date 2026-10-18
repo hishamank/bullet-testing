@@ -6,9 +6,10 @@ import {
   failedText,
   onPhoneText,
   UNAUTHORIZED_TEXT,
+  unpairedText,
   UNREACHABLE_TEXT,
 } from '@/features/capture/notice'
-import { useSyncStatus } from '@/hooks'
+import { usePairing, useSyncStatus } from '@/hooks'
 import { type, useTheme } from '@/theme'
 import { Icon } from '../Icon'
 import { Label, Note, TextButton, touch } from '../ui'
@@ -18,13 +19,29 @@ export function StatusLine({ counts, onRetry }: { counts: CaptureCounts; onRetry
   const t = useTheme()
   const router = useRouter()
   const sync = useSyncStatus()
+  const pairing = usePairing()
   const notice = captureNotice({
     saved: false,
     failedCount: counts.failedIds.length,
     onPhoneCount: counts.onPhone,
     cannotReachServer: sync.cannotReachServer,
+    unpaired: pairing !== 'paired',
   })
   switch (notice.kind) {
+    case 'unpaired':
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, touch, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel={unpairedText(notice.count)}
+          accessibilityHint="Opens home server pairing"
+          onPress={() => router.push('/setup')}
+        >
+          <Label tone="secondary" size={type.label} style={{ textAlign: 'center' }}>
+            {unpairedText(notice.count)}
+          </Label>
+        </Pressable>
+      )
     case 'failed':
       return (
         <View style={styles.row}>

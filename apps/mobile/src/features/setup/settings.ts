@@ -9,6 +9,16 @@ import { getState, setState } from '../../data/mirror'
 import type { Reachability } from '../sync/monitor'
 
 export const LAST_SYNCED_KEY = 'last_synced_at'
+/** Set when the user tapped "Not yet" at setup: Capture works, sync stays off until paired. */
+export const SETUP_DEFERRED_KEY = 'setup_deferred'
+
+export function isSetupDeferred(db: PhoneDb): boolean {
+  return getState(db, SETUP_DEFERRED_KEY) === '1'
+}
+
+export function deferSetup(db: PhoneDb): void {
+  setState(db, SETUP_DEFERRED_KEY, '1')
+}
 
 export function lastSyncedAt(db: PhoneDb): number | null {
   const v = Number(getState(db, LAST_SYNCED_KEY))

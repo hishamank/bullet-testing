@@ -1,10 +1,21 @@
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native'
+import { useRouter } from 'expo-router'
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native'
 import { ServerForm } from '@/components/setup/ServerForm'
-import { Label, Screen } from '@/components/ui'
+import { Label, Screen, TextButton } from '@/components/ui'
+import { deferPairing } from '@/features/sync/engine'
 import { space, type } from '@/theme'
 
-/** First run: connect this phone to the home server. Needed before anything else. */
+/**
+ * Connect this phone to the home server. On first run "Not yet" goes straight to Capture:
+ * captures stay on the phone until it's paired. Reached again later from Capture or Settings.
+ */
 export default function SetupScreen() {
+  const router = useRouter()
+  const notYet = () => {
+    deferPairing()
+    if (router.canGoBack()) router.back()
+    else router.replace('/')
+  }
   return (
     <Screen>
       <KeyboardAvoidingView
@@ -20,6 +31,17 @@ export default function SetupScreen() {
             else.
           </Label>
           <ServerForm />
+          <View style={styles.notYet}>
+            <TextButton
+              title="Not yet"
+              tone="secondary"
+              accessibilityLabel="Not yet. Start capturing; pair a home server later"
+              onPress={notYet}
+            />
+            <Label tone="muted" size={type.label} style={{ textAlign: 'center' }}>
+              Captures stay on this phone until you pair.
+            </Label>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -28,4 +50,5 @@ export default function SetupScreen() {
 
 const styles = StyleSheet.create({
   body: { padding: space.xl, paddingTop: 56, gap: space.lg },
+  notYet: { alignItems: 'center', gap: space.xs },
 })

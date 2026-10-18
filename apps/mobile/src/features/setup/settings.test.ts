@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test'
 import { openTestDb, T0 } from '../../test/db'
 import {
+  deferSetup,
   hostOf,
+  isSetupDeferred,
   lastSyncedAt,
   pendingLine,
   recordSynced,
@@ -51,6 +53,13 @@ describe('the Home server status line', () => {
     expect(serverRowTitle(false)).toBe('Pair a home server')
     expect(serverRowTitle(true)).toBe('Change server')
     expect(pendingLine(3)).toBe('Pending on this phone · 3')
+  })
+
+  it('"Not yet" is remembered on the phone', () => {
+    const db = openTestDb()
+    expect(isSetupDeferred(db)).toBe(false)
+    deferSetup(db)
+    expect(isSetupDeferred(db)).toBe(true)
   })
 
   it('the last sync is remembered on the phone', () => {

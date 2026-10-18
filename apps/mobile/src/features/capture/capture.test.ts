@@ -18,6 +18,7 @@ import {
   inboxCornerLabel,
   journalCornerLabel,
   onPhoneText,
+  unpairedText,
 } from './notice'
 
 const play = (events: ComposerEvent[]) => events.reduce(composerReducer, initialComposer)
@@ -86,6 +87,16 @@ describe('capture notice', () => {
       kind: 'on_phone',
       count: 3,
     })
+  })
+
+  it('before pairing: one quiet line that counts what is saved on the phone', () => {
+    expect(captureNotice({ ...base, unpaired: true })).toEqual({ kind: 'unpaired', count: 0 })
+    expect(captureNotice({ ...base, unpaired: true, onPhoneCount: 2 })).toEqual({
+      kind: 'unpaired',
+      count: 2,
+    })
+    expect(unpairedText(0)).toBe("Saved on this phone · Pair a home server when you're ready")
+    expect(unpairedText(2)).toBe('2 saved on this phone · Pair to sync')
   })
 
   it("doesn't mention captures on the phone while they are about to sync", () => {
