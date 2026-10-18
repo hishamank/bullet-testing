@@ -88,7 +88,11 @@ Check it: `curl -s http://127.0.0.1:8080/health` → `{"status":"ok"}`.
 ## 4. Start whisper-server
 
 ```bash
-~/src/whisper.cpp/build/bin/whisper-server --host 127.0.0.1 --port 8081 -m ~/models/whisper/ggml-large-v3-turbo-q5_0.bin --convert -t 8
+mkdir -p ~/.cache/whisper-server && chmod 700 ~/.cache/whisper-server
+```
+
+```bash
+~/src/whisper.cpp/build/bin/whisper-server --host 127.0.0.1 --port 8081 -m ~/models/whisper/ggml-large-v3-turbo-q5_0.bin --convert --tmp-dir ~/.cache/whisper-server -t 8
 ```
 
 - `--convert` is required: the phone uploads AAC/M4A and whisper-server otherwise reads WAV
@@ -98,6 +102,9 @@ Check it: `curl -s http://127.0.0.1:8080/health` → `{"status":"ok"}`.
   first 30 s); a note that switches between Arabic, English and French is still transcribed as
   one piece, but the detected language is only the dominant one. Judge the quality on your own
   clips with the eval script before relying on it.
+- `--tmp-dir`: where `--convert` writes each recording while converting it. The default is the
+  directory you started the server from, and a recording ffmpeg can't decode is **left there**
+  (a copy of a journal recording in a random directory). Use a private directory.
 - `-t 8`: CPU threads for the parts that do not run on the GPU.
 
 ## 5. Start the bullet server
