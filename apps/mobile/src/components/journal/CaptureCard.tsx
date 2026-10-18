@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Icon } from '@/components/Icon'
 import { KindPill, Label, TextButton } from '@/components/ui'
 import {
+  AUDIO_READ_ERROR_TEXT,
   type CaptureCard as Card,
   cardAccessibilityLabel,
   cardState,
@@ -78,6 +79,11 @@ export function CaptureCard({
       ) : (
         <Label numberOfLines={4}>{card.text}</Label>
       )}
+      {card.audioReadError ? (
+        <Label tone="secondary" size={type.label}>
+          {AUDIO_READ_ERROR_TEXT}
+        </Label>
+      ) : null}
       {state.retry ? (
         <View style={styles.failed}>
           <Label tone="secondary" size={type.label} style={{ flex: 1 }}>

@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vite-plus/test'
+import { setState } from '../../data/mirror'
+import { audioReadErrorKey } from '../../sync/client'
 import { openTestDb, T0 } from '../../test/db'
 import {
   audioSource,
@@ -95,6 +97,15 @@ describe('capture detail', () => {
     expect(v.initial).toBe('server')
     expect([v.text('server'), v.text('draft')]).toEqual(['server words', 'draft words'])
     expect(v.note).toBeNull()
+    expect(d?.audioReadError).toBe(false)
+  })
+
+  test('a recording this phone could not read is flagged', () => {
+    const db = openTestDb()
+    const b = seedBullet(db, T0, { source: 'voice' })
+    const a = seedAudio(db, b, { upload_status: 'pending' })
+    setState(db, audioReadErrorKey(a), 'file missing')
+    expect(loadCaptureDetail(db, b, T0, TZ)?.audioReadError).toBe(true)
   })
 })
 

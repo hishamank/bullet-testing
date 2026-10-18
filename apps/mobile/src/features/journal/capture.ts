@@ -23,7 +23,7 @@ import {
   trackers,
   transcripts,
 } from '../../data/schema'
-import { errorReason } from './stream'
+import { errorReason, unreadableRecordings } from './stream'
 import { type LinkedThing, linkedThing, type SuggestionRow } from './things'
 
 export interface TranscriptRow {
@@ -49,6 +49,8 @@ export interface CaptureDetail {
   status: BulletProcessingStatus
   errorReason: string | null
   audio: AudioRow | null
+  /** This phone couldn't read the recording file to upload it (the text is kept). */
+  audioReadError: boolean
   transcripts: TranscriptRow[]
   thoughts: { id: string; kind: ThoughtKind; kindSource: 'engine' | 'user'; text: string }[]
   things: LinkedThing[]
@@ -119,6 +121,7 @@ export function loadCaptureDetail(
     status,
     errorReason: status === 'failed' ? errorReason(b.server_error_code) : null,
     audio,
+    audioReadError: audio ? unreadableRecordings(db, [audio.id]).has(audio.id) : false,
     transcripts: ts,
     thoughts: th.map((t) => ({ id: t.id, kind: t.kind, kindSource: t.kind_source, text: t.text })),
     things: ss.map((s) => linkedThing(s as SuggestionRow, look, now, tz)),

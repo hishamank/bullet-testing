@@ -16,6 +16,7 @@ import {
   transcriptView,
 } from '@/features/journal/capture'
 import { changeKind, deleteCapture, editCapture } from '@/features/journal/actions'
+import { AUDIO_READ_ERROR_TEXT } from '@/features/journal/stream'
 import { whenLabel } from '@/features/journal/format'
 import { type LinkedThing, THING_STATE_LABELS } from '@/features/journal/things'
 import { useLocalQuery } from '@/hooks'
@@ -165,6 +166,12 @@ export default function CaptureDetailScreen() {
             </Label>
             <TextButton title="Retry" onPress={() => retryCaptures([c.id])} />
           </View>
+        ) : null}
+
+        {c.audioReadError ? (
+          <Label tone="secondary" size={type.bodySmall}>
+            {AUDIO_READ_ERROR_TEXT}
+          </Label>
         ) : null}
 
         {c.audio ? <AudioPlayer audio={c.audio} /> : null}
