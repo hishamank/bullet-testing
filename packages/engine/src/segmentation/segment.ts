@@ -3,9 +3,11 @@
  *
  * Long captures (a minutes-long voice ramble) are cut into chunks at sentence boundaries, each
  * segmented by its own structured LLM call; thoughts are then concatenated in order. The model
- * returns, per thought, a cleaned `text`, a verbatim `quote` (located in the chunk to compute the
- * span) and a `kind`. Nothing is dropped: a chunk the model returns no thoughts for becomes one
- * `note` thought, so every word of the capture lives in some thought.
+ * returns, per thought, a verbatim `quote` (located in the chunk to compute the span), a cleaned
+ * `text` and a `kind`. The text stays in the user's own words: one that drifted from them
+ * (translated to English, rewritten) falls back to the verbatim words. Nothing is dropped: a chunk
+ * the model returns no thoughts for becomes one `note` thought, so every word of the capture lives
+ * in some thought.
  */
 
 import { type TextSpan, type ThoughtKind, thoughtKindSchema } from '@bullet/core'
@@ -20,37 +22,49 @@ import type { CaptureContext } from '../time/when'
 export const segmentationResponseSchema = z.object({
   thoughts: z.array(
     z.object({
-      /** The thought, lightly cleaned (fillers, false starts removed), same language(s). */
-      text: z.string(),
       /** The exact words from the capture this thought covers (for locating it). */
       quote: z.string().default(''),
+      /** The thought, lightly cleaned (fillers, false starts removed), same language(s). */
+      text: z.string(),
       kind: thoughtKindSchema,
     }),
   ),
 })
 
+/**
+ * What the model is constrained to. `quote` is required and comes FIRST: llama-server decodes
+ * keys in schema order, so the model copies the user's words before it writes the cleaned text.
+ * Asked for `text` first, small models (Qwen3.5-4B) translated mixed Arabizi/French to English.
+ */
 export const segmentationJsonSchema: Record<string, unknown> = zodToJsonSchema(
-  segmentationResponseSchema,
+  z.object({
+    thoughts: z.array(z.object({ quote: z.string(), text: z.string(), kind: thoughtKindSchema })),
+  }),
   { target: 'openApi3', $refStrategy: 'none' },
 ) as Record<string, unknown>
 
 export const SEGMENTATION_SYSTEM_PROMPT = `You split one journal capture into separate THOUGHTS, in order.
 
-A capture may be one line or minutes of rambling speech that mixes English, Lebanese Arabic and French. Split it wherever the subject changes. Keep EVERY thought: nothing the user said may be lost, even small or emotional things.
+A capture may be one line or minutes of rambling speech that mixes English, Lebanese Arabic (in Arabic script, or in Latin letters with digits like 2, 3, 7: "Arabizi") and French. Split it wherever the subject changes. Keep EVERY thought: nothing the user said may be lost, even small or emotional things.
 
-For each thought give:
-- "text": the thought, lightly cleaned (remove filler words, repetitions and false starts), in the language(s) used. Do not summarise away details.
+NEVER TRANSLATE. Every thought stays in the user's own words, language and script: Arabizi stays Arabizi, Arabic stays Arabic, French stays French, a sentence that mixes them stays mixed.
+
+For each thought give, in this order:
 - "quote": the EXACT words from the capture this thought covers, copied character for character.
+- "text": the quote, lightly cleaned: remove filler words, repetitions and false starts. Same words, same language(s), same script as the quote. Do not summarise away details.
 - "kind", one of:
   - "worry": something weighing on the user.
   - "to_check": something to look into or verify.
   - "question": a question the user asks themself.
   - "idea": an idea worth keeping.
   - "note": anything else worth keeping (a fact, a feeling, a memory, a reflection).
-  - "task": something the user intends to do.
-  - "event": something happening at a time (appointment, meeting, dinner).
+  - "task": something the user intends or needs to do, even with a deadline ("before 10am", "by Friday").
+  - "event": something happening at a set time that the user attends (appointment, meeting, dinner).
   - "tracker": a measurement or reading (mood 4, slept 6h, weight 72), or wanting to track something.
   - "activity": something the user did.
+
+Example capture: "um bade jib ghaz lal sayyara, w demain j'ai rdv chez le médecin à 11h. Feeling tired"
+Example answer: {"thoughts":[{"quote":"um bade jib ghaz lal sayyara","text":"bade jib ghaz lal sayyara","kind":"task"},{"quote":"w demain j'ai rdv chez le médecin à 11h","text":"demain j'ai rdv chez le médecin à 11h","kind":"event"},{"quote":"Feeling tired","text":"Feeling tired","kind":"note"}]}
 
 Output ONLY the JSON object matching the schema. No Markdown code fences, no commentary.`
 
@@ -98,15 +112,82 @@ export interface SegmentedThought {
   span: TextSpan | null
 }
 
+/** Curly quotes the model may straighten (or the keyboard may curl). */
+const QUOTE_CHARS: Record<string, string> = {
+  '\u2018': "'",
+  '\u2019': "'",
+  '\u201C': '"',
+  '\u201D': '"',
+}
+
+/**
+ * Lowercase, straighten quotes and collapse whitespace, keeping a map from each output index back
+ * to its index in `s` so a match in the normalized text is a span in the original.
+ */
+function normalizeWithMap(s: string): { text: string; map: number[] } {
+  let text = ''
+  const map: number[] = []
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i] ?? ''
+    const space = /\s/.test(ch)
+    if (space && text.endsWith(' ')) continue
+    const out = space ? ' ' : (QUOTE_CHARS[ch] ?? ch.toLowerCase())
+    for (let k = 0; k < out.length; k++) map.push(i)
+    text += out
+  }
+  return { text, map }
+}
+
 /** Locate `quote` in `chunk`, searching from `from` (thoughts come in order). */
 function locate(quote: string, chunk: TextChunk, from: number): TextSpan | null {
   const q = quote.trim()
   if (q === '') return null
   let i = chunk.text.indexOf(q, from)
-  if (i < 0) i = chunk.text.toLowerCase().indexOf(q.toLowerCase(), from)
   if (i < 0) i = chunk.text.indexOf(q)
-  if (i < 0) return null
-  return { start: chunk.offset + i, end: chunk.offset + i + q.length }
+  if (i >= 0) return { start: chunk.offset + i, end: chunk.offset + i + q.length }
+  // Tolerate case, curly quotes, spacing and a trailing period the model added.
+  const hay = normalizeWithMap(chunk.text)
+  const fromN = hay.map.findIndex((m) => m >= from)
+  for (const needle of [q, q.replace(/[.,;:!?…]+$/u, '')]) {
+    const n = normalizeWithMap(needle).text
+    if (n === '') continue
+    let j = fromN < 0 ? -1 : hay.text.indexOf(n, fromN)
+    if (j < 0) j = hay.text.indexOf(n)
+    if (j < 0) continue
+    const start = hay.map[j] ?? 0
+    const end = (hay.map[j + n.length - 1] ?? start) + 1
+    return { start: chunk.offset + start, end: chunk.offset + end }
+  }
+  return null
+}
+
+/** Words, lowercased and without accents ("réunion" and "reunion" are one word). */
+function words(s: string): string[] {
+  return (
+    s
+      .normalize('NFKD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .match(/[\p{L}\p{N}]+/gu) ?? []
+  )
+}
+
+/**
+ * Below this share of its words found in the source, a cleaned text is a rewrite, not a cleanup.
+ * Cleaning only drops words; a respelled Arabizi word ("kont" → "kunt") counts as not found.
+ */
+const MIN_OWN_WORDS = 0.8
+
+/**
+ * True when `text` no longer reads as the user's own words in `source`: most of its words are not
+ * in the source, as with a translation (which also catches Arabic ↔ Latin script changes) or a
+ * paraphrase. Light cleaning only removes words, so a cleaned thought keeps nearly all of them.
+ */
+export function driftedFrom(text: string, source: string): boolean {
+  const own = new Set(words(source))
+  const w = words(text)
+  if (w.length === 0) return false
+  return w.filter((x) => own.has(x)).length / w.length < MIN_OWN_WORDS
 }
 
 function buildSegmentationPrompt(chunk: string, ctx: CaptureContext, part: string): LlmMessage[] {
@@ -137,7 +218,7 @@ export async function segmentCapture(
       segmentationJsonSchema,
       'Segmentation',
     )
-    const found = res.thoughts.filter((t) => t.text.trim() !== '')
+    const found = res.thoughts.filter((t) => t.text.trim() !== '' || t.quote.trim() !== '')
     if (found.length === 0) {
       // Never lose words: an unsegmented chunk is kept whole as a note.
       const text = chunk.text.trim()
@@ -152,9 +233,16 @@ export async function segmentCapture(
     }
     let cursor = 0
     for (const t of found) {
-      const span = locate(t.quote || t.text, chunk, cursor)
+      const span = locate(t.quote, chunk, cursor) ?? locate(t.text, chunk, cursor)
       if (span) cursor = span.end - chunk.offset
-      thoughts.push({ position: thoughts.length, text: t.text.trim(), kind: t.kind, span })
+      // The user's own words win: a text that drifted from them (translated, rewritten) is
+      // replaced by the verbatim words. Unlocated, the quote is only trusted when it reads as the
+      // chunk's own words.
+      const quote = driftedFrom(t.quote, chunk.text) ? '' : t.quote.trim()
+      const verbatim = span ? input.text.slice(span.start, span.end).trim() : quote
+      let text = t.text.trim()
+      if (verbatim !== '' && (text === '' || driftedFrom(text, verbatim))) text = verbatim
+      thoughts.push({ position: thoughts.length, text, kind: t.kind, span })
     }
   }
   return thoughts

@@ -42,6 +42,7 @@ import type { Candidate } from '../extraction/schema'
 import type { ExtractionSnapshot, SnapshotTask, SnapshotTracker } from '../extraction/snapshot'
 import type { QuestionTopic } from '@bullet/core'
 import { ambiguousWeekday, type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
+import { safeTimezone, zonedParts, zonedToEpoch } from '../time/zoned'
 import { type Match, matchOpenTask, matchTracker } from './match'
 import { assignTier } from './tier'
 
@@ -306,20 +307,41 @@ function resolveHappened(
 /**
  * When a 'happened' record happened: the quoted `when` phrase, else a date/time phrase in the
  * candidate's text, else the CAPTURE time. A record cannot be in the future, so a resolution
- * past the capture time is clamped to it.
+ * past the capture time is clamped to it. A day with no time of day is not its midnight: "today"
+ * ("mood 3 today", "slept 6 hours" read as today) is the capture time, an earlier day its noon.
  */
 function recordTime(candidate: Candidate, ctx: CaptureContext): number {
   const when = whenFor(candidate, ctx, 'past')
-  return when ? Math.min(when.at, ctx.capturedAt) : ctx.capturedAt
+  if (!when) return ctx.capturedAt
+  if (!when.hasTime) {
+    const timezone = safeTimezone(ctx.timezone)
+    if (sameLocalDay(when.at, ctx.capturedAt, timezone)) return ctx.capturedAt
+    const day = zonedParts(when.at, timezone)
+    return Math.min(zonedToEpoch({ ...day, hour: 12, minute: 0 }, timezone), ctx.capturedAt)
+  }
+  return Math.min(when.at, ctx.capturedAt)
 }
 
-/** Resolve the candidate's date phrase: the model's quoted `when` first, then its text slice. */
+/**
+ * Resolve the candidate's date phrase: the model's quoted `when` first, then its text slice. A
+ * quote that kept only the day ("Demain" of "Demain réunion à 15h") takes the time of day from
+ * the text when the text names the same day.
+ */
 function whenFor(candidate: Candidate, ctx: CaptureContext, direction: 'future' | 'past') {
   const quoted = stringFieldOrNull(candidate.fields, ['when', 'date', 'due', 'starts'])
-  return (
-    (quoted ? resolveWhen(quoted, ctx, direction) : null) ??
-    resolveWhen(candidate.text, ctx, direction)
-  )
+  const fromQuote = quoted ? resolveWhen(quoted, ctx, direction) : null
+  const fromText = resolveWhen(candidate.text, ctx, direction)
+  if (fromQuote && !fromQuote.hasTime && fromText?.hasTime) {
+    const timezone = safeTimezone(ctx.timezone)
+    if (sameLocalDay(fromQuote.at, fromText.at, timezone)) return fromText
+  }
+  return fromQuote ?? fromText
+}
+
+function sameLocalDay(a: number, b: number, timezone: string): boolean {
+  const x = zonedParts(a, timezone)
+  const y = zonedParts(b, timezone)
+  return x.year === y.year && x.month === y.month && x.day === y.day
 }
 
 /**
@@ -433,6 +455,13 @@ function createActivity(
 const EVENT_NOUNS =
   /\b(appointment|appt|meeting|interview|dinner|lunch|breakfast|brunch|party|wedding|concert|flight|train|game|match|class|lesson|session|show|movie|date|checkup|check-up|dentist|doctor)\b/i
 
+/**
+ * A deadline ("before 10am", "by Friday", "avant demain", "2abel l 5amis") marks something to DO
+ * by a time — a Task due then, even when the model labelled it an event. Small models do.
+ */
+const DEADLINE =
+  /(?<![\p{L}\p{N}])(?:before|by|no later than|avant|abel|2abel|abl|2abl|qabl)\s+(?=\d|today|tonight|tomorrow|noon|midnight|the end|end|next|this|mon|tue|wed|thu|fri|sat|sun|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|demain|ce soir|midi|bu?o?kra|e?l\s)/iu
+
 /** future_oneoff → an Event (a happening with a date) or a Task. */
 function resolveFutureOneoff(
   candidate: Candidate,
@@ -456,11 +485,11 @@ function resolveFutureOneoff(
       })
     }
   }
+  const said = `${title} ${candidate.text}`
+  const isDeadline = DEADLINE.test(`${quoted ?? ''} ${candidate.text}`) && !EVENT_NOUNS.test(said)
   const isHappening =
-    candidate.kind === 'event' ||
-    (candidate.kind === 'task' &&
-      when?.hasTime === true &&
-      EVENT_NOUNS.test(`${title} ${candidate.text}`))
+    (candidate.kind === 'event' && !isDeadline) ||
+    (candidate.kind === 'task' && when?.hasTime === true && EVENT_NOUNS.test(said))
   // An event needs a date; one without falls back to a task (nothing is lost, the user can date it).
   if (isHappening && when) return createEvent(candidate, config, ctx, title, when)
 

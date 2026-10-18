@@ -207,8 +207,10 @@ no longer defaults to the minimum (falls back to an unlinked activity); mark-don
 `{ status: 'done' }` patch; only an exact title match may auto-apply mark-done; record
 timestamps default to capture time. Add new findings here.
 
-- **First real-model run (2026-10-18, Qwen3.5-4B Q4_K_M, see `docs/home-server.md`):** on a mixed
-  Arabizi/French/English capture, segmentation returned thought `text` **translated to English**
-  although the prompt asks for the language(s) used (spans were correct); "take the car to the
-  garage before 10am" became an `event`, not a `task`; "slept 6 hours" was dated at local midnight
-  of the previous day. Re-check with the user's own captures (and Gemma 26B) before tuning prompts.
+- **Real-model run (2026-10-18, Qwen3.5-4B Q4_K_M; Gemma 4 26B compared; see
+  `docs/home-server.md`):** segmentation translated mixed Arabizi/French/English thoughts to English
+  (and mistranslated them). Fixed: `quote` is decoded before `text`, the prompt forbids translating,
+  and a `text` that drifted from the verbatim words (`driftedFrom`) falls back to them. Dates now
+  read French, Arabizi and Arabic day words and "15h"; a deadline ("before 10am") is a task, not an
+  event; a date-only record is dated at capture time (today) or noon (earlier days), never midnight.
+  Re-check with the user's own captures before further prompt tuning.
