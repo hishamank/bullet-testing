@@ -8,7 +8,7 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "web": "expo start --web",
-    "test": "vp test",
+    "test": "pnpm exec vp test",
     "db:generate": "drizzle-kit generate && node scripts/bundle-migrations.mjs"
   },
   "dependencies": {

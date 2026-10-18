@@ -78,6 +78,40 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
 - **Provenance:** every extracted entity carries `source_bullet_id`.
 - **Node:** 24 LTS (`.nvmrc`, `engines`). **Commits:** Conventional Commits.
 
+### Capture loop (slice 1, 2026-10-18)
+
+- **The contract is `docs/contract.md`** (code: `@bullet/core` `processing.ts` + `sync.ts`). Bullet
+  states: `saved_local` (phone only) → `synced` → `processing` → `processed` | `needs_review` |
+  `failed` (error code + attempts; always user-retryable). Screens are designed against it:
+  change it **additively only** (new ops / new change collections), and update the doc with it.
+- **Sync:** `POST /sync/push` (ordered ops, idempotent by client `op_id` and by bullet id) and
+  `GET /sync/pull?cursor=` (opaque cursor over a per-entity change log; full rows, soft-deleted
+  included). Every server write to a synced entity must call `touch()` in the same transaction.
+- **Auth:** one bearer token per device, SHA-256 hashed at rest, required on **every** route
+  (`/health` included). Provision with `pnpm --filter server device:add <name>`.
+- **Server persistence:** SQLite via **better-sqlite3** + Drizzle (`apps/server/src/db`).
+  Chosen over `node:sqlite` because Drizzle's driver for it is RC-only and better-sqlite3's
+  synchronous transactions keep reconcile + apply + status atomic. Migrations:
+  `pnpm --filter server db:generate`, applied on open. It is a native addon: after switching Node
+  versions run `pnpm rebuild better-sqlite3`.
+- **Queue:** one durable job per bullet (`jobs` table); retries with backoff, an LLM deadline
+  (`withLlmTimeout`), `running` jobs recovered at startup, results discarded if the bullet was
+  edited/deleted meanwhile (`text_version`). One job at a time (one model slot).
+- **Apply engine** (`apps/server/src/apply`): revalidates against current state at apply time;
+  a created entity's id **is** the suggestion id (idempotent); `update` payloads are field-level
+  patches validated by `targetKindUpdateSchemas` (never a snapshot); undo restores `before`
+  values and refuses (`conflict`) if the user changed the result since.
+- **Dates:** the model **quotes** date phrases (`fields.when`); `@bullet/engine` `time/`
+  resolves them against the bullet's `captured_at` + IANA `timezone`. The engine never reads the
+  clock; records default to capture time.
+- **Phone data layer** (`apps/mobile/src/data`, `src/sync`): expo-sqlite + Drizzle. Every local
+  action writes its change **and** its outbox op in one transaction. Migrations are drizzle-kit
+  SQL inlined into `migrations.gen.ts` (`pnpm --filter mobile db:generate`) and applied by a
+  driver-agnostic runner, so the same code runs on device and in Vitest (better-sqlite3).
+  React Native / Expo APIs live only in `open.ts`, `settings.ts`, `runtime.ts`; everything else
+  is testable logic. The mobile test script is `pnpm exec vp test` because the app's TypeScript
+  (Expo's ~6.x) gives it its own `vite-plus` peer variant.
+
 ## 4. Domain model
 
 ### 4.1 Definition ↔ record
@@ -129,15 +163,10 @@ Delete offers Cancel / Delete + extractions (cascade soft-delete) / Delete but k
 Editing a bullet re-runs extraction and must **reconcile** with what was already applied (keep
 matches, add new, retire removed) — extract first, then retire, in one transaction.
 
-## 5. Known issues in ported code (fix in the relevant slice)
+## 5. Known issues in ported code
 
-The audit of `legacy-v0` found these; `core` and `engine` were ported with tests but unfixed:
-
-- Extraction prompt has no current date/timezone, so relative dates can't resolve — required
-  now that Events are in slice 1.
-- A matched scale/number tracker with no value defaults to 0 and clamps to the scale minimum
-  (`resolve.ts` `coerceEntryValue`).
-- Mark-done UPDATE payloads carry a snapshot of the task's fields; the new apply engine must
-  patch only changed fields.
-- A strong containment match can auto-apply "mark done" on an open task — revisit the tier.
-- `occurred_at` / `logged_at` default to processing time, not the bullet's capture time.
+All five issues the `legacy-v0` audit found were fixed in slice 1: the prompt carries capture
+time + zone and dates resolve deterministically; a matched scale/number tracker without a value
+no longer defaults to the minimum (falls back to an unlinked activity); mark-done is a
+`{ status: 'done' }` patch; only an exact title match may auto-apply mark-done; record
+timestamps default to capture time. Add new findings here.

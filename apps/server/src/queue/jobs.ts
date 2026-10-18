@@ -114,22 +114,26 @@ export interface ClaimedJob {
 /** Claim the oldest ready job: job → running, bullet → processing, attempts + 1. */
 export function claimNextJob(db: Db, now: number): ClaimedJob | null {
   return db.transaction((tx) => {
-    const job = tx
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.status, 'queued'), lte(jobs.run_after, now)))
-      .orderBy(asc(jobs.run_after), asc(jobs.created_at))
-      .limit(1)
-      .get()
-    if (!job) return null
-    const bullet = tx.select().from(bullets).where(eq(bullets.id, job.bullet_id)).get()
-    if (!bullet || bullet.state !== 'active') {
+    const ready = () =>
+      tx
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.status, 'queued'), lte(jobs.run_after, now)))
+        .orderBy(asc(jobs.run_after), asc(jobs.created_at))
+        .limit(1)
+        .get()
+    let job = ready()
+    let bullet = job && tx.select().from(bullets).where(eq(bullets.id, job.bullet_id)).get()
+    // Defensive: a job whose bullet is gone is cancelled and the next one is tried.
+    while (job && (!bullet || bullet.state !== 'active')) {
       tx.update(jobs)
         .set({ status: 'cancelled', updated_at: now })
         .where(eq(jobs.bullet_id, job.bullet_id))
         .run()
-      return null
+      job = ready()
+      bullet = job && tx.select().from(bullets).where(eq(bullets.id, job.bullet_id)).get()
     }
+    if (!job || !bullet) return null
     const claimed = {
       ...job,
       status: 'running' as const,
