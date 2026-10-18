@@ -87,3 +87,10 @@ describe('request validation', () => {
 test('config binds to loopback by default', () => {
   expect(loadServerConfig({}).host).toBe('127.0.0.1')
 })
+
+test('config leaves the transcriber off unless WHISPER_BASE_URL is set', () => {
+  expect(loadServerConfig({}).whisperBaseUrl).toBeUndefined()
+  const c = loadServerConfig({ WHISPER_BASE_URL: 'http://127.0.0.1:8081', WHISPER_MODEL: 'x' })
+  expect(c.whisperBaseUrl).toBe('http://127.0.0.1:8081')
+  expect(c.whisperModel).toBe('x')
+})

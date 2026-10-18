@@ -15,6 +15,17 @@ export interface ServerConfig {
   llmApiKey: string | undefined
   /** Deadline for one model call. */
   llmTimeoutMs: number
+  /**
+   * whisper.cpp `whisper-server` root URL. Unset: no server transcription, so voice bullets are
+   * processed on their device draft.
+   */
+  whisperBaseUrl: string | undefined
+  /** The model whisper-server was started with, recorded on each server transcript. */
+  whisperModel: string
+  /** Optional initial prompt for Whisper (vocabulary / mixed-language style). */
+  whisperPrompt: string | undefined
+  /** Deadline for one transcription. */
+  transcribeTimeoutMs: number
 }
 
 export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
@@ -27,5 +38,9 @@ export function loadServerConfig(env: Record<string, string | undefined>): Serve
     llmModel: env.LLM_MODEL?.trim() || 'default',
     llmApiKey: env.LLM_API_KEY?.trim() || undefined,
     llmTimeoutMs: Number(env.LLM_TIMEOUT_MS) || 120_000,
+    whisperBaseUrl: env.WHISPER_BASE_URL?.trim() || undefined,
+    whisperModel: env.WHISPER_MODEL?.trim() || 'large-v3-turbo',
+    whisperPrompt: env.WHISPER_PROMPT?.trim() || undefined,
+    transcribeTimeoutMs: Number(env.TRANSCRIBE_TIMEOUT_MS) || 600_000,
   }
 }

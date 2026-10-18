@@ -1,5 +1,9 @@
 import { serve } from '@hono/node-server'
-import { createOpenAiCompatibleClient, ENGINE_CONFIG_DEFAULTS } from '@bullet/engine'
+import {
+  createOpenAiCompatibleClient,
+  createWhisperCppTranscriber,
+  ENGINE_CONFIG_DEFAULTS,
+} from '@bullet/engine'
 import { createApp } from './app'
 import { loadServerConfig } from './config'
 import { openDb } from './db/client'
@@ -24,7 +28,16 @@ const worker = createWorker({
   }),
   engine: { ...ENGINE_CONFIG_DEFAULTS, model: config.llmModel },
   llmTimeoutMs: config.llmTimeoutMs,
-  // No transcriber is wired yet (whisper.cpp comes next): voice bullets use their device draft.
+  // Without WHISPER_BASE_URL, voice bullets are processed on their device draft.
+  transcriber: config.whisperBaseUrl
+    ? createWhisperCppTranscriber({
+        baseUrl: config.whisperBaseUrl,
+        model: config.whisperModel,
+        prompt: config.whisperPrompt,
+        timeoutMs: config.transcribeTimeoutMs + 5_000,
+      })
+    : undefined,
+  transcriberTimeoutMs: config.transcribeTimeoutMs,
   audioStore,
   // Processing failures are recorded on the bullet; the log line is for the operator.
   onError: (err) => console.error('[worker]', err instanceof Error ? err.message : err),
@@ -37,6 +50,13 @@ const app = createApp({
   onWorkQueued: () => worker.kick(),
   onError: (err) => console.error('[http]', err),
 })
+
+console.log(`llm: ${config.llmBaseUrl} (model ${config.llmModel})`)
+console.log(
+  config.whisperBaseUrl
+    ? `whisper: ${config.whisperBaseUrl} (model ${config.whisperModel})`
+    : 'whisper: not configured, voice notes use their device draft',
+)
 
 serve({ fetch: app.fetch, hostname: config.host, port: config.port }, (info) => {
   console.log(`bullet server listening on http://${info.address}:${info.port}`)

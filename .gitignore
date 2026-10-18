@@ -38,3 +38,7 @@ apps/mobile/android
 
 # AI agent worktrees
 .claude/worktrees/
+
+# home server runtime data (recordings, database) and transcription eval clips/output
+apps/server/data/
+apps/server/eval/

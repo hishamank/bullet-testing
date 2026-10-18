@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
-    "start": "tsx src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
     "test": "vp test",
     "db:generate": "drizzle-kit generate",
-    "device:add": "tsx src/cli.ts device:add",
-    "device:list": "tsx src/cli.ts device:list",
-    "device:revoke": "tsx src/cli.ts device:revoke"
+    "device:add": "tsx --env-file-if-exists=.env src/cli.ts device:add",
+    "device:list": "tsx --env-file-if-exists=.env src/cli.ts device:list",
+    "device:revoke": "tsx --env-file-if-exists=.env src/cli.ts device:revoke",
+    "eval:transcribe": "tsx scripts/eval-transcribe.ts"
   },
   "dependencies": {
     "@bullet/core": "workspace:*",
