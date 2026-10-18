@@ -16,6 +16,8 @@ const ICONS = {
   forward: { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' },
   pause: { ios: 'pause', android: 'pause', web: 'pause' },
   play: { ios: 'play.fill', android: 'play_arrow', web: 'play_arrow' },
+  text: { ios: 'text.quote', android: 'format_quote', web: 'format_quote' },
+  info: { ios: 'info.circle', android: 'info', web: 'info' },
   note: { ios: 'square.and.pencil', android: 'edit_note', web: 'edit_note' },
   expand: { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' },
   collapse: { ios: 'chevron.up', android: 'expand_less', web: 'expand_less' },
