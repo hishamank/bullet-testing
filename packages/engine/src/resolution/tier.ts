@@ -22,8 +22,9 @@
  *    (or promote confident links back toward 'auto'). Value-LESS records (a plain activity, no
  *    quantity) are NOT capped by this rule and stay auto-eligible.
  *
- *  - TASK CREATE: conservative — capped at 'suggest' (we do not silently mint task lists). The
- *    cap is liftable via `config.autoCreateTasks` (default false) →
+ *  - TASK / EVENT CREATE: conservative — capped at 'suggest' (we do not silently mint task lists
+ *    or calendar entries). Liftable via `config.autoCreateTasks` / `config.autoCreateEvents`
+ *    (default false) →
  *    confidence >= suggestThreshold ? 'suggest' : 'ask'  (or the records rule when enabled).
  *
  * "Eagerness scales inversely with permanence": value-less records auto, values/tasks need a nod,
@@ -80,8 +81,11 @@ export function assignTier(
     return cappedTier(confidence, config)
   }
 
-  // Task CREATE is conservative: capped unless explicitly opted in.
+  // Task / Event CREATE is conservative: capped unless explicitly opted in.
   if (targetKind === 'task' && operation === 'create' && !config.autoCreateTasks) {
+    return cappedTier(confidence, config)
+  }
+  if (targetKind === 'event' && operation === 'create' && !config.autoCreateEvents) {
     return cappedTier(confidence, config)
   }
 

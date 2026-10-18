@@ -11,6 +11,7 @@ const validSuggestion = {
   id: '11111111-1111-4111-8111-111111111111',
   owner_id: '22222222-2222-4222-8222-222222222222',
   source_bullet_id: '33333333-3333-4333-8333-333333333333',
+  source_thought_id: null,
   created_at: 1_700_000_000_000,
   updated_at: 1_700_000_000_000,
   state: 'active' as const,
@@ -22,6 +23,9 @@ const validSuggestion = {
   tier: 'suggest' as const,
   status: 'pending' as const,
   resolved_at: null,
+  applied_entity_id: null,
+  applied_at: null,
+  auto_applied: false,
 }
 
 test('suggestion select: valid object parses', () => {
@@ -90,6 +94,8 @@ test('suggestion insert: allows omitting id/created_at/updated_at/state and defa
   expect(res.success).toBe(true)
   if (res.success) {
     expect(res.data.status).toBe('pending')
+    expect(res.data.applied_entity_id).toBeNull()
+    expect(res.data.auto_applied).toBe(false)
   }
 })
 
@@ -241,6 +247,18 @@ test('suggestion: ACCEPTS task with tier auto', () => {
       operation: 'create',
       target_id: null,
       tier: 'auto',
+    }).success,
+  ).toBe(true)
+})
+
+test('suggestion: ACCEPTS event create with tier suggest (events are records, not definitions)', () => {
+  expect(
+    suggestionSelectSchema.safeParse({
+      ...validSuggestion,
+      target_kind: 'event',
+      operation: 'create',
+      target_id: null,
+      tier: 'suggest',
     }).success,
   ).toBe(true)
 })

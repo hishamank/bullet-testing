@@ -11,6 +11,8 @@ import type { EngineConfig } from '../config'
 import type { LlmClient } from '../llm/types'
 import { EngineError } from '../errors'
 import type { LlmMessage } from '../llm/types'
+import type { z } from 'zod'
+import type { CaptureContext } from '../time/when'
 import { buildExtractionPrompt } from './prompt'
 import { type Candidate, extractionJsonSchema, extractionResponseSchema } from './schema'
 import type { ExtractionSnapshot } from './snapshot'
@@ -108,6 +110,11 @@ function buildRepairMessages(
   ]
 }
 
+/** What extraction needs to know about a bullet: its text and when/where it was captured. */
+export interface ExtractionInput extends CaptureContext {
+  text: string
+}
+
 /**
  * Run extraction for `bullet` against `snapshot`. Returns the validated candidates.
  *
@@ -120,10 +127,35 @@ function buildRepairMessages(
  */
 export async function extractCandidates(
   deps: { llm: LlmClient; config: EngineConfig },
-  bullet: string,
+  bullet: ExtractionInput,
   snapshot: ExtractionSnapshot,
 ): Promise<Candidate[]> {
-  const baseMessages = buildExtractionPrompt(bullet, snapshot)
+  const baseMessages = buildExtractionPrompt(bullet.text, snapshot, bullet)
+  const res = await requestStructured(
+    deps,
+    baseMessages,
+    extractionResponseSchema,
+    extractionJsonSchema,
+    'Extraction',
+  )
+  return res.candidates
+}
+
+/**
+ * One structured-output LLM call with tolerant parsing and ONE repair retry. On a parse/validation
+ * failure the second attempt re-sends the original messages plus the prior raw output and a
+ * correction instruction (still constrained by `jsonSchema`); then the last typed error is thrown.
+ *
+ * @throws EngineError('LLM_PARSE') if the content is not valid JSON after the repair.
+ * @throws EngineError('EXTRACTION_INVALID') if the JSON does not satisfy `schema` after repair.
+ */
+export async function requestStructured<T>(
+  deps: { llm: LlmClient; config: EngineConfig },
+  baseMessages: LlmMessage[],
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  jsonSchema: Record<string, unknown>,
+  label: string,
+): Promise<T> {
   let lastError: EngineError | undefined
   let previousContent: string | undefined
 
@@ -135,12 +167,8 @@ export async function extractCandidates(
         ? baseMessages
         : [...baseMessages, ...buildRepairMessages(previousContent, lastError)]
 
-    const res = await deps.llm.chat({
-      model: deps.config.model,
-      messages,
-      // Structured output: constrain decoding to the extraction schema (on every attempt).
-      jsonSchema: extractionJsonSchema,
-    })
+    // Structured output: constrain decoding to the schema (on every attempt).
+    const res = await deps.llm.chat({ model: deps.config.model, messages, jsonSchema })
     previousContent = res.message.content
 
     // (1) Tolerantly extract the JSON object, then parse it.
@@ -152,28 +180,26 @@ export async function extractCandidates(
     } catch {
       lastError = new EngineError(
         'LLM_PARSE',
-        `Extraction response was not valid JSON (attempt ${attempt})`,
+        `${label} response was not valid JSON (attempt ${attempt})`,
         res.message.content,
       )
       continue
     }
 
-    // (2) Validate against the extraction schema.
-    const parsed = extractionResponseSchema.safeParse(json)
+    // (2) Validate against the schema.
+    const parsed = schema.safeParse(json)
     if (!parsed.success) {
       lastError = new EngineError(
         'EXTRACTION_INVALID',
-        `Extraction response failed schema validation (attempt ${attempt})`,
+        `${label} response failed schema validation (attempt ${attempt})`,
         parsed.error.flatten(),
       )
       continue
     }
 
-    return parsed.data.candidates
+    return parsed.data
   }
 
   // Both attempts failed — surface the last typed error.
-  throw (
-    lastError ?? new EngineError('EXTRACTION_INVALID', 'Extraction failed for an unknown reason')
-  )
+  throw lastError ?? new EngineError('EXTRACTION_INVALID', `${label} failed for an unknown reason`)
 }

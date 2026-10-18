@@ -32,5 +32,18 @@ pnpm dev:web             # vite dev server
 pnpm dev:server          # tsx watch, binds 127.0.0.1:3001
 ```
 
+### Running the home server
+
+```bash
+pnpm --filter server device:add "My iPhone"   # prints the device token once
+pnpm dev:server                               # http://127.0.0.1:3001, data in apps/server/data/
+```
+
+Environment: `HOST`, `PORT`, `DB_PATH`, `AUDIO_DIR` (voice recordings, kept forever), `LLM_BASE_URL` (llama-server, default
+`http://127.0.0.1:8080`), `LLM_MODEL`, `LLM_API_KEY`, `LLM_TIMEOUT_MS`.
+
+The capture-loop states and the sync protocol are described in
+[`docs/contract.md`](./docs/contract.md).
+
 See [`CLAUDE.md`](./CLAUDE.md) for the product context, domain model and locked engineering
 decisions.

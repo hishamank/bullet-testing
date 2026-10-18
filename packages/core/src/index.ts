@@ -1,5 +1,6 @@
 /**
- * @bullet/core — domain types + Zod schemas for the v1 base entity set.
+ * @bullet/core — domain types + Zod schemas for the slice-1 entity set, the bullet processing
+ * state machine and the phone ↔ server sync contract.
  *
  * Pure package: Zod schemas, the TypeScript types inferred from them (the single source of
  * truth), the shared field conventions, and small pure helpers. No DB, no IO, no network,
@@ -29,10 +30,18 @@ export {
 // Entities — Bullet
 export {
   type Bullet,
+  type Capture,
   type BulletInsert,
   bulletInsertSchema,
   bulletSelectSchema,
 } from './entities/bullet'
+// Entities — Event
+export {
+  type Event,
+  type EventInsert,
+  eventInsertSchema,
+  eventSelectSchema,
+} from './entities/event'
 // Entities — Task
 export { type Task, type TaskInsert, taskInsertSchema, taskSelectSchema } from './entities/task'
 // Entities — Tracker (+ config union)
@@ -63,6 +72,8 @@ export {
 export { type User, type UserInsert, userInsertSchema, userSelectSchema } from './entities/user'
 // Enums / closed unions (schemas + inferred types)
 export {
+  type BulletSource,
+  bulletSourceSchema,
   type RecordState,
   recordStateSchema,
   type SuggestionOperation,
@@ -81,12 +92,31 @@ export {
   trackerInputTypeSchema,
 } from './enums'
 // Primitives & shared field conventions
-export { nonEmptyString, timestampMs, uuid } from './primitives'
+export { ianaTimezone, nonEmptyString, timestampMs, uuid } from './primitives'
+// Bullet processing status (the capture-loop state machine)
+export {
+  BULLET_STATUS_TRANSITIONS,
+  type BulletProcessing,
+  bulletProcessingSchema,
+  type BulletProcessingStatus,
+  bulletProcessingStatusSchema,
+  canTransition,
+  displayStatus,
+  isSettledStatus,
+  type ProcessingError,
+  type ProcessingErrorCode,
+  processingErrorCodeSchema,
+  processingErrorSchema,
+  type ServerBulletProcessingStatus,
+  serverBulletProcessingStatusSchema,
+} from './processing'
 // Registry + payload validation
 export {
   insertSchemaFor,
   type TargetKindInsertSchemas,
+  type TargetKindUpdateSchemas,
   targetKindInsertSchemas,
+  targetKindUpdateSchemas,
   validateSuggestionPayload,
 } from './registry'
 // Suggestion (extraction envelope)
@@ -101,3 +131,10 @@ export {
   suggestionPayloadSchema,
   suggestionSelectSchema,
 } from './suggestion'
+// Sync API contract (push/pull)
+export * from './sync'
+// Voice notes: audio attachments + transcripts
+export * from './entities/audio'
+// Capture → thoughts → things: thoughts and clarifying questions
+export * from './entities/question'
+export * from './entities/thought'

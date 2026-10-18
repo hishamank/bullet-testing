@@ -22,6 +22,9 @@ import { timestampMs, uuid } from './primitives'
  *  - `payload` is a loosely-typed record here; it is validated against the target kind's
  *    INSERT schema via `validateSuggestionPayload` (see registry.ts).
  *  - `confidence` is 0..1 inclusive.
+ *  - `applied_entity_id` / `applied_at` record what applying it produced or changed (null until
+ *    applied, and again after an undo); `auto_applied` is true when the server applied it without
+ *    asking (tier `auto`) — the UI offers Undo for those.
  */
 
 /** Proposed fields. Validated structurally per `target_kind` by `validateSuggestionPayload`. */
@@ -103,6 +106,9 @@ export const suggestionSelectSchema = z
     tier: suggestionTierSchema,
     status: suggestionStatusSchema,
     resolved_at: timestampMs().nullable(),
+    applied_entity_id: uuid().nullable(),
+    applied_at: timestampMs().nullable(),
+    auto_applied: z.boolean(),
   })
   .superRefine(refineSuggestionInvariants)
 export type Suggestion = z.infer<typeof suggestionSelectSchema>
@@ -120,6 +126,9 @@ export const suggestionInsertSchema = z
     // `status` is server-defaultable on insert.
     status: suggestionStatusSchema.default('pending'),
     resolved_at: timestampMs().nullable(),
+    applied_entity_id: uuid().nullable().default(null),
+    applied_at: timestampMs().nullable().default(null),
+    auto_applied: z.boolean().default(false),
   })
   .superRefine(refineSuggestionInvariants)
 export type SuggestionInsert = z.infer<typeof suggestionInsertSchema>

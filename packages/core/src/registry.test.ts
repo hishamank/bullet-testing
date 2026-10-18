@@ -1,7 +1,12 @@
 import { expect, test } from 'vite-plus/test'
 import { taskInsertSchema } from './entities/task'
 import { targetKindSchema } from './enums'
-import { insertSchemaFor, targetKindInsertSchemas, validateSuggestionPayload } from './registry'
+import {
+  insertSchemaFor,
+  targetKindInsertSchemas,
+  targetKindUpdateSchemas,
+  validateSuggestionPayload,
+} from './registry'
 
 test('registry: has an INSERT schema for every TargetKind', () => {
   for (const kind of targetKindSchema.options) {
@@ -92,4 +97,38 @@ test('validateSuggestionPayload: rejects an activity payload missing required na
     unit: null,
   })
   expect(res.success).toBe(false)
+})
+
+test('validateSuggestionPayload: accepts a correct event payload', () => {
+  const res = validateSuggestionPayload('event', {
+    owner_id: '22222222-2222-4222-8222-222222222222',
+    source_bullet_id: null,
+    title: 'Dentist',
+    starts_at: 1_700_000_000_000,
+    ends_at: null,
+    all_day: false,
+    location: null,
+    notes: null,
+  })
+  expect(res.success).toBe(true)
+})
+
+test('update payloads are field-level patches: mark-done is just { status }', () => {
+  expect(validateSuggestionPayload('task', { status: 'done' }, 'update').success).toBe(true)
+})
+
+test('update payloads reject unknown keys, provenance and empty patches', () => {
+  expect(validateSuggestionPayload('task', { status: 'done', bogus: 1 }, 'update').success).toBe(
+    false,
+  )
+  expect(
+    validateSuggestionPayload('task', { status: 'done', owner_id: 'x' }, 'update').success,
+  ).toBe(false)
+  expect(validateSuggestionPayload('task', {}, 'update').success).toBe(false)
+})
+
+test('registry: has an UPDATE schema for every TargetKind', () => {
+  for (const kind of targetKindSchema.options) {
+    expect(targetKindUpdateSchemas[kind]).toBeDefined()
+  }
 })

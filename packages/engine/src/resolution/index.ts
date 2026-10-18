@@ -2,6 +2,7 @@
 
 export { type Match, matchOpenTask, matchTracker } from './match'
 export {
+  type QuestionDraft,
   type ResolvedSuggestion,
   type ResolveOutcome,
   resolveCandidates,

@@ -53,6 +53,9 @@ export function createOpenAiCompatibleClient(opts: OpenAiCompatibleOptions): Llm
           signal: AbortSignal.timeout(timeoutMs),
         })
       } catch (err) {
+        if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+          throw new EngineError('LLM_TIMEOUT', `LLM did not answer within ${timeoutMs}ms`, err)
+        }
         throw new EngineError('LLM_HTTP', `LLM request failed: ${String(err)}`, err)
       }
       if (!res.ok) {

@@ -21,6 +21,18 @@ thought, taps Send, and moves on. Capture never waits on classification.
   first-slice target. The **web** app is a secondary client (review, dashboards).
 - Privacy-first: journal text stays on the user's hardware. Never send it to hosted services.
 
+**Capture → thoughts → things.** The user can empty their mind: a **capture** (typed or spoken,
+kept forever with its audio) is split into **thoughts** (every thought kept, classified), and
+**things** (tasks, events, tracker entries, activities) are extracted from the actionable ones as
+suggestions. The code and API keep the name `bullet` for a capture.
+
+**First-slice thought kinds:** worry, to_check, question, idea, note, task, event, tracker,
+activity. Kinds are classification (no review needed); the user can re-classify (sticky).
+
+**Slices:** 1 = capture, transcribe, store, split into thoughts, classify, extract things,
+clarifying questions as data. 2 = reflective questions. 3 = cross-capture connections and
+recurring themes. Build gradually; don't pull slice 2/3 forward.
+
 **First-slice entity set:** `Bullet`, `Task`, `Tracker` / `Tracker Entry`, `Activity`, `Event`.
 Habit, Goal, Note, Collection, Planner, recurrence and search come later, one at a time.
 **Voice capture is in the first slice.**
@@ -78,6 +90,51 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
 - **Provenance:** every extracted entity carries `source_bullet_id`.
 - **Node:** 24 LTS (`.nvmrc`, `engines`). **Commits:** Conventional Commits.
 
+### Capture loop (slice 1, 2026-10-18)
+
+- **The contract is `docs/contract.md`** (code: `@bullet/core` `processing.ts` + `sync.ts`). Bullet
+  states: `saved_local` (phone only) → `synced` → `processing` → `processed` | `needs_review` |
+  `failed` (error code + attempts; always user-retryable). Screens are designed against it:
+  change it **additively only** (new ops / new change collections), and update the doc with it.
+- **Sync:** `POST /sync/push` (ordered ops, idempotent by client `op_id` and by bullet id) and
+  `GET /sync/pull?cursor=` (opaque cursor over a per-entity change log; full rows, soft-deleted
+  included). Every server write to a synced entity must call `touch()` in the same transaction.
+- **Auth:** one bearer token per device, SHA-256 hashed at rest, required on **every** route
+  (`/health` included). Provision with `pnpm --filter server device:add <name>`.
+- **Server persistence:** SQLite via **better-sqlite3** + Drizzle (`apps/server/src/db`).
+  Chosen over `node:sqlite` because Drizzle's driver for it is RC-only and better-sqlite3's
+  synchronous transactions keep reconcile + apply + status atomic. Migrations:
+  `pnpm --filter server db:generate`, applied on open. It is a native addon: after switching Node
+  versions run `pnpm rebuild better-sqlite3`.
+- **Queue:** one durable job per bullet (`jobs` table); retries with backoff, an LLM deadline
+  (`withLlmTimeout`), `running` jobs recovered at startup, results discarded if the bullet was
+  edited/deleted meanwhile (`text_version`). One job at a time (one model slot).
+- **Apply engine** (`apps/server/src/apply`): revalidates against current state at apply time;
+  a created entity's id **is** the suggestion id (idempotent); `update` payloads are field-level
+  patches validated by `targetKindUpdateSchemas` (never a snapshot); undo restores `before`
+  values and refuses (`conflict`) if the user changed the result since.
+- **Dates:** the model **quotes** date phrases (`fields.when`); `@bullet/engine` `time/`
+  resolves them against the bullet's `captured_at` + IANA `timezone`. The engine never reads the
+  clock; records default to capture time.
+- **Voice notes keep their audio** (user decision, 2026-10-18). The recording is the source of
+  truth, kept permanently on the phone and the server (soft delete only). The phone saves the
+  live on-device draft (Apple SpeechAnalyzer) as the bullet text plus a `device_draft`
+  transcript. The server re-transcribes in the `transcribing` state, before extraction, through
+  the injected `Transcriber` interface (`@bullet/engine`; whisper.cpp later, scripted in tests).
+  It stores a `server` transcript, which replaces the bullet text unless `text_edited_by_user`.
+  Transcription is multilingual (English, Lebanese Arabic and French mixed): never force a
+  language. A voice bullet's job waits (`waiting_audio`) until its recording has fully uploaded.
+  Audio upload is `PUT /sync/audio/:id` with an `upload-offset` header: resumable, idempotent by
+  attachment id, sha256-verified. Recordings live under `AUDIO_DIR` on the server. Until a
+  transcriber is wired, voice bullets are processed on their device draft.
+- **Phone data layer** (`apps/mobile/src/data`, `src/sync`): expo-sqlite + Drizzle. Every local
+  action writes its change **and** its outbox op in one transaction. Migrations are drizzle-kit
+  SQL inlined into `migrations.gen.ts` (`pnpm --filter mobile db:generate`) and applied by a
+  driver-agnostic runner, so the same code runs on device and in Vitest (better-sqlite3).
+  React Native / Expo APIs live only in `open.ts`, `settings.ts` and `runtime.ts` (which also
+  reads recording chunks with expo-file-system); everything else is testable logic. The mobile test script is `pnpm exec vp test` because the app's TypeScript
+  (Expo's ~6.x) gives it its own `vite-plus` peer variant.
+
 ## 4. Domain model
 
 ### 4.1 Definition ↔ record
@@ -100,6 +157,10 @@ detection). Mood/weight/sleep are Tracker Entries, not activities. This axis is 
 - **Activity** — something the user did; optional tracker link.
 - **Event** — something that happens to the user at a time (start, optional end). Recurrence is
   later. Distinct from Task (you do it) vs Event (it happens).
+- **Thought** — a segment of a capture: text, span, position, kind, kind_source; provenance
+  `source_bullet_id`. Things/suggestions carry `source_thought_id` too.
+- **Question** — clarifying (slice 1): topic date | new_tracker | other, options, status
+  open | answered | dismissed.
 
 ### 4.3 Suggestion (persisted)
 
@@ -129,15 +190,19 @@ Delete offers Cancel / Delete + extractions (cascade soft-delete) / Delete but k
 Editing a bullet re-runs extraction and must **reconcile** with what was already applied (keep
 matches, add new, retire removed) — extract first, then retire, in one transaction.
 
-## 5. Known issues in ported code (fix in the relevant slice)
+### 4.7 Asking the user (deliberate reversal)
 
-The audit of `legacy-v0` found these; `core` and `engine` were ported with tests but unfixed:
+The old rule "the agent never asks free-text questions" is reversed, deliberately and narrowly:
 
-- Extraction prompt has no current date/timezone, so relative dates can't resolve — required
-  now that Events are in slice 1.
-- A matched scale/number tracker with no value defaults to 0 and clamps to the scale minimum
-  (`resolve.ts` `coerceEntryValue`).
-- Mark-done UPDATE payloads carry a snapshot of the task's fields; the new apply engine must
-  patch only changed fields.
-- A strong containment match can auto-apply "mark done" on an open task — revisit the tier.
-- `occurred_at` / `logged_at` default to processing time, not the bullet's capture time.
+- **Clarifying questions** (slice 1): short and concrete, about one ambiguous extraction, at most
+  3 per capture, optional, never blocking a suggestion. Answering is a capture
+  (`answers_question_id`).
+- **Reflective questions** (slice 2): optional and never nagging.
+
+## 5. Known issues in ported code
+
+All five issues the `legacy-v0` audit found were fixed in slice 1: the prompt carries capture
+time + zone and dates resolve deterministically; a matched scale/number tracker without a value
+no longer defaults to the minimum (falls back to an unlinked activity); mark-done is a
+`{ status: 'done' }` patch; only an exact title match may auto-apply mark-done; record
+timestamps default to capture time. Add new findings here.

@@ -2,10 +2,13 @@ import { nonEmptyString } from '@bullet/core'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { captureBullet } from '@/data/local'
+import { getDb } from '@/data/open'
+import { deviceDeps, syncSoon } from '@/sync/runtime'
 
 /**
- * Placeholder capture screen. It proves the workspace wiring (Metro resolving `@bullet/core`
- * from source); local persistence, the outbox and sync come in the capture-loop slice.
+ * Placeholder capture screen. Send saves the bullet on the device (with its outbox entry) and
+ * asks for a sync; the real capture UI comes from the design work.
  */
 export default function CaptureScreen() {
   const dark = useColorScheme() === 'dark'
@@ -29,7 +32,11 @@ export default function CaptureScreen() {
           accessibilityRole="button"
           accessibilityLabel="Send bullet"
           disabled={!canSend}
-          onPress={() => setText('')}
+          onPress={() => {
+            captureBullet(getDb(), { text }, deviceDeps)
+            setText('')
+            syncSoon()
+          }}
           style={[styles.send, { opacity: canSend ? 1 : 0.4 }]}
         >
           <Text style={styles.sendLabel}>Send</Text>

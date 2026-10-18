@@ -1,7 +1,7 @@
 /** Extraction barrel — snapshot, schema, prompt, and the extractor. */
 
-export { extractCandidates } from './extract'
-export { buildExtractionPrompt, EXTRACTION_SYSTEM_PROMPT } from './prompt'
+export { extractCandidates, extractJsonObject, type ExtractionInput } from './extract'
+export { buildExtractionPrompt, EXTRACTION_SYSTEM_PROMPT, renderCaptureContext } from './prompt'
 export {
   type Candidate,
   candidateSchema,
