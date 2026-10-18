@@ -57,9 +57,12 @@ until the home transcript replaces it.
   native sessions never overlap. The screen stays awake while recording, so auto-lock doesn't end
   a long ramble.
 - **Crash or kill:** the segment files and a `meta.json` (links, draft so far, start time) stay
-  on disk. A WAV whose header was never finalised is repaired from its file size. The next time
-  the recorder opens, `recoverRecordings` saves each leftover as a voice capture and skips any
-  already saved. Recordings made with expo-audio (`.m4a`) can't be recovered after a kill.
+  on disk. A WAV whose header was never finalised is repaired from its file size. At the next
+  launch, once the first screen is up and idle, `recoverRecordings` saves each leftover as a
+  voice capture and skips any already saved; starting a recording runs it too. One run at a time
+  (a second call joins the first), and the recording in progress is always skipped. Joining and
+  hashing hand the JS thread back every 8 MB, so a long leftover never freezes the screen.
+  Recordings made with expo-audio (`.m4a`) can't be recovered after a kill.
 - **Cancel** asks first once more than ~10 seconds were recorded, then deletes the files.
 
 ## Permissions
@@ -122,7 +125,8 @@ the App Store.
   stretch. Control Center and banners do not pause it. Send then joins the stretches into one
   playable WAV.
 - The `.m4a` fallback notices a call pausing it (it watches the recorder's state).
-- Killing the app mid-recording, then opening the recorder again, saves the recovered recording.
+- Killing the app mid-recording, then relaunching, saves the recovered recording: the note
+  appears in the Journal without opening the recorder, and the splash isn't held up by it.
 - With speech recognition denied in Settings, the phone records an `.m4a` without a draft.
 - The recording uploads to the home server and Whisper's transcript replaces the draft.
 - The haptic, the "Saved" on the capture page, and VoiceOver labels on the controls and timer.

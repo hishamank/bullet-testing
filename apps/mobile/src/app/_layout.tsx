@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect } from 'react'
 import { startAppSync } from '@/features/sync/engine'
+import { recoverAfterLaunch } from '@/features/voice/actions'
 import { usePairing } from '@/hooks'
 import { useTheme } from '@/theme'
 
@@ -13,7 +14,8 @@ export default function RootLayout() {
   const pairing = usePairing()
   useEffect(() => startAppSync(), [])
   useEffect(() => {
-    if (pairing !== 'loading') void SplashScreen.hideAsync()
+    // Once the first screen is up, save recordings a crash left behind (not on the next one).
+    if (pairing !== 'loading') void SplashScreen.hideAsync().finally(recoverAfterLaunch)
   }, [pairing])
   if (pairing === 'loading') return null
 
