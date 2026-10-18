@@ -17,16 +17,39 @@ export interface VoiceFileIo {
 }
 
 const CHUNK_BYTES = 1024 * 1024
+/** File access and hashing are synchronous: hand the JS thread back this often. */
+const YIELD_EVERY_BYTES = 8 * CHUNK_BYTES
+
+/** Waits a macrotask, so touches and frames get through between chunks. */
+export type Pause = () => Promise<void>
+const nextTask: Pause = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+/** Counts bytes and pauses every YIELD_EVERY_BYTES. */
+function pacer(pause: Pause) {
+  let sinceYield = 0
+  return async (bytes: number) => {
+    sinceYield += bytes
+    if (sinceYield < YIELD_EVERY_BYTES) return
+    sinceYield = 0
+    await pause()
+  }
+}
 
 /** SHA-256 of a whole file, read in chunks. */
-export function hashFile(io: VoiceFileIo, uri: string): string {
+export async function hashFile(
+  io: VoiceFileIo,
+  uri: string,
+  pause: Pause = nextTask,
+): Promise<string> {
   const hash = createSha256()
+  const paced = pacer(pause)
   const size = io.size(uri)
   for (let done = 0; done < size;) {
     const bytes = io.read(uri, done, Math.min(CHUNK_BYTES, size - done))
     if (bytes.length === 0) break
     hash.update(bytes)
     done += bytes.length
+    await paced(bytes.length)
   }
   return hash.hex()
 }
@@ -35,11 +58,12 @@ export function hashFile(io: VoiceFileIo, uri: string): string {
  * Writes `out` and returns what was written (with its SHA-256, computed on the way), or null when
  * the segments hold no audio.
  */
-export function assembleSegments(
+export async function assembleSegments(
   segments: readonly string[],
   out: string,
   io: VoiceFileIo,
-): (ConcatPlan & { sha256: string }) | null {
+  pause: Pause = nextTask,
+): Promise<(ConcatPlan & { sha256: string }) | null> {
   const heads = segments.map((uri) => {
     const size = io.size(uri)
     return { uri, size, head: io.read(uri, 0, Math.min(size, WAV_HEAD_BYTES)) }
@@ -47,6 +71,7 @@ export function assembleSegments(
   const plan = planConcat(heads)
   if (!plan) return null
   const hash = createSha256()
+  const paced = pacer(pause)
   io.create(out, plan.header)
   hash.update(plan.header)
   for (const c of plan.copies) {
@@ -56,6 +81,7 @@ export function assembleSegments(
       io.append(out, bytes)
       hash.update(bytes)
       done += bytes.length
+      await paced(bytes.length)
     }
   }
   return { ...plan, sha256: hash.hex() }
