@@ -3,25 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+    ".": "./src/index.ts"
   },
-  "files": [
-    "dist"
-  ],
   "scripts": {
-    "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
-    "test": "vitest run"
+    "test": "vp test"
   },
   "dependencies": {
-    "zod": "^3.25.76"
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
   }
 }

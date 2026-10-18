@@ -1,37 +1,36 @@
 # Bullet Journal
 
-A **local-first bullet-journal app**. The user brain-dumps thoughts one bullet at a
-time into a message-style input. After each bullet, a **local LLM agent** (via Ollama)
-classifies it and extracts structured productivity entities — tasks, trackers,
-activities — proposed as **suggestions** the user confirms. It runs entirely on the
-user's machine. Privacy-first.
+A **mobile-first, offline-first bullet journal**. Open the phone, type or speak a thought, tap
+Send, move on. Captures save on the device immediately; when the phone is online it syncs with
+a home server, which runs a local LLM (llama.cpp) to extract tasks, events, trackers and
+activities and sends back suggestions to review later. Privacy-first: journal text stays on the
+user's own hardware.
 
-This repository contains the **engine, not the cockpit**: the domain core, database,
-agent ("the brain"), and the tRPC backend. The feature UI is built separately.
+The previous web-first implementation is preserved at the git tag `legacy-v0`.
 
-## Monorepo layout
+## Monorepo layout (Vite+)
 
 ```
 apps/
-  web/        # Next.js (App Router) — scaffold only
+  mobile/     # Expo (React Native) + Expo Router — the primary client, iOS first
+  web/        # Vite + React — secondary client (review, dashboards)
+  server/     # Node + Hono — sync ingest, processing queue, LLM calls (home machine)
 packages/
-  core/       # domain types, Zod schemas, apply/commit engine, create-vs-append logic
-  db/         # Drizzle schema + migrations + repositories
-  agent/      # Ollama client, extraction → resolution → suggestion pipeline, serial queue
+  core/       # domain types + Zod schemas (pure TS)
+  engine/     # extraction → resolution pipeline, LLM client interface (pure TS)
 ```
-
-Dependency direction: `db → core`, `agent → core + db`, tRPC server → `core + db + agent`,
-`web → tRPC client only`.
 
 ## Getting started
 
 ```bash
-nvm use            # Node 24 (LTS)
 pnpm install
-pnpm build
-pnpm typecheck
-pnpm test
+pnpm exec vp check       # format, lint, type-check
+pnpm test                # vp run -r test
+pnpm build               # vp run -r build
+pnpm dev:mobile          # expo start
+pnpm dev:web             # vite dev server
+pnpm dev:server          # tsx watch, binds 127.0.0.1:3001
 ```
 
-See [`CLAUDE.md`](./CLAUDE.md) for the full project context, conventions, and the
-domain model that every contributor (human or agent) must follow.
+See [`CLAUDE.md`](./CLAUDE.md) for the product context, domain model and locked engineering
+decisions.

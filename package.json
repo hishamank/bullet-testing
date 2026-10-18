@@ -3,34 +3,22 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.30.1",
+  "scripts": {
+    "test": "vp run -r test",
+    "build": "vp run -r build",
+    "ready": "vp check && vp run -r test && vp run -r build",
+    "dev:web": "vp run web#dev",
+    "dev:server": "vp run server#dev",
+    "dev:mobile": "vp run mobile#start"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
   "engines": {
     "node": ">=24",
     "pnpm": ">=10"
   },
-  "scripts": {
-    "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "dev": "turbo run dev",
-    "format": "biome format --write .",
-    "check": "biome check ."
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.0.0",
-    "@types/node": "^24.0.0",
-    "tsup": "^8.0.0",
-    "tsx": "^4.22.4",
-    "turbo": "^2.0.0",
-    "typescript": "^5.8.0",
-    "vitest": "^3.0.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "esbuild",
-      "sharp"
-    ]
-  }
+  "packageManager": "pnpm@10.30.1"
 }

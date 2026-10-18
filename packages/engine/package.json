@@ -1,0 +1,21 @@
+{
+  "name": "@bullet/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@bullet/core": "workspace:*",
+    "fuse.js": "^7.4.2",
+    "zod": "catalog:",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "vite-plus": "catalog:"
+  }
+}
