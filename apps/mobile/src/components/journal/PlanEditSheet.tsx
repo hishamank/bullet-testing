@@ -15,7 +15,9 @@ import {
   cleanTitle,
   DAY_CHOICES,
   type DayChoice,
-  eventMovePatch,
+  DEFAULT_EVENT_LENGTH_MS,
+  eventEditPatch,
+  moveEventStart,
   moveToDay,
   type PlanEvent,
   type PlanTask,
@@ -45,7 +47,16 @@ function EditBody({ item, onClose }: { item: PlanItem; onClose: () => void }) {
     ? { title: item.task.title, at: item.task.due_at }
     : { title: item.event.title, at: item.event.starts_at as number | null }
   const [title, setTitle] = useState(original.title)
-  const [at, setAt] = useState<number | null>(original.at)
+  const [at, setAtState] = useState<number | null>(original.at)
+  const [end, setEnd] = useState<number | null>(isTask ? null : item.event.ends_at)
+  /** A new start carries an event's end along (same length). */
+  const setAt = (next: number | null) => {
+    if (!isTask && at !== null && next !== null) {
+      setEnd(moveEventStart({ starts_at: at, ends_at: end }, next).ends_at)
+    }
+    setAtState(next)
+    setError(null)
+  }
   const [error, setError] = useState<string | null>(null)
   const sourceBullet = isTask ? item.task.source_bullet_id : item.event.source_bullet_id
   const noun = isTask ? 'task' : 'event'
@@ -66,9 +77,16 @@ function EditBody({ item, onClose }: { item: PlanItem; onClose: () => void }) {
         }
         if (Object.keys(patch).length > 0) editTask(item.task.id, patch)
       } else {
-        const move = at !== null ? eventMovePatch(item.event, at) : null
-        const patch = { ...(name !== item.event.title ? { title: name } : {}), ...move }
-        if (Object.keys(patch).length > 0) editEvent(item.event.id, patch)
+        const r = eventEditPatch(item.event, {
+          title: name,
+          starts_at: at ?? item.event.starts_at,
+          ends_at: end,
+        })
+        if (!r.ok) {
+          setError(r.message)
+          return
+        }
+        if (r.patch) editEvent(item.event.id, r.patch)
       }
       onClose()
     } catch (e) {
@@ -139,6 +157,41 @@ function EditBody({ item, onClose }: { item: PlanItem; onClose: () => void }) {
             onDateChange={(d) => setAt(d.getTime())}
           />
         </Host>
+      ) : null}
+      {!isTask && at !== null ? (
+        <>
+          <Label tone="secondary" size={type.label}>
+            Ends
+          </Label>
+          <Label accessibilityLiveRegion="polite">
+            {end === null ? 'No end' : fullWhen(end, now, tz)}
+          </Label>
+          <View style={styles.chips}>
+            <Chip
+              label="No end"
+              selected={end === null}
+              onPress={() => {
+                setEnd(null)
+                setError(null)
+              }}
+              accessibilityLabel="No end time"
+            />
+          </View>
+          {Platform.OS === 'ios' ? (
+            <Host matchContents colorScheme={t.scheme} seedColor={t.accent}>
+              <DatePicker
+                title="Ends"
+                selection={new Date(end ?? at + DEFAULT_EVENT_LENGTH_MS)}
+                range={{ start: new Date(at) }}
+                displayedComponents={['date', 'hourAndMinute']}
+                onDateChange={(d) => {
+                  setEnd(d.getTime())
+                  setError(null)
+                }}
+              />
+            </Host>
+          ) : null}
+        </>
       ) : null}
       {error ? (
         <Label accessibilityRole="alert" style={{ color: t.destructive }} size={type.bodySmall}>

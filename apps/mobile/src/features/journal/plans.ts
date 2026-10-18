@@ -7,7 +7,9 @@
 import { and, eq, gte, inArray, or } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { events, tasks } from '../../data/schema'
+import type { EventManualPatch } from '@bullet/core'
 import { addDays, zonedParts, zonedToEpoch } from '@bullet/engine'
+import { shiftEnd } from '../inbox/edit'
 import { DAY_MS, dayDiff, dayKey, dayTitle, shortDay, startOfDay } from './format'
 
 export interface PlanTask {
@@ -199,6 +201,40 @@ export function eventMovePatch(
   startsAt: number,
 ): { starts_at: number; ends_at?: number } | null {
   if (startsAt === e.starts_at) return null
-  if (e.ends_at === null) return { starts_at: startsAt }
-  return { starts_at: startsAt, ends_at: e.ends_at + (startsAt - e.starts_at) }
+  const ends = shiftEnd(e.starts_at, e.ends_at, startsAt)
+  return ends === null ? { starts_at: startsAt } : { starts_at: startsAt, ends_at: ends }
+}
+
+/** The event sheet's times: a new start carries the end along (same length); "No end" is null. */
+export interface EventTimes {
+  starts_at: number
+  ends_at: number | null
+}
+
+export function moveEventStart(times: EventTimes, startsAt: number): EventTimes {
+  return { starts_at: startsAt, ends_at: shiftEnd(times.starts_at, times.ends_at, startsAt) }
+}
+
+/** Default end offered when an event had none: an hour after it starts. */
+export const DEFAULT_EVENT_LENGTH_MS = 60 * 60_000
+
+export const END_BEFORE_START = "It can't end before it starts."
+
+/**
+ * The `event.update` patch for the sheet's edits (only what changed; null when nothing did), or
+ * a sentence when the end is before the start (the server would refuse it).
+ */
+export function eventEditPatch(
+  e: Pick<PlanEvent, 'title' | 'starts_at' | 'ends_at'>,
+  next: EventTimes & { title: string },
+): { ok: true; patch: EventManualPatch | null } | { ok: false; message: string } {
+  if (next.ends_at !== null && next.ends_at < next.starts_at) {
+    return { ok: false, message: END_BEFORE_START }
+  }
+  const patch: EventManualPatch = {
+    ...(next.title !== e.title ? { title: next.title } : {}),
+    ...(next.starts_at !== e.starts_at ? { starts_at: next.starts_at } : {}),
+    ...(next.ends_at !== e.ends_at ? { ends_at: next.ends_at } : {}),
+  }
+  return { ok: true, patch: Object.keys(patch).length > 0 ? patch : null }
 }
