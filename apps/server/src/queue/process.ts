@@ -2,8 +2,9 @@
  * Processing one claimed bullet:
  *  1. voice bullets with a recording: transcribe it (with a deadline) and, in one transaction,
  *     store the server transcript and — unless the user edited the text — make it the bullet text;
- *  2. snapshot current state → ask the model (with a deadline) → resolve → in ONE transaction, if
- *     the job is still current: reconcile suggestions, auto-apply, set the final status, finish.
+ *  2. snapshot current state → split the capture into thoughts and extract things per thought
+ *     (`processCapture`, with deadlines) → in ONE transaction, if the job is still current:
+ *     reconcile thoughts, suggestions (auto-apply) and clarifying questions, set the final status.
  * A failure in either stage is recorded by the worker; a retry skips a finished transcription.
  */
 
@@ -11,9 +12,8 @@ import { randomUUID } from 'node:crypto'
 import {
   type EngineConfig,
   type ExtractionSnapshot,
-  extractCandidates,
   type LlmClient,
-  resolveCandidates,
+  processCapture,
   type Transcriber,
 } from '@bullet/engine'
 import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
@@ -22,6 +22,7 @@ import type { Db } from '../db/client'
 import { bullets, tasks, trackers, transcripts } from '../db/schema'
 import type { AudioStore } from '../storage/audio-store'
 import { hasPendingSuggestions, reconcileSuggestions } from '../apply/reconcile'
+import { reconcileThoughts, replaceQuestions } from '../capture/thoughts'
 import { touch } from '../sync/changes'
 import { type BulletRow, type ClaimedJob, isJobCurrent, markJobDone, setBulletProc } from './jobs'
 
@@ -149,18 +150,34 @@ export async function processClaimedJob(
   if (!bullet) return 'stale'
   const snapshot = buildSnapshot(deps.db, bullet)
   const ctx = { capturedAt: bullet.captured_at, timezone: bullet.timezone }
-  const candidates = await extractCandidates(
+  const outcome = await processCapture(
     { llm: deps.llm, config: deps.engine },
     { text: bullet.text, ...ctx },
     snapshot,
   )
-  const { suggestions } = resolveCandidates(candidates, snapshot, deps.engine, ctx)
 
   const now = deps.now()
   return deps.db.transaction((tx) => {
     const current = isJobCurrent(tx, claimed)
     if (!current) return 'stale'
-    reconcileSuggestions(tx, current, suggestions, now)
+    // capture → thoughts → things → questions, all in this one transaction.
+    const thoughtIds = reconcileThoughts(tx, current, outcome.thoughts, now)
+    const { ids } = reconcileSuggestions(
+      tx,
+      current,
+      outcome.things.map((t) => ({ ...t, thoughtId: thoughtIds[t.thoughtPosition] ?? null })),
+      now,
+    )
+    replaceQuestions(
+      tx,
+      current,
+      outcome.questions.map((q) => ({
+        ...q,
+        thoughtId: thoughtIds[q.thoughtPosition] ?? null,
+        suggestionId: q.thingIndex === null ? null : (ids[q.thingIndex] ?? null),
+      })),
+      now,
+    )
     const status = hasPendingSuggestions(tx, current.id) ? 'needs_review' : 'processed'
     tx.update(bullets)
       .set({

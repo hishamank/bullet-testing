@@ -8,17 +8,19 @@
 import type { PullChangeKind, PullChanges } from '@bullet/core'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { toAudioAttachment, toSuggestion, toSyncedBullet } from '../db/rows'
+import { toAudioAttachment, toSuggestion, toSyncedBullet, toThought } from '../db/rows'
 import {
   activities,
   audioAttachments,
   bullets,
   events,
+  questions,
   suggestions,
   syncChanges,
   syncCounter,
   tasks,
   trackerEntries,
+  thoughts,
   trackers,
   transcripts,
 } from '../db/schema'
@@ -60,6 +62,8 @@ const emptyChanges = (): PullChanges => ({
   activities: [],
   audio_attachments: [],
   transcripts: [],
+  thoughts: [],
+  questions: [],
 })
 
 /** Load the current rows for `ids` of one kind, already in contract shape. */
@@ -146,6 +150,25 @@ function loadRows(db: Db, ownerId: string, kind: PullChangeKind, ids: string[], 
           .select()
           .from(transcripts)
           .where(and(eq(transcripts.owner_id, ownerId), inArray(transcripts.id, ids)))
+          .all(),
+      )
+      return
+    case 'thoughts':
+      out.thoughts.push(
+        ...db
+          .select()
+          .from(thoughts)
+          .where(and(eq(thoughts.owner_id, ownerId), inArray(thoughts.id, ids)))
+          .all()
+          .map(toThought),
+      )
+      return
+    case 'questions':
+      out.questions.push(
+        ...db
+          .select()
+          .from(questions)
+          .where(and(eq(questions.owner_id, ownerId), inArray(questions.id, ids)))
           .all(),
       )
       return

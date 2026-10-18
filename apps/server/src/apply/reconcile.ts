@@ -68,12 +68,17 @@ export interface ReconcileResult {
   kept: number
   added: number
   retired: number
+  /** The suggestion id now standing for each draft, in draft order. */
+  ids: string[]
 }
+
+/** A thing draft plus the thought it came from (null for drafts without one). */
+export type ThingDraftWithThought = ResolvedSuggestion & { thoughtId?: string | null }
 
 export function reconcileSuggestions(
   db: Db,
   bullet: { id: string; owner_id: string },
-  drafts: ResolvedSuggestion[],
+  drafts: ThingDraftWithThought[],
   now: number,
 ): ReconcileResult {
   const existing = db
@@ -82,41 +87,50 @@ export function reconcileSuggestions(
     .where(and(eq(suggestions.source_bullet_id, bullet.id), eq(suggestions.state, 'active')))
     .all()
 
-  const pairs: [SuggestionRow, ResolvedSuggestion][] = []
-  const unmatchedDrafts: ResolvedSuggestion[] = []
+  const ids: string[] = Array.from({ length: drafts.length }, () => '')
+  const pairs: [SuggestionRow, ThingDraftWithThought, number][] = []
+  const unmatched: number[] = []
   const pool = [...existing]
   const take = (pred: (s: SuggestionRow) => boolean): SuggestionRow | undefined => {
     const i = pool.findIndex(pred)
     return i < 0 ? undefined : pool.splice(i, 1)[0]
   }
-  for (const d of drafts) {
+  for (const [n, d] of drafts.entries()) {
     const hit = take((s) => identityKey(s) === identityKey(d))
-    if (hit) pairs.push([hit, d])
-    else unmatchedDrafts.push(d)
+    if (hit) pairs.push([hit, d, n])
+    else unmatched.push(n)
   }
-  const added: ResolvedSuggestion[] = []
-  for (const d of unmatchedDrafts) {
+  const added: number[] = []
+  for (const n of unmatched) {
+    const d = drafts[n] as ThingDraftWithThought
     const hit = take((s) => slotKey(s) === slotKey(d))
-    if (hit) pairs.push([hit, d])
-    else added.push(d)
+    if (hit) pairs.push([hit, d, n])
+    else added.push(n)
   }
 
   // Retire first, so an undo can't trip over a suggestion about to be re-added.
   for (const s of pool) retireSuggestion(db, s, now)
 
-  for (const [s, d] of pairs) {
+  for (const [s, d, n] of pairs) {
+    ids[n] = s.id
     if (s.status !== 'pending') continue
-    const payload = withProvenance(d, bullet.owner_id, bullet.id).payload
-    db.update(suggestions)
-      .set({ payload, confidence: d.confidence, tier: d.tier, updated_at: now })
-      .where(eq(suggestions.id, s.id))
-      .run()
+    const thoughtId = d.thoughtId ?? null
+    const payload = withProvenance(d, bullet.owner_id, bullet.id, thoughtId).payload
+    const patch = {
+      payload,
+      source_thought_id: thoughtId,
+      confidence: d.confidence,
+      tier: d.tier,
+      updated_at: now,
+    }
+    db.update(suggestions).set(patch).where(eq(suggestions.id, s.id)).run()
     touch(db, bullet.owner_id, 'suggestions', s.id)
-    autoApply(db, { ...s, payload, confidence: d.confidence, tier: d.tier, updated_at: now }, now)
+    autoApply(db, { ...s, ...patch }, now)
   }
 
-  for (const d of added) {
-    const insert = withProvenance(d, bullet.owner_id, bullet.id)
+  for (const n of added) {
+    const d = drafts[n] as ThingDraftWithThought
+    const insert = withProvenance(d, bullet.owner_id, bullet.id, d.thoughtId ?? null)
     const row: SuggestionRow = {
       ...insert,
       id: randomUUID(),
@@ -128,10 +142,11 @@ export function reconcileSuggestions(
     }
     db.insert(suggestions).values(row).run()
     touch(db, bullet.owner_id, 'suggestions', row.id)
+    ids[n] = row.id
     autoApply(db, row, now)
   }
 
-  return { kept: pairs.length, added: added.length, retired: pool.length }
+  return { kept: pairs.length, added: added.length, retired: pool.length, ids }
 }
 
 /** Is any of the bullet's suggestions still waiting for the user? */

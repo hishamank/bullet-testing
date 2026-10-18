@@ -1,7 +1,7 @@
 /** Row ↔ contract mapping: what a database row looks like on the wire (`@bullet/core` shapes). */
 
-import type { AudioAttachment, Suggestion, SyncedBullet } from '@bullet/core'
-import type { audioAttachments, bullets, suggestions } from './schema'
+import type { AudioAttachment, Suggestion, SyncedBullet, Thought } from '@bullet/core'
+import type { audioAttachments, bullets, suggestions, thoughts } from './schema'
 
 type BulletRow = typeof bullets.$inferSelect
 type SuggestionRow = typeof suggestions.$inferSelect
@@ -18,6 +18,7 @@ export function toSyncedBullet(row: BulletRow): SyncedBullet {
     timezone: row.timezone,
     source: row.source,
     text_edited_by_user: row.text_edited_by_user,
+    answers_question_id: row.answers_question_id,
     processing: {
       status: row.proc_status,
       attempts: row.proc_attempts,
@@ -43,4 +44,12 @@ export function toAudioAttachment(row: typeof audioAttachments.$inferSelect): Au
   const { storage_key, ...rest } = row
   void storage_key
   return rest
+}
+
+export function toThought(row: typeof thoughts.$inferSelect): Thought {
+  const { span_start, span_end, ...rest } = row
+  return {
+    ...rest,
+    span: span_start === null || span_end === null ? null : { start: span_start, end: span_end },
+  }
 }

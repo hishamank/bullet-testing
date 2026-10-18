@@ -20,6 +20,10 @@ import type {
   TaskStatus,
   TrackerConfig,
   TrackerEntryValue,
+  QuestionKind,
+  QuestionStatus,
+  QuestionTopic,
+  ThoughtKind,
   TrackerInputType,
   TranscriptKind,
 } from '@bullet/core'
@@ -67,6 +71,8 @@ export const bullets = sqliteTable(
     text_edited_by_user: integer('text_edited_by_user', { mode: 'boolean' })
       .notNull()
       .default(false),
+    /** This capture answers a clarifying question. */
+    answers_question_id: text('answers_question_id'),
     /** Client clock of the latest accepted text (capture or edit); older edits are `stale`. */
     text_updated_at: integer('text_updated_at').notNull(),
     /** Bumped on every text change, so a job started on an older text discards its result. */
@@ -117,6 +123,7 @@ export const suggestions = sqliteTable(
     source_bullet_id: text('source_bullet_id')
       .notNull()
       .references(() => bullets.id),
+    source_thought_id: text('source_thought_id'),
     target_kind: text('target_kind').$type<TargetKind>().notNull(),
     operation: text('operation').$type<SuggestionOperation>().notNull(),
     target_id: text('target_id'),
@@ -137,7 +144,47 @@ export const suggestions = sqliteTable(
 
 const provenance = () => ({
   source_bullet_id: text('source_bullet_id').references(() => bullets.id),
+  source_thought_id: text('source_thought_id'),
 })
+
+/** One separate thought within a capture. Every thought is kept. */
+export const thoughts = sqliteTable(
+  'thoughts',
+  {
+    ...ownedFields(),
+    source_bullet_id: text('source_bullet_id')
+      .notNull()
+      .references(() => bullets.id),
+    position: integer('position').notNull(),
+    text: text('text').notNull(),
+    span_start: integer('span_start'),
+    span_end: integer('span_end'),
+    kind: text('kind').$type<ThoughtKind>().notNull(),
+    kind_source: text('kind_source').$type<'engine' | 'user'>().notNull(),
+  },
+  (t) => [index('thoughts_bullet_idx').on(t.source_bullet_id)],
+)
+
+/** Clarifying questions the engine asks about a capture (max 3 per capture). */
+export const questions = sqliteTable(
+  'questions',
+  {
+    ...ownedFields(),
+    source_bullet_id: text('source_bullet_id')
+      .notNull()
+      .references(() => bullets.id),
+    source_thought_id: text('source_thought_id'),
+    suggestion_id: text('suggestion_id'),
+    kind: text('kind').$type<QuestionKind>().notNull(),
+    topic: text('topic').$type<QuestionTopic>().notNull(),
+    text: text('text').notNull(),
+    options: text('options', { mode: 'json' }).$type<string[]>().notNull(),
+    status: text('status').$type<QuestionStatus>().notNull(),
+    answer_bullet_id: text('answer_bullet_id'),
+    resolved_at: integer('resolved_at'),
+  },
+  (t) => [index('questions_bullet_idx').on(t.source_bullet_id)],
+)
 
 export const tasks = sqliteTable(
   'tasks',
@@ -287,6 +334,8 @@ export const schema = {
   activities,
   audioAttachments,
   transcripts,
+  thoughts,
+  questions,
   syncOps,
   syncChanges,
   syncCounter,

@@ -1,3 +1,4 @@
+import type { ThoughtKind } from '@bullet/core'
 /** Test harness: an in-memory server with a device token, a fake clock and a scripted model. */
 
 import type { PullResponse, PushOp, PushResponse } from '@bullet/core'
@@ -6,6 +7,7 @@ import {
   createScriptedLlmClient,
   ENGINE_CONFIG_DEFAULTS,
   type LlmClient,
+  SEGMENTATION_SYSTEM_PROMPT,
 } from '@bullet/engine'
 import { createApp } from '../app'
 import { addDevice } from '../auth/devices'
@@ -38,6 +40,29 @@ export function llmByText(script: Record<string, Candidate[]>) {
   })
 }
 
+export type SegmentScript = (
+  capture: string,
+) => { text: string; quote?: string; kind: ThoughtKind }[]
+
+/**
+ * Answer the engine's SEGMENTATION calls (capture → thoughts) so tests can keep scripting just
+ * extraction: by default the whole capture is one `task` thought (an extractable kind, so the
+ * extraction script still runs on the full text). Other calls go to `llm`.
+ */
+export function withSegmentation(llm: LlmClient, segment?: SegmentScript): LlmClient {
+  return {
+    chat(req) {
+      if (req.messages[0]?.content !== SEGMENTATION_SYSTEM_PROMPT) return llm.chat(req)
+      const capture = /"""\n([\s\S]*?)\n"""/.exec(req.messages[1]?.content ?? '')?.[1] ?? ''
+      const thoughts = segment
+        ? segment(capture)
+        : [{ text: capture.trim(), quote: capture.trim(), kind: 'task' as const }]
+      const content = JSON.stringify({ thoughts })
+      return Promise.resolve({ message: { role: 'assistant' as const, content }, raw: {} })
+    },
+  }
+}
+
 export function candidate(c: Partial<Candidate>): Candidate {
   return { kind: 'activity', orientation: 'happened', text: '', fields: {}, confidence: 0.9, ...c }
 }
@@ -62,6 +87,7 @@ export interface Harness {
 export function createHarness(
   llm: LlmClient = createScriptedLlmClient({ chat: () => '{"candidates":[]}' }),
   workerOpts: Partial<WorkerOptions> = {},
+  segment?: SegmentScript,
 ): Harness {
   const { db } = openDb(':memory:')
   const clock = { now: T0 }
@@ -70,7 +96,7 @@ export function createHarness(
   const audioStore = createMemoryAudioStore()
   const worker = createWorker({
     db,
-    llm,
+    llm: withSegmentation(llm, segment),
     engine: ENGINE_CONFIG_DEFAULTS,
     now,
     audioStore,

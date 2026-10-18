@@ -17,6 +17,7 @@ import {
   undoSuggestion,
 } from '../apply/apply'
 import { createBullet, deleteBullet, editBullet, retryBullet } from '../capture/bullets'
+import { dismissQuestion, reclassifyThought } from '../capture/thoughts'
 
 function suggestionOrThrow(db: Db, ownerId: string, id: string) {
   const s = getSuggestion(db, ownerId, id)
@@ -57,6 +58,12 @@ function executeOp(db: Db, ownerId: string, op: PushOp, now: number): 'applied' 
       undoSuggestion(db, s, now)
       return 'applied'
     }
+    case 'thought.reclassify':
+      reclassifyThought(db, ownerId, op.thought_id, op.kind, now)
+      return 'applied'
+    case 'question.dismiss':
+      dismissQuestion(db, ownerId, op.question_id, now)
+      return 'applied'
     default: {
       const never: never = op
       throw new ApplyError('invalid', `unknown op ${String((never as PushOp).type)}`)

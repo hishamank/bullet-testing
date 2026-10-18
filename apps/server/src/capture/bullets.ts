@@ -8,6 +8,7 @@ import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { audioAttachments, bullets, suggestions, transcripts } from '../db/schema'
 import { declareAudio } from './audio'
+import { answerQuestion, retireThoughtsAndQuestions } from './thoughts'
 import { ApplyError } from '../apply/apply'
 import { ENTITY_KINDS, listActiveBySource, softDeleteEntity } from '../apply/entities'
 import { retireSuggestion } from '../apply/reconcile'
@@ -57,6 +58,7 @@ export function createBullet(
     timezone: input.timezone,
     source: input.source,
     text_edited_by_user: input.text_edited_by_user ?? false,
+    answers_question_id: input.answers_question_id ?? null,
     text_updated_at: input.captured_at,
     text_version: 1,
     proc_status: 'synced',
@@ -68,6 +70,14 @@ export function createBullet(
   }
   db.insert(bullets).values(row).run()
   if (input.audio) declareAudio(db, ownerId, row.id, input.audio, input.captured_at, now)
+  if (input.answers_question_id) {
+    try {
+      answerQuestion(db, ownerId, input.answers_question_id, row.id, now)
+    } catch (err) {
+      // An answer to a question that no longer exists is still a capture: keep it.
+      if (!(err instanceof ApplyError)) throw err
+    }
+  }
   enqueue(db, row, now)
   return 'applied'
 }
@@ -159,6 +169,7 @@ export function deleteBullet(
       .run()
     touch(db, ownerId, 'transcripts', t.id)
   }
+  retireThoughtsAndQuestions(db, ownerId, b.id, now)
   db.update(bullets).set({ state: 'deleted', updated_at: now }).where(eq(bullets.id, b.id)).run()
   touch(db, ownerId, 'bullets', b.id)
 }
