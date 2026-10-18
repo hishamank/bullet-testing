@@ -47,7 +47,6 @@ export function memoryIo(): VoiceStoreIo & { files: Map<string, Uint8Array> } {
       files.set(to, get(from))
       files.delete(from)
     },
-    sha256: async () => null,
   }
 }
 

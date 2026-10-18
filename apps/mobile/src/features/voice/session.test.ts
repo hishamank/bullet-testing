@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 import {
+  canResume,
   cancelNeedsConfirm,
   createVoiceSession,
   type DriverEvent,
   draftText,
+  foregroundChange,
   elapsedMs,
   type VoiceDriver,
   type VoiceSessionDeps,
@@ -109,6 +111,22 @@ describe('recording', () => {
     expect(s.get().phase).toBe('done')
   })
 
+  test('resume before the pause has closed its file: refused, nothing lost', async () => {
+    const { s, driver } = setup()
+    s.pause()
+    s.resume() // tapped again before the native end arrived
+    expect(driver.calls).toEqual(['start', 'pause'])
+    expect(canResume(s.get(), clock, 60_000)).toBe(false)
+    driver.ended()
+    expect(canResume(s.get(), clock, 60_000)).toBe(true)
+    s.resume()
+    driver.started()
+    expect(driver.calls).toEqual(['start', 'pause', 'start'])
+    const done = s.finish()
+    driver.ended()
+    await expect(done).resolves.toMatchObject({ files: ['seg-1.wav', 'seg-2.wav'] })
+  })
+
   test('Send while paused waits for the pause to close its file', async () => {
     const { s, driver } = setup()
     s.pause()
@@ -170,6 +188,20 @@ describe('interruptions never lose audio', () => {
     expect(elapsedMs(s.get(), clock + 60_000)).toBe(5_000)
   })
 
+  test('a single-file recorder paused by the system: paused, timer frozen, file kept open', async () => {
+    const driver = new FakeDriver('single')
+    const { s } = setup(driver)
+    clock += 3_000
+    driver.emit({ type: 'interrupted' })
+    expect(s.get()).toMatchObject({ phase: 'paused', pauseReason: 'interrupted' })
+    expect(elapsedMs(s.get(), clock + 60_000)).toBe(3_000)
+    s.resume()
+    driver.started()
+    const done = s.finish()
+    driver.ended()
+    await expect(done).resolves.toMatchObject({ files: ['seg-1.wav'] })
+  })
+
   test('leaving the app pauses; coming back does not resume by itself', () => {
     const { s, driver } = setup()
     s.appActive(false)
@@ -179,6 +211,12 @@ describe('interruptions never lose audio', () => {
     expect(s.get().pauseReason).toBe('background')
     s.appActive(true)
     expect(s.get().phase).toBe('paused')
+  })
+
+  test('iOS "inactive" (Control Center, banners, Face ID) keeps recording; background pauses', () => {
+    expect(foregroundChange('inactive')).toBeNull()
+    expect(foregroundChange('background')).toBe(false)
+    expect(foregroundChange('active')).toBe(true)
   })
 
   test('the recognizer ending by itself starts a new stretch at once', () => {

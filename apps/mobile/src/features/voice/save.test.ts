@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { pushOpSchema } from '@bullet/core'
 import { describe, expect, test } from 'vite-plus/test'
 import { audioAttachments, bullets, outbox, transcripts } from '../../data/schema'
@@ -45,6 +46,7 @@ describe('saving a voice note', () => {
     )
     const out = `${ROOT}${S1}.wav`
     const joined = io.files.get(out) ?? new Uint8Array()
+    const sha = createHash('sha256').update(joined).digest('hex')
     expect(parseWav(joined, joined.length)?.dataBytes).toBe(64_000)
     expect(joined[44]).toBe(1)
     expect(joined.at(-1)).toBe(2)
@@ -58,10 +60,12 @@ describe('saving a voice note', () => {
       text_edited_by_user: false,
     })
     expect(db.select().from(audioAttachments).get()).toMatchObject({
-      local_path: out,
+      // Relative to Documents: survives the iOS container path changing on update/reinstall.
+      local_path: `recordings/${S1}.wav`,
       mime_type: 'audio/wav',
       duration_ms: 2_000,
       size_bytes: 64_044,
+      sha256: sha,
       upload_status: 'pending',
     })
     expect(db.select().from(transcripts).get()).toMatchObject({
@@ -111,7 +115,7 @@ describe('saving a voice note', () => {
     )
     expect(io.exists('file:///docs/ExpoAudio/rec.m4a')).toBe(false)
     expect(db.select().from(audioAttachments).get()).toMatchObject({
-      local_path: `${ROOT}${S1}.m4a`,
+      local_path: `recordings/${S1}.m4a`,
       mime_type: 'audio/mp4',
       duration_ms: 4_200,
       size_bytes: 500,
@@ -136,8 +140,8 @@ describe('saving a voice note', () => {
     )
     const saved = db.select().from(audioAttachments).all()
     expect(saved.map((a) => [a.local_path, a.size_bytes])).toEqual([
-      [`${ROOT}${S1}.m4a`, 500],
-      [`${ROOT}${S1}-2.m4a`, 300],
+      [`recordings/${S1}.m4a`, 500],
+      [`recordings/${S1}-2.m4a`, 300],
     ])
     expect(saved[0]?.bullet_id).toBe(first)
   })
@@ -219,6 +223,30 @@ describe('recovering after a crash', () => {
     expect(await recoverRecordings(deps)).toEqual([])
     expect(db.select().from(bullets).all()).toHaveLength(1)
     expect(io.exists(dir)).toBe(false)
+  })
+
+  test('a row saved with an old absolute path still counts as saved', async () => {
+    const { db, io, deps, dir } = setup()
+    io.create(`${dir}seg-001.wav`, wavFile(100))
+    await saveVoiceNote(
+      deps,
+      S1,
+      {
+        files: [`${dir}seg-001.wav`],
+        mimeType: 'audio/wav',
+        draft: 'x',
+        liveDraft: true,
+        recordedMs: 0,
+      },
+      {},
+    )
+    db.update(audioAttachments)
+      .set({ local_path: `file:///old-container/Documents/recordings/${S1}.wav` })
+      .run()
+    io.ensureDir(dir)
+    io.create(`${dir}seg-001.wav`, wavFile(100))
+    expect(await recoverRecordings(deps)).toEqual([])
+    expect(db.select().from(bullets).all()).toHaveLength(1)
   })
 
   test('the active session and empty sessions: skipped / removed', async () => {

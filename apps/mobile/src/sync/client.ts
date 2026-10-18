@@ -58,6 +58,12 @@ export interface SyncClient {
 
 const PUSH_BATCH = Math.min(50, MAX_PUSH_OPS)
 
+/** A recording file on this phone couldn't be read (not a server or network problem). */
+class LocalReadError extends Error {}
+
+/** Sync-state key holding why a recording couldn't be read for upload ('' once it uploads). */
+export const audioReadErrorKey = (attachmentId: string) => `audio_read_error:${attachmentId}`
+
 export function createSyncClient(opts: SyncClientOptions): SyncClient {
   const { db } = opts
   const now = opts.now ?? Date.now
@@ -148,7 +154,12 @@ export function createSyncClient(opts: SyncClientOptions): SyncClient {
     let conflicts = 0
     while (state.upload_status !== 'uploaded') {
       const length = Math.min(chunk, state.size_bytes - state.received_bytes)
-      const bytes = await read(row.local_path as string, state.received_bytes, length)
+      let bytes: Uint8Array
+      try {
+        bytes = await read(row.local_path as string, state.received_bytes, length)
+      } catch (err) {
+        throw new LocalReadError(String(err))
+      }
       try {
         state = await t.uploadAudio(row.id, state.received_bytes, bytes)
       } catch (err) {
@@ -199,7 +210,16 @@ export function createSyncClient(opts: SyncClientOptions): SyncClient {
       try {
         await uploadOne(t, row, read)
         uploaded += 1
+        if (getState(db, audioReadErrorKey(row.id))) {
+          setState(db, audioReadErrorKey(row.id), '')
+        }
       } catch (err) {
+        // This phone can't read the file (moved, deleted, damaged): keep it pending, note why,
+        // and go on with the others. One bad file must not hold back every later recording.
+        if (err instanceof LocalReadError) {
+          setState(db, audioReadErrorKey(row.id), err.message)
+          continue
+        }
         // Checksum mismatch (server restarted it at 0) or unknown to the server: try next sync.
         if (
           err instanceof TransportError &&

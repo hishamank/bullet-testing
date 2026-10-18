@@ -30,6 +30,7 @@ import {
   cancelNeedsConfirm,
   createVoiceSession,
   draftText,
+  foregroundChange,
   initialVoiceState,
   type VoiceSession,
   type VoiceState,
@@ -62,6 +63,7 @@ export function useVoiceRecorder(links: CaptureLinks) {
   const [now, setNow] = useState(() => Date.now())
   const idRef = useRef<string | null>(null)
   const sessionRef = useRef<VoiceSession | null>(null)
+  const sendingRef = useRef(false)
   const startedAtRef = useRef(0)
   const linksRef = useRef(links)
   const state: VoiceState = useSyncExternalStore(
@@ -75,11 +77,8 @@ export function useVoiceRecorder(links: CaptureLinks) {
         setScreen(access.kind === 'ask' ? { kind: 'ask' } : { kind: 'blocked' })
         return
       }
-      // Anything a crash left behind is saved before a new recording starts.
-      await recoverInterruptedRecordings()
       const id = deviceDeps.uuid()
       const dir = sessionDir(recordingsRoot(), id)
-      deviceVoiceIo.ensureDir(dir)
       const plain = () => createAudioDriver(audioRecorder)
       const s = createVoiceSession({
         driver:
@@ -92,7 +91,7 @@ export function useVoiceRecorder(links: CaptureLinks) {
       })
       idRef.current = id
       startedAtRef.current = deviceDeps.now()
-      markSessionLive(id, true)
+      // The note (with the links) exists before any audio does, so a recovered answer keeps them.
       writeSessionMeta(voiceStoreDeps(), {
         id,
         startedAt: startedAtRef.current,
@@ -100,10 +99,13 @@ export function useVoiceRecorder(links: CaptureLinks) {
         draft: '',
         liveDraft: access.kind === 'draft',
       })
+      markSessionLive(id, true)
       setScreen({ kind: 'recording', access })
       sessionRef.current = s
       setSession(s)
       s.start()
+      // Save anything a crash left behind, without delaying this recording (it is skipped).
+      void recoverInterruptedRecordings()
     },
     [audioRecorder],
   )
@@ -121,10 +123,14 @@ export function useVoiceRecorder(links: CaptureLinks) {
     }
   }, [begin])
 
-  // Foreground only: leaving the app (or a call / Siri covering it) pauses, keeping the audio.
+  // Going to the background pauses, keeping the audio; "inactive" overlays don't (see
+  // foregroundChange). A call or Siri taking the microphone arrives from the recorder instead.
   useEffect(() => {
     if (!session) return
-    const sub = AppState.addEventListener('change', (s) => session.appActive(s === 'active'))
+    const sub = AppState.addEventListener('change', (next) => {
+      const active = foregroundChange(next)
+      if (active !== null) session.appActive(active)
+    })
     return () => sub.remove()
   }, [session])
 
@@ -197,7 +203,9 @@ export function useVoiceRecorder(links: CaptureLinks) {
   /** Stop and save. Resolves true when something was saved. */
   const send = useCallback(async () => {
     const id = idRef.current
-    if (!session || !id || saving) return false
+    // A ref, not state: two taps in the same frame must not save twice.
+    if (!session || !id || sendingRef.current) return false
+    sendingRef.current = true
     setSaving(true)
     try {
       const rec = await session.finish()
@@ -210,9 +218,10 @@ export function useVoiceRecorder(links: CaptureLinks) {
       // The session folder stays on disk: the next recording (or app start) saves it.
       return false
     } finally {
+      sendingRef.current = false
       setSaving(false)
     }
-  }, [session, saving])
+  }, [session])
 
   const cancel = useCallback(() => {
     const id = idRef.current

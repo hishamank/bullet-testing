@@ -6,13 +6,14 @@
  *
  *   recordings/session-<id>/meta.json     what to save it as (links, draft so far)
  *   recordings/session-<id>/seg-001.wav   one file per stretch of recording
- *   recordings/<id>.wav                   the joined recording a bullet points at (kept forever)
+ *   recordings/<id>.wav                   the joined recording a bullet points at (kept forever;
+ *                                         `local_path` stores it relative to Documents)
  *
  * The session folder is removed only after the bullet that owns the joined file is saved, so a
  * kill at any point leaves something `recoverRecordings` can still save.
  */
 
-import { eq } from 'drizzle-orm'
+import { eq, like, or } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import {
   type CaptureLinks,
@@ -21,7 +22,8 @@ import {
   type VoiceCaptureInput,
 } from '../../data/local'
 import { audioAttachments } from '../../data/schema'
-import { assembleSegments, type VoiceFileIo } from './assemble'
+import { RECORDINGS_DIR, storedRecordingPath } from '../../sync/audio-path'
+import { assembleSegments, hashFile, type VoiceFileIo } from './assemble'
 import { formatTimer } from './format'
 import type { FinishedRecording } from './session'
 
@@ -48,15 +50,13 @@ export interface VoiceStoreIo extends VoiceFileIo {
   /** Delete a file or a whole directory; no-op when missing. */
   remove: (uri: string) => void
   move: (from: string, to: string) => void
-  /** SHA-256 hex of a file, or null when it's too big to hash here (the field is optional). */
-  sha256: (uri: string, size: number) => Promise<string | null>
 }
 
 export interface VoiceStoreDeps {
   db: PhoneDb
   local: LocalDeps
   io: VoiceStoreIo
-  /** The recordings directory uri, ending in '/'. */
+  /** The recordings directory's uri today, ending in '/' (`<Documents>/recordings/`). */
   root: string
 }
 
@@ -120,17 +120,18 @@ async function saveSingleFiles(
   const ids: string[] = []
   for (const [i, file] of rec.files.entries()) {
     if (!io.exists(file) || io.size(file) === 0) continue
-    const out = `${root}${sessionId}${i === 0 ? '' : `-${i + 1}`}.${extensionOf(rec.mimeType)}`
+    const name = `${sessionId}${i === 0 ? '' : `-${i + 1}`}.${extensionOf(rec.mimeType)}`
+    const out = `${root}${name}`
     if (file !== out) io.move(file, out)
     const sizeBytes = io.size(out)
     const first = ids.length === 0
     const audio: VoiceCaptureInput['audio'] = {
-      localPath: out,
+      localPath: storedRecordingPath(name),
       mimeType: rec.mimeType,
       // Only the whole recording's length is known; a lone file gets it exactly.
       durationMs: rec.files.length === 1 ? Math.round(rec.recordedMs) : 0,
       sizeBytes,
-      sha256: await io.sha256(out, sizeBytes),
+      sha256: hashFile(io, out),
     }
     ids.push(
       captureVoiceBullet(
@@ -149,12 +150,18 @@ async function saveSingleFiles(
   return ids[0] ?? null
 }
 
-function alreadySaved(db: PhoneDb, localPath: string): boolean {
+/** Saved already: stored relative today, or (rows from before) as an absolute path. */
+function alreadySaved(db: PhoneDb, fileName: string): boolean {
   return (
     db
       .select({ id: audioAttachments.id })
       .from(audioAttachments)
-      .where(eq(audioAttachments.local_path, localPath))
+      .where(
+        or(
+          eq(audioAttachments.local_path, storedRecordingPath(fileName)),
+          like(audioAttachments.local_path, `%/${RECORDINGS_DIR}${fileName}`),
+        ),
+      )
       .get() !== undefined
   )
 }
@@ -173,15 +180,16 @@ export async function saveVoiceNote(
 ): Promise<string | null> {
   const { io, root } = deps
   if (rec.mimeType !== 'audio/wav') return saveSingleFiles(deps, sessionId, rec, links, local)
-  const out = `${root}${sessionId}.wav`
+  const name = `${sessionId}.wav`
+  const out = `${root}${name}`
   const plan = assembleSegments(rec.files, out, io)
   if (!plan) return null
   const audio: VoiceCaptureInput['audio'] = {
-    localPath: out,
+    localPath: storedRecordingPath(name),
     mimeType: 'audio/wav',
     durationMs: plan.durationMs,
     sizeBytes: plan.sizeBytes,
-    sha256: await io.sha256(out, plan.sizeBytes),
+    sha256: plan.sha256,
   }
   const id = captureVoiceBullet(
     deps.db,
@@ -214,9 +222,8 @@ export async function recoverRecordings(
     const id = name.slice(SESSION_PREFIX.length)
     if (skip.has(id)) continue
     const dir = sessionDir(root, id)
-    const out = `${root}${id}.wav`
     // Saved, then killed before the folder was removed: just tidy up.
-    if (alreadySaved(deps.db, out)) {
+    if (alreadySaved(deps.db, `${id}.wav`)) {
       io.remove(dir)
       continue
     }

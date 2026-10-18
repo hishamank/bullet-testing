@@ -38,13 +38,24 @@ until the home transcript replaces it.
 ## How a recording is kept safe
 
 - Each stretch of recording (from start or Resume to Pause) is its own WAV file in
-  `Documents/recordings/session-<id>/`. Send joins them into `Documents/recordings/<id>.wav`.
-  Then it saves the bullet, the attachment, the draft transcript and the outbox op in one
-  transaction. Upload is the existing resumable `PUT /sync/audio/:id`.
-- **Interruptions pause; they never stop.** A phone call, Siri, an alarm, Control Center or
-  leaving the app ends the current segment (its file is complete) and shows why it paused.
-  Resume continues in a new segment. The screen stays awake while recording, so auto-lock doesn't
-  end a long ramble.
+  `Documents/recordings/session-<id>/`. Send joins them into `Documents/recordings/<id>.wav`,
+  computing its SHA-256 on the way (any size). Then it saves the bullet, the attachment, the draft
+  transcript and the outbox op in one transaction. Upload is the existing resumable
+  `PUT /sync/audio/:id`.
+- **Paths are stored relative to Documents.** `local_path` is `recordings/<id>.wav`, because
+  iOS changes the app container's absolute path on every update or reinstall. Resolve it with
+  `recordingUri()` (`src/sync/runtime.ts`) before reading or playing it. Older rows that hold an
+  absolute path still resolve: by the path while it exists, else by file name. A recording that
+  can't be read is skipped in the upload pass (the reason is noted under the sync-state key
+  `audio_read_error:<id>`), so it never holds back later recordings.
+- **Only real interruptions pause.** iOS "inactive" moments keep recording: Control Center,
+  Notification Center, a call banner, a Face ID or Siri prompt. A call or Siri taking the
+  microphone, another app's audio, or the app going to the background pauses. The current
+  segment ends with its file complete. The timer freezes and the screen shows "Recording paused.
+  Everything so far is saved." with **Resume** and **Send what you have**. It never resumes by
+  itself. Resume waits until the paused segment's file is closed (a few hundred ms), so two
+  native sessions never overlap. The screen stays awake while recording, so auto-lock doesn't end
+  a long ramble.
 - **Crash or kill:** the segment files and a `meta.json` (links, draft so far, start time) stay
   on disk. A WAV whose header was never finalised is repaired from its file size. The next time
   the recorder opens, `recoverRecordings` saves each leftover as a voice capture and skips any
@@ -108,7 +119,9 @@ the App Store.
 - The live draft appears while speaking and scrolls. The first use may download Apple's
   English on-device model.
 - Pause/Resume, a phone call, Siri and backgrounding each pause the recording and keep every
-  stretch. Send then joins the stretches into one playable WAV.
+  stretch. Control Center and banners do not pause it. Send then joins the stretches into one
+  playable WAV.
+- The `.m4a` fallback notices a call pausing it (it watches the recorder's state).
 - Killing the app mid-recording, then opening the recorder again, saves the recovered recording.
 - With speech recognition denied in Settings, the phone records an `.m4a` without a draft.
 - The recording uploads to the home server and Whisper's transcript replaces the draft.

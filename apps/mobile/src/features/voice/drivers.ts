@@ -15,24 +15,20 @@ import {
   setAudioModeAsync,
 } from 'expo-audio'
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition'
+import { createAttempts, endCause, endedFile } from './attempts'
 import { segmentName } from './save'
 import type { DriverEvent, VoiceDriver } from './session'
 import { VOICE_FORMAT } from './wav'
 
 type Listener = (e: DriverEvent) => void
 
-/** Errors that only mean "nothing was heard": the recording itself is fine. */
-const BENIGN_ERRORS = new Set(['no-speech', 'speech-timeout', 'aborted'])
-
 /** `dir` is the session folder's uri; `exists` tells whether a segment file was written. */
 export function createSpeechDriver(dir: string, exists: (uri: string) => boolean): VoiceDriver {
   let listener: Listener | null = null
   let segment = 0
-  let requested = false
-  let lastError: string | null = null
+  const attempts = createAttempts()
   let subs: { remove: () => void }[] = []
   const emit = (e: DriverEvent) => listener?.(e)
-  const current = () => `${dir}${segmentName(segment)}`
 
   function attach() {
     const m = ExpoSpeechRecognitionModule
@@ -42,20 +38,17 @@ export function createSpeechDriver(dir: string, exists: (uri: string) => boolean
         const text = e.results[0]?.transcript
         if (text !== undefined) emit({ type: 'draft', text })
       }),
-      m.addListener('error', (e) => {
-        lastError = e.error
-      }),
+      m.addListener('error', (e) => attempts.error(e.error)),
+      m.addListener('audioend', (e) => attempts.audioEnd(e.uri)),
       m.addListener('end', () => {
-        const file = segment > 0 && exists(current()) ? current() : null
-        const error = lastError
-        const cause = requested
-          ? 'requested'
-          : error === 'interrupted'
-            ? 'interrupted'
-            : error && !BENIGN_ERRORS.has(error)
-              ? 'error'
-              : 'recognizer'
-        emit({ type: 'ended', file, cause, ...(error ? { error } : {}) })
+        const a = attempts.end()
+        if (!a) return
+        emit({
+          type: 'ended',
+          file: endedFile(a, exists),
+          cause: endCause(a),
+          ...(a.error ? { error: a.error } : {}),
+        })
       }),
     ]
   }
@@ -66,8 +59,8 @@ export function createSpeechDriver(dir: string, exists: (uri: string) => boolean
     mode: 'segments',
     start() {
       segment += 1
-      requested = false
-      lastError = null
+      const name = segmentName(segment)
+      attempts.begin(`${dir}${name}`)
       ExpoSpeechRecognitionModule.start({
         lang: 'en-US',
         interimResults: true,
@@ -78,18 +71,18 @@ export function createSpeechDriver(dir: string, exists: (uri: string) => boolean
         recordingOptions: {
           persist: true,
           outputDirectory: dir,
-          outputFileName: segmentName(segment),
+          outputFileName: name,
           outputSampleRate: VOICE_FORMAT.sampleRate,
           outputEncoding: 'pcmFormatInt16',
         },
       })
     },
     pause() {
-      requested = true
+      attempts.requestStop()
       ExpoSpeechRecognitionModule.stop()
     },
     stop() {
-      requested = true
+      attempts.requestStop()
       ExpoSpeechRecognitionModule.stop()
     },
     abort() {
@@ -121,7 +114,26 @@ export function createAudioDriver(recorder: AudioRecorder): VoiceDriver {
   let listener: Listener | null = null
   let prepared = false
   let sub: { remove: () => void } | null = null
+  let watch: ReturnType<typeof setInterval> | null = null
   const emit = (e: DriverEvent) => listener?.(e)
+
+  /**
+   * AVAudioRecorder is paused by iOS when a call or Siri takes the microphone, without telling
+   * expo-audio's listeners: notice it from the recorder's state while we expect it to record.
+   */
+  function watchForInterruption() {
+    unwatch()
+    watch = setInterval(() => {
+      if (!recorder.isRecording) {
+        unwatch()
+        emit({ type: 'interrupted' })
+      }
+    }, 500)
+  }
+  function unwatch() {
+    if (watch) clearInterval(watch)
+    watch = null
+  }
 
   async function begin() {
     try {
@@ -136,12 +148,14 @@ export function createAudioDriver(recorder: AudioRecorder): VoiceDriver {
       }
       recorder.record()
       emit({ type: 'started' })
+      watchForInterruption()
     } catch (e) {
       emit({ type: 'ended', file: recorder.uri, cause: 'error', error: String(e) })
     }
   }
 
   async function end(cause: 'requested' | 'error') {
+    unwatch()
     try {
       await recorder.stop()
     } catch {
@@ -156,10 +170,14 @@ export function createAudioDriver(recorder: AudioRecorder): VoiceDriver {
     mimeType: 'audio/mp4',
     mode: 'single',
     start: () => void begin(),
-    pause: () => recorder.pause(),
+    pause() {
+      unwatch()
+      recorder.pause()
+    },
     stop: () => void end('requested'),
     abort() {
       listener = null
+      unwatch()
       void recorder.stop().catch(() => {})
       void setAudioModeAsync({ allowsRecording: false }).catch(() => {})
     },
@@ -169,6 +187,7 @@ export function createAudioDriver(recorder: AudioRecorder): VoiceDriver {
         // The system's media services reset: the recorder is gone; keep what was written.
         if (status.hasError || status.mediaServicesDidReset) {
           prepared = false
+          unwatch()
           emit({
             type: 'ended',
             file: recorder.uri,
@@ -179,6 +198,7 @@ export function createAudioDriver(recorder: AudioRecorder): VoiceDriver {
       })
       return () => {
         listener = null
+        unwatch()
         sub?.remove()
         sub = null
       }

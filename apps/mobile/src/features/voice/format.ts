@@ -40,19 +40,20 @@ export function draftHint(
   return 'No live draft on this phone. Your recording is kept and transcribed at home.'
 }
 
-/** A quiet line while paused; null for a plain Pause. Always says the audio is safe. */
+/** The line while paused by something other than the user's own Pause (design copy). */
+export const PAUSED_NOTE = 'Recording paused. Everything so far is saved.'
+
+/** A line while paused; null for a plain Pause. Always says the audio is safe. */
 export function pauseNote(
   reason: 'user' | 'interrupted' | 'background' | 'limit' | 'error' | null,
 ): string | null {
   switch (reason) {
     case 'interrupted':
-      return 'Paused for a call or Siri. Everything so far is kept.'
     case 'background':
-      return 'Paused while Bullet was in the background. Everything so far is kept.'
+    case 'error':
+      return PAUSED_NOTE
     case 'limit':
       return 'This is as long as one voice note can be. Send to save it.'
-    case 'error':
-      return 'The recorder stopped. Everything so far is kept; Resume to go on.'
     default:
       return null
   }

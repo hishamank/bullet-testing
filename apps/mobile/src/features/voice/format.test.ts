@@ -50,7 +50,7 @@ describe('recording copy', () => {
   test('every pause that the user did not ask for says the audio is safe', () => {
     expect(pauseNote('user')).toBeNull()
     for (const r of ['interrupted', 'background', 'error'] as const) {
-      expect(pauseNote(r)).toMatch(/kept/)
+      expect(pauseNote(r)).toBe('Recording paused. Everything so far is saved.')
     }
     expect(pauseNote('limit')).toMatch(/Send/)
   })

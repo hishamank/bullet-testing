@@ -10,7 +10,7 @@ import { formatTimer, pauseNote, spokenDuration } from '@/features/voice/format'
 import { useReduceMotion } from '@/hooks'
 import { size, space, type, useTheme } from '@/theme'
 import { Icon } from '../Icon'
-import { Label, RoundButton, TextButton } from '../ui'
+import { Label, PrimaryButton, RoundButton, TextButton } from '../ui'
 
 export interface RecordingViewProps {
   elapsedMs: number
@@ -41,6 +41,10 @@ export function RecordingView(p: RecordingViewProps) {
   const busy = p.saving || p.phase === 'finishing'
   const timer = formatTimer(p.elapsedMs)
   const note = paused ? pauseNote(p.pauseReason) : null
+  // Paused by something else than the Pause button: the paused panel replaces the controls.
+  // It never resumes by itself.
+  const held = paused && note !== null
+  const atLimit = p.pauseReason === 'limit'
   const lines = [...p.paragraphs, p.partial].filter((l) => l.trim() !== '')
   // The newest words are brightest; older ones step back.
   const shade = (fromEnd: number) =>
@@ -100,11 +104,6 @@ export function RecordingView(p: RecordingViewProps) {
       </ScrollView>
 
       <View style={styles.notes}>
-        {note ? (
-          <Label accessibilityRole="alert" tone="warning" size={type.label}>
-            {note}
-          </Label>
-        ) : null}
         {p.notice ? (
           <Label tone="secondary" size={type.label}>
             {p.notice}
@@ -118,32 +117,58 @@ export function RecordingView(p: RecordingViewProps) {
         </View>
       </View>
 
-      <View style={styles.controls}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={paused ? 'Resume recording' : 'Pause recording'}
-          accessibilityState={{ disabled: busy || (paused && !p.canResume) }}
-          disabled={busy || (paused && !p.canResume)}
-          onPress={paused ? p.onResume : p.onPause}
-          style={({ pressed }) => [
-            styles.side,
-            {
-              borderColor: t.raisedStrong,
-              opacity: busy || (paused && !p.canResume) ? 0.4 : pressed ? 0.6 : 1,
-            },
-          ]}
-        >
-          <Icon name={paused ? 'mic' : 'pause'} color={t.text} size={26} />
-        </Pressable>
-        <RoundButton
-          icon="send"
-          label="Stop and save"
-          diameter={size.mic}
-          disabled={busy}
-          onPress={p.onSend}
-        />
-        <View style={styles.spacer} />
-      </View>
+      {held ? (
+        <View style={styles.panel}>
+          <Label accessibilityRole="alert" size={type.body} style={styles.panelText}>
+            {note}
+          </Label>
+          {atLimit ? (
+            <PrimaryButton title="Send what you have" busy={busy} onPress={p.onSend} />
+          ) : (
+            <>
+              <PrimaryButton
+                title="Resume"
+                disabled={!p.canResume}
+                busy={busy}
+                onPress={p.onResume}
+              />
+              <TextButton
+                title="Send what you have"
+                tone="secondary"
+                disabled={busy}
+                onPress={p.onSend}
+              />
+            </>
+          )}
+        </View>
+      ) : (
+        <View style={styles.controls}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={paused ? 'Resume recording' : 'Pause recording'}
+            accessibilityState={{ disabled: busy || (paused && !p.canResume) }}
+            disabled={busy || (paused && !p.canResume)}
+            onPress={paused ? p.onResume : p.onPause}
+            style={({ pressed }) => [
+              styles.side,
+              {
+                borderColor: t.raisedStrong,
+                opacity: busy || (paused && !p.canResume) ? 0.4 : pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Icon name={paused ? 'mic' : 'pause'} color={t.text} size={26} />
+          </Pressable>
+          <RoundButton
+            icon="send"
+            label="Stop and save"
+            diameter={size.mic}
+            disabled={busy}
+            onPress={p.onSend}
+          />
+          <View style={styles.spacer} />
+        </View>
+      )}
     </View>
   )
 }
@@ -189,4 +214,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   spacer: { width: SIDE, height: SIDE },
+  panel: { paddingHorizontal: space.xl, paddingBottom: space.xxl, gap: space.md },
+  panelText: { textAlign: 'center', paddingBottom: space.sm },
 })

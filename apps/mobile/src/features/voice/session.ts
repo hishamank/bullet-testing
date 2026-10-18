@@ -49,6 +49,8 @@ export interface VoiceState {
 export type DriverEvent =
   | { type: 'started' }
   | { type: 'draft'; text: string }
+  /** A `single` recorder was paused by the system (a call, Siri): its file stays open. */
+  | { type: 'interrupted' }
   | {
       type: 'ended'
       file: string | null
@@ -137,8 +139,24 @@ export function cancelNeedsConfirm(s: VoiceState, now: number): boolean {
   return elapsedMs(s, now) > CANCEL_CONFIRM_MS
 }
 
+/**
+ * Resume needs the pause to have closed its file first: a `segments` recorder reports the end of
+ * the paused stretch a few hundred ms later, and starting again before that would make two
+ * native sessions and lose track of which file is which.
+ */
 export function canResume(s: VoiceState, now: number, maxMs: number): boolean {
-  return s.phase === 'paused' && elapsedMs(s, now) < maxMs
+  return s.phase === 'paused' && !s.awaitingEnd && elapsedMs(s, now) < maxMs
+}
+
+/**
+ * What an iOS app-state change means for a recording. `inactive` (Control Center, Notification
+ * Center, a call banner, a Face ID or Siri prompt) keeps recording: the app is still in front and
+ * a real loss of the microphone arrives as an interruption. Only `background` pauses.
+ */
+export function foregroundChange(appState: string): boolean | null {
+  if (appState === 'active') return true
+  if (appState === 'background') return false
+  return null
 }
 
 export interface VoiceSession {
@@ -211,6 +229,11 @@ export function createVoiceSession(deps: VoiceSessionDeps): VoiceSession {
         return
       case 'draft':
         if (state.liveDraft) set({ partial: e.text })
+        return
+      case 'interrupted':
+        if (state.phase === 'recording' || state.phase === 'starting') {
+          set({ ...stopClock(), phase: 'paused', pauseReason: 'interrupted' })
+        }
         return
       case 'ended':
         return onEnded(e)
