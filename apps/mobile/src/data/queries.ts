@@ -4,7 +4,7 @@ import { type BulletProcessingStatus, displayStatus, type ProcessingError } from
 import { and, desc, eq } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { bulletsWithPendingChanges } from './mirror'
-import { bullets, suggestions } from './schema'
+import { bullets, questions, suggestions, thoughts } from './schema'
 
 export interface BulletView {
   id: string
@@ -51,5 +51,25 @@ export function listPendingSuggestions(db: PhoneDb) {
     .from(suggestions)
     .where(and(eq(suggestions.state, 'active'), eq(suggestions.status, 'pending')))
     .orderBy(suggestions.created_at)
+    .all()
+}
+
+/** A capture's thoughts, in order. */
+export function listThoughts(db: PhoneDb, bulletId: string) {
+  return db
+    .select()
+    .from(thoughts)
+    .where(and(eq(thoughts.source_bullet_id, bulletId), eq(thoughts.state, 'active')))
+    .orderBy(thoughts.position)
+    .all()
+}
+
+/** Clarifying questions still open, oldest first. */
+export function listOpenQuestions(db: PhoneDb) {
+  return db
+    .select()
+    .from(questions)
+    .where(and(eq(questions.state, 'active'), eq(questions.status, 'open')))
+    .orderBy(questions.created_at)
     .all()
 }

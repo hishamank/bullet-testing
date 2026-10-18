@@ -4,11 +4,25 @@
  * The UI reflects the change at once; the server's answer arrives with the next pull.
  */
 
-import type { BulletDeleteMode, BulletSource, PushOp, SuggestionPayload } from '@bullet/core'
+import type {
+  BulletDeleteMode,
+  BulletSource,
+  PushOp,
+  SuggestionPayload,
+  ThoughtKind,
+} from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { ENTITY_TABLES } from './mirror'
-import { audioAttachments, bullets, outbox, suggestions, transcripts } from './schema'
+import {
+  audioAttachments,
+  bullets,
+  outbox,
+  questions,
+  suggestions,
+  thoughts,
+  transcripts,
+} from './schema'
 
 /** Injected so pure logic stays testable: the device clock, UUIDs and time zone. */
 export interface LocalDeps {
@@ -20,7 +34,7 @@ export interface LocalDeps {
 function appendOp(
   db: PhoneDb,
   op: PushOp,
-  refs: { bullet_id?: string; suggestion_id?: string },
+  refs: { bullet_id?: string; suggestion_id?: string; thought_id?: string; question_id?: string },
   now: number,
 ) {
   db.insert(outbox)
@@ -29,6 +43,8 @@ function appendOp(
       type: op.type,
       bullet_id: refs.bullet_id ?? null,
       suggestion_id: refs.suggestion_id ?? null,
+      thought_id: refs.thought_id ?? null,
+      question_id: refs.question_id ?? null,
       op,
       created_at: now,
     })
@@ -38,6 +54,8 @@ function appendOp(
 export interface CaptureInput {
   text: string
   source?: BulletSource
+  /** This capture answers a clarifying question. */
+  answersQuestionId?: string
 }
 
 /** Save a capture on the device (status `saved_local`) and queue it for sync. Returns its id. */
@@ -52,11 +70,18 @@ export function captureBullet(db: PhoneDb, input: CaptureInput, deps: LocalDeps)
     captured_at: now,
     timezone: deps.timezone(),
     source: input.source ?? 'text',
+    ...(input.answersQuestionId ? { answers_question_id: input.answersQuestionId } : {}),
   }
   db.transaction((tx) => {
     tx.insert(bullets)
       .values({ ...bullet, created_at: now, updated_at: now })
       .run()
+    if (input.answersQuestionId) {
+      tx.update(questions)
+        .set({ status: 'answered', answer_bullet_id: id, resolved_at: now, updated_at: now })
+        .where(eq(questions.id, input.answersQuestionId))
+        .run()
+    }
     appendOp(tx, { op_id: deps.uuid(), type: 'bullet.create', bullet }, { bullet_id: id }, now)
   })
   return id
@@ -192,6 +217,12 @@ export function deleteBullet(
       .set({ state: 'deleted', updated_at: now })
       .where(eq(transcripts.bullet_id, bulletId))
       .run()
+    for (const table of [thoughts, questions]) {
+      tx.update(table)
+        .set({ state: 'deleted', updated_at: now })
+        .where(eq(table.source_bullet_id, bulletId))
+        .run()
+    }
     const own = eq(suggestions.source_bullet_id, bulletId)
     tx.update(suggestions)
       .set({ state: 'deleted', updated_at: now })
@@ -299,6 +330,45 @@ export function undoSuggestion(db: PhoneDb, suggestionId: string, deps: LocalDep
       tx,
       { op_id: deps.uuid(), type: 'suggestion.undo', suggestion_id: suggestionId },
       { suggestion_id: suggestionId },
+      now,
+    )
+  })
+}
+
+/** Re-classify a thought (sticky on the server: re-processing never overrides it). */
+export function reclassifyThought(
+  db: PhoneDb,
+  thoughtId: string,
+  kind: ThoughtKind,
+  deps: LocalDeps,
+): void {
+  const now = deps.now()
+  db.transaction((tx) => {
+    tx.update(thoughts)
+      .set({ kind, kind_source: 'user', updated_at: now })
+      .where(eq(thoughts.id, thoughtId))
+      .run()
+    appendOp(
+      tx,
+      { op_id: deps.uuid(), type: 'thought.reclassify', thought_id: thoughtId, kind },
+      { thought_id: thoughtId },
+      now,
+    )
+  })
+}
+
+/** Dismiss a clarifying question without answering. */
+export function dismissQuestion(db: PhoneDb, questionId: string, deps: LocalDeps): void {
+  const now = deps.now()
+  db.transaction((tx) => {
+    tx.update(questions)
+      .set({ status: 'dismissed', resolved_at: now, updated_at: now })
+      .where(eq(questions.id, questionId))
+      .run()
+    appendOp(
+      tx,
+      { op_id: deps.uuid(), type: 'question.dismiss', question_id: questionId },
+      { question_id: questionId },
       now,
     )
   })

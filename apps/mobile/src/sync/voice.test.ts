@@ -179,6 +179,8 @@ describe('pull merge for recordings', () => {
             received_bytes: 10,
           },
         ],
+        thoughts: [],
+        questions: [],
         transcripts: [
           {
             ...base,

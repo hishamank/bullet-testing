@@ -28,6 +28,9 @@ import type {
   TaskStatus,
   TrackerConfig,
   TrackerEntryValue,
+  QuestionStatus,
+  QuestionTopic,
+  ThoughtKind,
   TrackerInputType,
   TranscriptKind,
 } from '@bullet/core'
@@ -51,6 +54,7 @@ export const bullets = sqliteTable(
     text_edited_by_user: integer('text_edited_by_user', { mode: 'boolean' })
       .notNull()
       .default(false),
+    answers_question_id: text('answers_question_id'),
     server_status: text('server_status').$type<ServerBulletProcessingStatus>(),
     server_attempts: integer('server_attempts').notNull().default(0),
     server_error_code: text('server_error_code').$type<ProcessingErrorCode>(),
@@ -68,9 +72,11 @@ export const outbox = sqliteTable(
     seq: integer('seq').primaryKey({ autoIncrement: true }),
     op_id: text('op_id').notNull().unique(),
     type: text('type').$type<PushOp['type']>().notNull(),
-    /** The bullet / suggestion the op is about, for the saved_local overlay and pull merging. */
+    /** The row the op is about, for the saved_local overlay and pull merging. */
     bullet_id: text('bullet_id'),
     suggestion_id: text('suggestion_id'),
+    thought_id: text('thought_id'),
+    question_id: text('question_id'),
     op: text('op', { mode: 'json' }).$type<PushOp>().notNull(),
     created_at: integer('created_at').notNull(),
     attempts: integer('attempts').notNull().default(0),
@@ -87,6 +93,7 @@ export const suggestions = sqliteTable(
   {
     ...rowFields(),
     source_bullet_id: text('source_bullet_id').notNull(),
+    source_thought_id: text('source_thought_id'),
     target_kind: text('target_kind').$type<TargetKind>().notNull(),
     operation: text('operation').$type<SuggestionOperation>().notNull(),
     target_id: text('target_id'),
@@ -102,7 +109,10 @@ export const suggestions = sqliteTable(
   (t) => [index('suggestions_bullet_idx').on(t.source_bullet_id)],
 )
 
-const provenance = () => ({ source_bullet_id: text('source_bullet_id') })
+const provenance = () => ({
+  source_bullet_id: text('source_bullet_id'),
+  source_thought_id: text('source_thought_id'),
+})
 
 export const tasks = sqliteTable('tasks', {
   ...rowFields(),
@@ -188,6 +198,41 @@ export const transcripts = sqliteTable(
   (t) => [index('transcripts_bullet_idx').on(t.bullet_id)],
 )
 
+/** The thoughts a capture was split into (every one kept). */
+export const thoughts = sqliteTable(
+  'thoughts',
+  {
+    ...rowFields(),
+    source_bullet_id: text('source_bullet_id').notNull(),
+    position: integer('position').notNull(),
+    text: text('text').notNull(),
+    span_start: integer('span_start'),
+    span_end: integer('span_end'),
+    kind: text('kind').$type<ThoughtKind>().notNull(),
+    kind_source: text('kind_source').$type<'engine' | 'user'>().notNull(),
+  },
+  (t) => [index('thoughts_bullet_idx').on(t.source_bullet_id)],
+)
+
+/** Clarifying questions about a capture. */
+export const questions = sqliteTable(
+  'questions',
+  {
+    ...rowFields(),
+    source_bullet_id: text('source_bullet_id').notNull(),
+    source_thought_id: text('source_thought_id'),
+    suggestion_id: text('suggestion_id'),
+    kind: text('kind').$type<'clarifying'>().notNull(),
+    topic: text('topic').$type<QuestionTopic>().notNull(),
+    text: text('text').notNull(),
+    options: text('options', { mode: 'json' }).$type<string[]>().notNull(),
+    status: text('status').$type<QuestionStatus>().notNull(),
+    answer_bullet_id: text('answer_bullet_id'),
+    resolved_at: integer('resolved_at'),
+  },
+  (t) => [index('questions_bullet_idx').on(t.source_bullet_id)],
+)
+
 export const syncState = sqliteTable('sync_state', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
@@ -204,5 +249,7 @@ export const schema = {
   activities,
   audioAttachments,
   transcripts,
+  thoughts,
+  questions,
   syncState,
 }

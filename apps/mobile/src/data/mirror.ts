@@ -18,6 +18,8 @@ import {
   syncState,
   tasks,
   trackerEntries,
+  questions,
+  thoughts,
   trackers,
   transcripts,
 } from './schema'
@@ -68,11 +70,18 @@ function upsert(db: PhoneDb, table: typeof tasks, rows: { id: string }[]): void 
 export function applyPull(db: PhoneDb, page: PullResponse): void {
   db.transaction((tx) => {
     const pending = tx
-      .select({ bullet_id: outbox.bullet_id, suggestion_id: outbox.suggestion_id })
+      .select({
+        bullet_id: outbox.bullet_id,
+        suggestion_id: outbox.suggestion_id,
+        thought_id: outbox.thought_id,
+        question_id: outbox.question_id,
+      })
       .from(outbox)
       .all()
     const pendingBullets = new Set(pending.map((p) => p.bullet_id).filter(Boolean))
     const pendingSuggestions = new Set(pending.map((p) => p.suggestion_id).filter(Boolean))
+    const pendingThoughts = new Set(pending.map((p) => p.thought_id).filter(Boolean))
+    const pendingQuestions = new Set(pending.map((p) => p.question_id).filter(Boolean))
 
     for (const b of page.changes.bullets) {
       const proc = serverProcessing(b)
@@ -120,6 +129,19 @@ export function applyPull(db: PhoneDb, page: PullResponse): void {
         .values(row)
         .onConflictDoUpdate({ target: transcripts.id, set: row })
         .run()
+    }
+
+    // Thoughts and questions: local re-classify/dismiss wins until acknowledged.
+    for (const t of page.changes.thoughts) {
+      if (pendingThoughts.has(t.id)) continue
+      const { span, ...rest } = local(t)
+      const row = { ...rest, span_start: span?.start ?? null, span_end: span?.end ?? null }
+      tx.insert(thoughts).values(row).onConflictDoUpdate({ target: thoughts.id, set: row }).run()
+    }
+    for (const q of page.changes.questions) {
+      if (pendingQuestions.has(q.id)) continue
+      const row = local(q)
+      tx.insert(questions).values(row).onConflictDoUpdate({ target: questions.id, set: row }).run()
     }
 
     setState(tx, CURSOR_KEY, page.cursor)

@@ -99,6 +99,7 @@ export class FakeServer implements SyncTransport {
         this.bullets.set(op.bullet.id, {
           ...bullet,
           text_edited_by_user: bullet.text_edited_by_user ?? false,
+          answers_question_id: bullet.answers_question_id ?? null,
           owner_id: OWNER,
           created_at: this.now,
           updated_at: this.now,
@@ -157,6 +158,8 @@ export class FakeServer implements SyncTransport {
       activities: [],
       audio_attachments: [],
       transcripts: [],
+      thoughts: [],
+      questions: [],
     }
     const last = page.at(-1)
     return {
