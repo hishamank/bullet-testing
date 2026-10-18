@@ -7,7 +7,6 @@ import { retryCaptures } from '@/features/capture/actions'
 import { groupByDay, listCaptureCards } from '@/features/journal/stream'
 import { syncNow } from '@/features/sync/engine'
 import { useLocalQuery } from '@/hooks'
-import { deviceDeps } from '@/sync/runtime'
 import { space, useTheme } from '@/theme'
 
 const PAGE = 40
@@ -19,7 +18,13 @@ export default function JournalStream() {
   const [limit, setLimit] = useState(PAGE)
   const [refreshing, setRefreshing] = useState(false)
   const page = useLocalQuery((db) => listCaptureCards(db, limit), limit)
-  const sections = groupByDay(page.cards, (c) => c.capturedAt, Date.now(), deviceDeps.timezone())
+  // Days and times read in each capture's own zone (where you were), like its card's time.
+  const sections = groupByDay(
+    page.cards,
+    (c) => c.capturedAt,
+    Date.now(),
+    (c) => c.timezone,
+  )
 
   return (
     <SectionList

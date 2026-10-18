@@ -65,11 +65,36 @@ describe('stream query', () => {
 describe('grouping and wording', () => {
   test('groups by day in the zone, keeping order', () => {
     const items = [T0, T0 - 3_600_000, T0 - D, T0 - 3 * D]
-    const sections = groupByDay(items, (x) => x, T0, TZ)
+    const sections = groupByDay(
+      items,
+      (x) => x,
+      T0,
+      () => TZ,
+    )
     expect(sections.map((s) => [s.title, s.data.length])).toEqual([
       ['Today', 2],
       ['Yesterday', 1],
       ['Mon 12 Oct', 1],
+    ])
+  })
+
+  test('a capture made in another zone sits on its own local day', () => {
+    // 21:30 UTC on Wed 14 Oct: 23:30 Wed in Paris, but already 00:30 Thu in Beirut (UTC+3).
+    const at = Date.UTC(2026, 9, 14, 21, 30)
+    const items = [
+      { at: T0, tz: TZ },
+      { at, tz: 'Asia/Beirut' },
+      { at: at - 60_000, tz: TZ },
+    ]
+    const sections = groupByDay(
+      items,
+      (x) => x.at,
+      T0,
+      (x) => x.tz,
+    )
+    expect(sections.map((s) => [s.title, s.data.map((x) => x.tz)])).toEqual([
+      ['Today', [TZ, 'Asia/Beirut']],
+      ['Yesterday', [TZ]],
     ])
   })
 

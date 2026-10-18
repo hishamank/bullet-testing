@@ -7,13 +7,15 @@
  *    `addSyncOutcomeListener`, so nothing here runs syncs just to see how they went.
  *  - While the app is open, the next sync is scheduled after each outcome (pull results soon
  *    while the server is reading, back off while it is out of reach).
+ *  - Row writes SQLite reports (change listener) refresh live queries too, coalesced per burst
+ *    (live.ts), so writes made without `notifyLocalChange()` still show.
  *  - The client is single-flight, so a sync started here joins any sync already running.
  *
  * The decisions (outage, note, next delay) are pure, in monitor.ts.
  */
 
 import { AppState } from 'react-native'
-import { getDb } from '../../data/open'
+import { getDb, onDataChanged } from '../../data/open'
 import type { SyncOutcome } from '../../sync/client'
 import {
   addSyncOutcomeListener,
@@ -24,6 +26,7 @@ import {
 import { loadServerSettings, type ServerSettings, saveServerSettings } from '../../sync/settings'
 import { captureCounts } from '../capture/counts'
 import { createStore } from '../store'
+import { createCoalescer } from './live'
 import { initialMonitor, nextSyncDelay, recordOutcome, resetForNewServer } from './monitor'
 
 export type Pairing = 'loading' | 'unpaired' | 'paired'
@@ -36,8 +39,22 @@ export const pairingStore = createStore<Pairing>('loading')
 let timer: ReturnType<typeof setTimeout> | null = null
 let foreground = AppState.currentState === 'active'
 
+const bump = () => changeStore.set((v) => v + 1)
+
+/** Row writes reported by SQLite, coalesced into one refresh per burst (e.g. a pull page). */
+const live = createCoalescer({
+  delayMs: 120,
+  coveredMs: 250,
+  refresh: bump,
+  now: () => Date.now(),
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+})
+
+/** Refresh live queries now (call right after a local write). */
 export function notifyLocalChange(): void {
-  changeStore.set((v) => v + 1)
+  live.refreshed()
+  bump()
 }
 
 function clearTimer() {
@@ -94,6 +111,8 @@ export async function pairDevice(settings: ServerSettings): Promise<void> {
 /** Call once from the root layout. Returns a stop function. */
 export function startAppSync(): () => void {
   const stopOutcomes = addSyncOutcomeListener(onOutcome)
+  // Writes nobody announced (another module, a background sync) still reach the screens.
+  const stopLive = onDataChanged(() => live.rowChanged())
   const stopRuntime = startSyncEngine()
   void loadServerSettings()
     .then((s) => pairingStore.set(s ? 'paired' : 'unpaired'))
@@ -110,6 +129,8 @@ export function startAppSync(): () => void {
     appState.remove()
     clearTimer()
     stopOutcomes()
+    stopLive()
+    live.dispose()
     stopRuntime()
   }
 }

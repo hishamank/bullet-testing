@@ -56,6 +56,28 @@ export function loadPlans(db: PhoneDb, now: number) {
   return { events: evs as PlanEvent[], tasks: ts as PlanTask[] }
 }
 
+/**
+ * One task or event by id, whatever its date or status (a deep link from Capture detail may point
+ * at a thing outside the lists' window). Null when unknown or deleted.
+ */
+export function loadPlanItem(
+  db: PhoneDb,
+  id: string,
+): { kind: 'task'; task: PlanTask } | { kind: 'event'; event: PlanEvent } | null {
+  const task = db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, id), eq(tasks.state, 'active')))
+    .get()
+  if (task) return { kind: 'task', task: task as PlanTask }
+  const event = db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, id), eq(events.state, 'active')))
+    .get()
+  return event ? { kind: 'event', event: event as PlanEvent } : null
+}
+
 export type Urgency = 'overdue' | 'today' | null
 
 export interface DueInfo {

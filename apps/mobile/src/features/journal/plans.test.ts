@@ -7,6 +7,7 @@ import {
   cleanTitle,
   dueInfo,
   eventMovePatch,
+  loadPlanItem,
   loadPlans,
   moveToDay,
   type PlanTask,
@@ -126,6 +127,24 @@ describe('plans', () => {
     plans = buildPlans({ ...loadPlans(db, T0), now: T0, tz: TZ })
     expect(plans.open).toEqual([])
     expect(plans.doneRecently.map((t) => t.id)).toEqual([id])
+  })
+})
+
+describe('deep link to one item', () => {
+  test('finds old events and long-done or cancelled tasks the lists leave out', () => {
+    const db = openTestDb()
+    const ev = seedEvent(db, T0 - 8 * D, { title: 'Dentist' })
+    const old = seedTask(db, { status: 'done', updated_at: T0 - 30 * D })
+    const cancelled = seedTask(db, { status: 'cancelled' })
+    const gone = seedTask(db, { state: 'deleted' })
+    const plans = buildPlans({ ...loadPlans(db, T0), now: T0, tz: TZ })
+    expect(plans.upcoming).toEqual([])
+    expect(plans.doneRecently).toEqual([])
+    expect(loadPlanItem(db, ev)).toMatchObject({ kind: 'event', event: { title: 'Dentist' } })
+    expect(loadPlanItem(db, old)).toMatchObject({ kind: 'task', task: { id: old } })
+    expect(loadPlanItem(db, cancelled)).toMatchObject({ kind: 'task' })
+    expect(loadPlanItem(db, gone)).toBeNull()
+    expect(loadPlanItem(db, 'unknown')).toBeNull()
   })
 })
 

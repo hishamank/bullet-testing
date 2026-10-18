@@ -124,19 +124,31 @@ export interface DaySection<T> {
   data: T[]
 }
 
-/** Group items (already newest first) into day sections, in the phone's zone. */
+/**
+ * Group items (already newest first) into day sections. Each item's day is read in its own zone
+ * (`zoneOf`): the journal is a record of where you were, so a capture made at 23:00 in Beirut
+ * stays on that evening even when the phone is now in Paris. Sections keep first-seen order; an
+ * item whose day already has a section joins it.
+ */
 export function groupByDay<T>(
   items: readonly T[],
   at: (item: T) => number,
   now: number,
-  tz: string,
+  zoneOf: (item: T) => string,
 ): DaySection<T>[] {
   const sections: DaySection<T>[] = []
+  const byKey = new Map<string, DaySection<T>>()
   for (const item of items) {
+    const tz = zoneOf(item)
     const key = dayKey(at(item), tz)
-    const last = sections.at(-1)
-    if (last?.key === key) last.data.push(item)
-    else sections.push({ key, title: dayTitle(at(item), now, tz), data: [item] })
+    const existing = byKey.get(key)
+    if (existing) {
+      existing.data.push(item)
+      continue
+    }
+    const section = { key, title: dayTitle(at(item), now, tz), data: [item] }
+    byKey.set(key, section)
+    sections.push(section)
   }
   return sections
 }

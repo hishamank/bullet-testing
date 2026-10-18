@@ -43,7 +43,7 @@ export default function Trackers() {
                 {i > 0 ? <Divider /> : null}
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${r.name}, ${r.summary}`}
+                  accessibilityLabel={`${r.name}, ${r.summary}. ${r.sparkLabel}`}
                   accessibilityHint="Shows its history"
                   onPress={() => setOpen({ tracker: r.id })}
                   style={({ pressed }) => [
@@ -72,9 +72,9 @@ export default function Trackers() {
                   {i > 0 ? <Divider /> : null}
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={`${r.name}, ${r.summary}`}
+                    accessibilityLabel={`${r.name}, ${r.summary}. ${r.sparkLabel}`}
                     accessibilityHint="Shows its history"
-                    onPress={() => setOpen({ activity: r.key })}
+                    onPress={() => setOpen({ activity: r.name })}
                     style={({ pressed }) => [
                       journalStyles.row,
                       { minHeight: 64, opacity: pressed ? 0.6 : 1 },

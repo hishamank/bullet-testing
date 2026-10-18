@@ -6,7 +6,7 @@
  */
 
 import { entryValueFits, type TrackerConfig, type TrackerEntryValue } from '@bullet/core'
-import { and, desc, eq, gte, isNull } from 'drizzle-orm'
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { activities, trackerEntries, trackers } from '../../data/schema'
 import { dayDiff, plural, startOfDay, whenLabel } from './format'
@@ -97,18 +97,24 @@ export function loadTrackerHistory(db: PhoneDb, trackerId: string, limit = 200) 
   return { tracker: tracker ?? null, entries, activities: acts }
 }
 
-/** Unlinked activities with this name (case-insensitive), newest first. */
+/**
+ * Unlinked activities with this name (ignoring case and outer spaces, as SQLite's `lower` does:
+ * ASCII only), newest first.
+ */
 export function loadActivityHistory(db: PhoneDb, name: string, limit = 200): ActivityData[] {
-  return (
-    db
-      .select()
-      .from(activities)
-      .where(and(eq(activities.state, 'active'), isNull(activities.tracker_id)))
-      .orderBy(desc(activities.occurred_at))
-      .all() as ActivityData[]
-  )
-    .filter((a) => activityKey(a.name) === activityKey(name))
-    .slice(0, limit)
+  return db
+    .select()
+    .from(activities)
+    .where(
+      and(
+        eq(activities.state, 'active'),
+        isNull(activities.tracker_id),
+        sql`lower(trim(${activities.name})) = lower(trim(${name}))`,
+      ),
+    )
+    .orderBy(desc(activities.occurred_at))
+    .limit(limit)
+    .all() as ActivityData[]
 }
 
 // ---- pure ----
@@ -118,7 +124,8 @@ export type Spark =
   | { mode: 'bars'; counts: number[] }
   | { mode: 'none' }
 
-export const activityKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ')
+/** Groups activity names like `loadActivityHistory` matches them. */
+export const activityKey = (name: string) => name.trim().toLowerCase()
 
 /** Index 0 = 13 days ago … 13 = today; -1 when outside the window. */
 function slot(at: number, now: number, tz: string): number {

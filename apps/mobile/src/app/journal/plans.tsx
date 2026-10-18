@@ -14,7 +14,8 @@ import {
 import { Label } from '@/components/ui'
 import { setTaskDone } from '@/features/journal/actions'
 import { clock } from '@/features/journal/format'
-import { buildPlans, loadPlans, type PlanTask } from '@/features/journal/plans'
+import { buildPlans, loadPlanItem, loadPlans, type PlanTask } from '@/features/journal/plans'
+import { getDb } from '@/data/open'
 import { useLocalQuery } from '@/hooks'
 import { deviceDeps } from '@/sync/runtime'
 import { kindStyle, type, useTheme } from '@/theme'
@@ -34,13 +35,11 @@ export default function Plans() {
   const [editing, setEditing] = useState<PlanItem | null>(null)
   const [showDone, setShowDone] = useState(false)
 
-  // Opened from Capture detail with an item to show.
+  // Opened from Capture detail: show that item, even when it's outside the lists' window.
   useEffect(() => {
     if (!params.item) return
-    const task = data.tasks.find((x) => x.id === params.item)
-    const event = data.events.find((x) => x.id === params.item)
-    if (task) setEditing({ kind: 'task', task })
-    else if (event) setEditing({ kind: 'event', event })
+    const item = loadPlanItem(getDb(), params.item)
+    if (item) setEditing(item)
     router.setParams({ item: undefined })
   }, [params.item])
 

@@ -9,6 +9,7 @@ import { File } from 'expo-file-system'
 import { useMemo } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Label, RoundButton } from '@/components/ui'
+import { usePairing } from '@/hooks'
 import { type AudioRow, audioSource } from '@/features/journal/capture'
 import { duration, spokenDuration } from '@/features/journal/format'
 import { currentServerSettings } from '@/sync/runtime'
@@ -24,9 +25,12 @@ function fileExists(path: string): boolean {
 
 export function AudioPlayer({ audio }: { audio: AudioRow }) {
   const t = useTheme()
+  // Re-decided when pairing changes too, so "Connect to your home server" clears once paired.
+  const pairing = usePairing()
+  const server = currentServerSettings()
   const source = useMemo(
-    () => audioSource(audio, { localExists: fileExists, server: currentServerSettings() }),
-    [audio.id, audio.local_path, audio.upload_status],
+    () => audioSource(audio, { localExists: fileExists, server }),
+    [audio.id, audio.local_path, audio.upload_status, pairing, server?.baseUrl, server?.token],
   )
   if (source.kind === 'unavailable') {
     return (
