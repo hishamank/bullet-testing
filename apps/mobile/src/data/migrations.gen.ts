@@ -16,5 +16,9 @@ export const MIGRATIONS: readonly { tag: string; sql: string }[] = [
   {
     "tag": "0003_manual_edits_open_loops",
     "sql": "ALTER TABLE `bullets` ADD `resolves_thought_id` text;--> statement-breakpoint\nALTER TABLE `events` ADD `user_edited_at` integer;--> statement-breakpoint\nALTER TABLE `outbox` ADD `entity_id` text;--> statement-breakpoint\nCREATE INDEX `outbox_entity_idx` ON `outbox` (`entity_id`);--> statement-breakpoint\nALTER TABLE `questions` ADD `answer_option` text;--> statement-breakpoint\nALTER TABLE `tasks` ADD `user_edited_at` integer;--> statement-breakpoint\nALTER TABLE `thoughts` ADD `resolved_at` integer;--> statement-breakpoint\nALTER TABLE `thoughts` ADD `resolved_by_bullet_id` text;--> statement-breakpoint\nALTER TABLE `tracker_entries` ADD `user_edited_at` integer;"
+  },
+  {
+    "tag": "0004_outbox_hold",
+    "sql": "ALTER TABLE `outbox` ADD `hold_until` integer;"
   }
 ]

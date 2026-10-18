@@ -1,8 +1,14 @@
 import type { PullResponse, PushRequest, PushResponse } from '@bullet/core'
 import { zonedToEpoch } from '@bullet/engine'
 import { describe, expect, test } from 'vite-plus/test'
-import { retractDecision } from '../../data/decisions'
-import { acceptSuggestion, answerQuestion, rejectSuggestion } from '../../data/local'
+import { decideHeld, releaseHolds, retractDecision } from '../../data/decisions'
+import {
+  acceptSuggestion,
+  answerQuestion,
+  captureBullet,
+  rejectSuggestion,
+  undoSuggestion,
+} from '../../data/local'
 import { CURSOR_KEY, getState, setState } from '../../data/mirror'
 import { clearRejection, listRejections } from '../../data/rejections'
 import { bullets, outbox, questions, suggestions, trackers } from '../../data/schema'
@@ -10,7 +16,7 @@ import { createSyncClient } from '../../sync/client'
 import type { SyncTransport } from '../../sync/transport'
 import { openTestDb, T0, testDeps } from '../../test/db'
 import { applyEdit, editFormFor, parseNumber } from './edit'
-import { buildInbox, loadInboxRows, startOfDay } from './model'
+import { buildInbox, loadInboxRows, noticeText, startOfDay } from './model'
 import { formatValue, formatWhen, snippet, summarize, type SummaryContext } from './summary'
 import { addDecision, expireDecisions, nextExpiry, removeDecision, UNDO_WINDOW_MS } from './undo'
 
@@ -462,7 +468,6 @@ describe('a refused decision', () => {
 
   test('an Undo refused because the user edited the item says so', async () => {
     const { db, deps } = seed()
-    const { undoSuggestion } = await import('../../data/local')
     undoSuggestion(db, S_RUN, deps)
     const transport = refusingTransport('conflict')
     await createSyncClient({ db, transport: () => transport, now: () => T0 }).sync()
@@ -532,5 +537,211 @@ describe('edit then accept', () => {
     ).toBeNull()
     expect(parseNumber(' 5,5 ')).toBe(5.5)
     expect(parseNumber('5k')).toBeNull()
+  })
+})
+
+describe('held decisions (the Undo window is real)', () => {
+  const empty: PullResponse['changes'] = {
+    bullets: [],
+    suggestions: [],
+    tasks: [],
+    events: [],
+    trackers: [],
+    tracker_entries: [],
+    activities: [],
+    audio_attachments: [],
+    transcripts: [],
+    thoughts: [],
+    questions: [],
+  }
+  function recordingTransport(opts: { onPush?: () => void } = {}) {
+    const pushed: string[][] = []
+    const transport: SyncTransport = {
+      async push(req: PushRequest): Promise<PushResponse> {
+        opts.onPush?.()
+        pushed.push(req.ops.map((op) => op.type))
+        return {
+          results: req.ops.map((op) => ({ op_id: op.op_id, status: 'applied' as const })),
+          server_time: T0,
+        }
+      },
+      async pull() {
+        return { changes: empty, cursor: '1', has_more: false, server_time: T0 }
+      },
+      async audioStatus() {
+        throw new Error('unused')
+      },
+      async uploadAudio() {
+        throw new Error('unused')
+      },
+    }
+    return { transport, pushed }
+  }
+
+  test('a held op is not pushed while its window is open; other ops still go', async () => {
+    const { db, deps } = seed()
+    const clock = { now: T0 }
+    expect(decideHeld(db, S_EVENT, 'dismissed', T0 + UNDO_WINDOW_MS, deps)).toBe(true)
+    // Something else syncs meanwhile (a question answer, a capture): only that goes.
+    captureBullet(db, { text: 'buy milk' }, deps)
+    const { transport, pushed } = recordingTransport()
+    const client = createSyncClient({ db, transport: () => transport, now: () => clock.now })
+    await client.sync()
+    expect(pushed).toEqual([['bullet.create']])
+    expect(
+      db
+        .select()
+        .from(outbox)
+        .all()
+        .map((r) => r.type),
+    ).toEqual(['suggestion.reject'])
+
+    // Undo inside the window still works, because the server never saw it.
+    expect(retractDecision(db, S_EVENT, {}, T0)).toBe(true)
+  })
+
+  test('later ops about the same suggestion wait behind its held decision', async () => {
+    const { db, deps } = seed()
+    decideHeld(db, S_EVENT, 'accepted', T0 + UNDO_WINDOW_MS, deps)
+    undoSuggestion(db, S_EVENT, deps) // e.g. Undo from another screen: must not overtake
+    const { transport, pushed } = recordingTransport()
+    await createSyncClient({ db, transport: () => transport, now: () => T0 }).sync()
+    expect(pushed).toEqual([])
+  })
+
+  test('released when the window closes, or once the hold runs out by itself', async () => {
+    const { db, deps } = seed()
+    decideHeld(db, S_EVENT, 'accepted', T0 + UNDO_WINDOW_MS, deps)
+    decideHeld(db, S_MOOD, 'dismissed', T0 + UNDO_WINDOW_MS, deps)
+    const clock = { now: T0 }
+    const { transport, pushed } = recordingTransport()
+    const client = createSyncClient({ db, transport: () => transport, now: () => clock.now })
+
+    releaseHolds(db, [S_EVENT])
+    await client.sync()
+    expect(pushed).toEqual([['suggestion.accept']])
+
+    // The app died before releasing S_MOOD: after the window it goes anyway.
+    clock.now = T0 + UNDO_WINDOW_MS
+    await client.sync()
+    expect(pushed).toEqual([['suggestion.accept'], ['suggestion.reject']])
+    expect(db.select().from(outbox).all()).toEqual([])
+  })
+
+  test('an op being pushed right now is not retracted', async () => {
+    const { db, deps } = seed()
+    decideHeld(db, S_MOOD, 'dismissed', T0 + UNDO_WINDOW_MS, deps)
+    releaseHolds(db)
+    let retracted: boolean | null = null
+    const { transport } = recordingTransport({
+      // Undo tapped while the push is in flight.
+      onPush: () => (retracted = retractDecision(db, S_MOOD, {}, T0)),
+    })
+    await createSyncClient({ db, transport: () => transport, now: () => T0 }).sync()
+    expect(retracted).toBe(false)
+    expect(
+      db
+        .select()
+        .from(suggestions)
+        .all()
+        .find((s) => s.id === S_MOOD)?.status,
+    ).toBe('rejected')
+  })
+
+  test('a second tap on a decided suggestion does nothing', () => {
+    const { db, deps } = seed()
+    expect(decideHeld(db, S_EVENT, 'accepted', T0 + 1, deps)).toBe(true)
+    expect(decideHeld(db, S_EVENT, 'accepted', T0 + 1, deps, { title: 'x' })).toBe(false)
+    expect(db.select().from(outbox).all()).toHaveLength(1)
+  })
+})
+
+describe('refusal scope and notices', () => {
+  const rejecting = (pulls: (string | undefined)[]): SyncTransport => ({
+    async push(req: PushRequest): Promise<PushResponse> {
+      return {
+        results: req.ops.map((op) => ({
+          op_id: op.op_id,
+          status: 'rejected' as const,
+          error: { code: 'invalid' as const, message: 'nope' },
+        })),
+        server_time: T0,
+      }
+    },
+    async pull({ cursor }) {
+      pulls.push(cursor)
+      return {
+        changes: {
+          bullets: [],
+          suggestions: [],
+          tasks: [],
+          events: [],
+          trackers: [],
+          tracker_entries: [],
+          activities: [],
+          audio_attachments: [],
+          transcripts: [],
+          thoughts: [],
+          questions: [],
+        },
+        cursor: '9',
+        has_more: false,
+        server_time: T0,
+      }
+    },
+    async audioStatus() {
+      throw new Error('unused')
+    },
+    async uploadAudio() {
+      throw new Error('unused')
+    },
+  })
+
+  test('a refused dismiss forces a full pull but leaves no record', async () => {
+    const { db, deps } = seed()
+    setState(db, CURSOR_KEY, '5')
+    rejectSuggestion(db, S_MOOD, deps)
+    const pulls: (string | undefined)[] = []
+    await createSyncClient({ db, transport: () => rejecting(pulls), now: () => T0 }).sync()
+    expect(pulls).toEqual([undefined])
+    expect(listRejections(db)).toEqual([])
+  })
+
+  test('a refused bullet op keeps the incremental pull and leaves no record', async () => {
+    const { db, deps } = seed()
+    setState(db, CURSOR_KEY, '5')
+    captureBullet(db, { text: 'x' }, deps)
+    const pulls: (string | undefined)[] = []
+    await createSyncClient({ db, transport: () => rejecting(pulls), now: () => T0 }).sync()
+    expect(pulls).toEqual(['5'])
+    expect(listRejections(db)).toEqual([])
+  })
+
+  test('notice wording', () => {
+    const r = (
+      type: 'suggestion.undo' | 'question.answer' | 'suggestion.reject',
+      code = 'invalid' as const,
+    ) => ({
+      key: 'rejection:x',
+      type,
+      suggestion_id: null,
+      question_id: null,
+      code,
+      message: '',
+      at: T0,
+    })
+    expect(noticeText(r('question.answer'), new Map(), ctx())).toBe(
+      'Your answer arrived after that was already decided, so nothing changed.',
+    )
+    expect(noticeText(r('suggestion.undo'), new Map(), ctx())).toBe(
+      "Couldn't undo that; it's still there, unchanged.",
+    )
+    expect(noticeText(r('suggestion.reject'), new Map(), ctx())).toBeNull()
+  })
+
+  test('startOfDay holds on DST days', () => {
+    // Clocks go back in Paris on Sun 25 Oct 2026 and forward on Sun 29 Mar 2026.
+    expect(startOfDay(Date.UTC(2026, 9, 25, 12), TZ)).toBe(Date.UTC(2026, 9, 24, 22))
+    expect(startOfDay(Date.UTC(2026, 2, 29, 12), TZ)).toBe(Date.UTC(2026, 2, 28, 23))
   })
 })

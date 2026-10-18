@@ -1,25 +1,25 @@
 /**
  * Device edge: what the Inbox's buttons do. Writes go through `src/data` (change + outbox op in
- * one transaction); this file adds the Undo window and decides when to sync.
+ * one transaction); this file runs the Undo window and decides when to sync.
  *
- *  - Accept / Dismiss are written at once but *sent* when their Undo window closes, so an Undo in
- *    the window simply takes the op back (`retractDecision`). Leaving the Inbox sends right away.
+ *  - Accept / Dismiss are written at once with their op on hold (`decideHeld`): the sync client
+ *    won't send it while the window is open, whatever else syncs meanwhile. Undo in the window
+ *    takes it back (`retractDecision`). The hold is released when the window closes, when the
+ *    Inbox is left and when the app goes to the background; it also runs out by itself.
  *  - Answers, Skip and Undo of something already applied are sent at once.
  */
 
 import type { SuggestionPayload } from '@bullet/core'
 import { eq } from 'drizzle-orm'
-import { AccessibilityInfo } from 'react-native'
-import { retractDecision } from '../../data/decisions'
+import { AccessibilityInfo, AppState } from 'react-native'
+import { decideHeld, releaseHolds, restoreSuggestion, retractDecision } from '../../data/decisions'
 import {
-  acceptSuggestion,
   answerQuestion as answerQuestionLocal,
   dismissQuestion,
-  rejectSuggestion,
   undoSuggestion,
 } from '../../data/local'
 import { getDb } from '../../data/open'
-import { clearRejection } from '../../data/rejections'
+import { clearRejection, findRejection } from '../../data/rejections'
 import { suggestions } from '../../data/schema'
 import { deviceDeps } from '../../sync/runtime'
 import { createStore } from '../store'
@@ -31,6 +31,7 @@ import {
   findDecision,
   nextExpiry,
   removeDecision,
+  UNDO_WINDOW_MS,
   type UndoState,
 } from './undo'
 
@@ -38,19 +39,45 @@ import {
 export const undoStore = createStore<UndoState>([])
 
 let timer: ReturnType<typeof setTimeout> | null = null
+let watchingAppState = false
 
-/** Close windows that ran out, send their ops, and wait for the next one. */
+/** Close windows that ran out, release and send their ops, and wait for the next one. */
 function tick() {
   if (timer !== null) clearTimeout(timer)
   timer = null
   const before = undoStore.get()
   const after = expireDecisions(before, Date.now())
   if (after !== before) {
+    const open = new Set(after.map((e) => e.suggestionId))
+    releaseHolds(
+      getDb(),
+      before.filter((e) => !open.has(e.suggestionId)).map((e) => e.suggestionId),
+    )
     undoStore.set(after)
     void syncNow()
   }
   const next = nextExpiry(after)
   if (next !== null) timer = setTimeout(tick, Math.max(0, next - Date.now()))
+}
+
+/** Close every window now: release all holds and send. */
+function closeAll() {
+  if (timer !== null) clearTimeout(timer)
+  timer = null
+  releaseHolds(getDb())
+  if (undoStore.get().length === 0) return
+  undoStore.set([])
+  notifyLocalChange()
+  void syncNow()
+}
+
+/** Going to the background ends the windows: nobody can tap Undo there. */
+function watchAppState() {
+  if (watchingAppState) return
+  watchingAppState = true
+  AppState.addEventListener('change', (state) => {
+    if (state === 'background') closeAll()
+  })
 }
 
 function changed() {
@@ -70,15 +97,18 @@ function currentPayload(id: string): { payload: SuggestionPayload; bulletId: str
   return s ? { payload: s.payload, bulletId: s.bullet } : null
 }
 
-function decide(ids: readonly string[], decision: Decision, payload?: SuggestionPayload) {
+/** Decide and hold. Suggestions no longer pending (a double tap) are skipped. */
+function decide(ids: readonly string[], decision: Decision, payload?: SuggestionPayload): number {
+  watchAppState()
   const db = getDb()
   const now = Date.now()
   let state = undoStore.get()
+  let decided = 0
   for (const id of ids) {
     const before = currentPayload(id)
     if (!before) continue
-    if (decision === 'accepted') acceptSuggestion(db, id, deviceDeps, payload)
-    else rejectSuggestion(db, id, deviceDeps)
+    if (!decideHeld(db, id, decision, now + UNDO_WINDOW_MS, deviceDeps, payload)) continue
+    decided += 1
     state = addDecision(state, {
       suggestionId: id,
       decision,
@@ -90,22 +120,25 @@ function decide(ids: readonly string[], decision: Decision, payload?: Suggestion
   undoStore.set(state)
   changed()
   tick()
+  return decided
 }
 
 export function accept(id: string, label: string, payload?: SuggestionPayload): void {
-  decide([id], 'accepted', payload)
-  announce(`Added ${label}. Undo is available for a few seconds.`)
+  if (decide([id], 'accepted', payload) > 0) {
+    announce(`Added ${label}. Undo is available for a few seconds.`)
+  }
 }
 
 /** "Accept both / all": several ops, sent together in one push when the window closes. */
 export function acceptAll(ids: readonly string[]): void {
-  decide(ids, 'accepted')
-  announce(`Added ${ids.length}. Undo is available for a few seconds.`)
+  const n = decide(ids, 'accepted')
+  if (n > 0) announce(`Added ${n}. Undo is available for a few seconds.`)
 }
 
 export function dismiss(id: string, label: string): void {
-  decide([id], 'dismissed')
-  announce(`Dismissed ${label}. Undo is available for a few seconds.`)
+  if (decide([id], 'dismissed') > 0) {
+    announce(`Dismissed ${label}. Undo is available for a few seconds.`)
+  }
 }
 
 export type UndoOutcome = 'restored' | 'undone' | 'already_sent'
@@ -120,11 +153,19 @@ export const UNDO_MESSAGES: Record<UndoOutcome, string> = {
 export function undoDecision(id: string): UndoOutcome {
   const entry = findDecision(undoStore.get(), id)
   const db = getDb()
+  const now = Date.now()
+  const previous = entry?.previousPayload ?? currentPayload(id)?.payload ?? {}
+  const refused = findRejection(db, id, ['suggestion.accept'])
   let outcome: UndoOutcome
-  if (entry && retractDecision(db, id, entry.previousPayload, Date.now())) {
+  if (entry && retractDecision(db, id, previous, now)) {
+    outcome = 'restored'
+  } else if (refused) {
+    // The server already refused the accept: nothing was applied, so just put it back here.
+    restoreSuggestion(db, id, previous, now)
+    clearRejection(db, refused.key)
     outcome = 'restored'
   } else if (entry?.decision === 'accepted') {
-    // Already sent (a sync ran meanwhile): remove what it added.
+    // Sent (or being sent): remove what it added, after it.
     undoSuggestion(db, id, deviceDeps)
     void syncNow()
     outcome = 'undone'
@@ -169,8 +210,5 @@ export function dismissNotice(key: string): void {
 
 /** Leaving the Inbox: close every Undo window and send what was decided. */
 export function flushDecisions(): void {
-  if (undoStore.get().length === 0) return
-  undoStore.set([])
-  tick()
-  void syncNow()
+  closeAll()
 }

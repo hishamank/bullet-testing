@@ -71,20 +71,29 @@ export function OptionButton({
   title,
   label,
   onPress,
+  selected,
 }: {
   title: string
   label: string
   onPress: () => void
+  /** For choice lists: shown with an accent border and announced as selected. */
+  selected?: boolean
 }) {
   const t = useTheme()
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={selected === undefined ? undefined : { selected }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.option,
-        { backgroundColor: t.raised, borderColor: t.textMuted, opacity: pressed ? 0.7 : 1 },
+        {
+          backgroundColor: t.raised,
+          borderColor: selected ? t.accent : t.textMuted,
+          borderWidth: selected ? 2 : 1,
+          opacity: pressed ? 0.7 : 1,
+        },
       ]}
     >
       <Label size={type.bodySmall}>{title}</Label>

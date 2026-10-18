@@ -84,6 +84,11 @@ export const outbox = sqliteTable(
     created_at: integer('created_at').notNull(),
     attempts: integer('attempts').notNull().default(0),
     last_error: text('last_error'),
+    /**
+     * Not sent before this time (epoch ms; null = send now). The Inbox holds a decision for its
+     * Undo window, so Undo can take it back before the server sees it. Expires on its own.
+     */
+    hold_until: integer('hold_until'),
   },
   (t) => [
     index('outbox_bullet_idx').on(t.bullet_id),

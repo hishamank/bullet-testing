@@ -19,7 +19,7 @@ import {
   MAX_PUSH_OPS,
   type PushOpResult,
 } from '@bullet/core'
-import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, notInArray, or, sql } from 'drizzle-orm'
 import type { PhoneDb } from '../data/db'
 import { applyPull, CURSOR_KEY, getState, setState } from '../data/mirror'
 import { recordRejection } from '../data/rejections'
@@ -97,10 +97,36 @@ export function createSyncClient(opts: SyncClientOptions): SyncClient {
     }
   }
 
+  /**
+   * The next ops to send, oldest first. Ops on hold (an Inbox decision in its Undo window) wait,
+   * and so does any later op about the same suggestion, so per-suggestion order is kept.
+   */
+  function sendable(at: number) {
+    const held = db
+      .select({ suggestion_id: outbox.suggestion_id })
+      .from(outbox)
+      .where(gt(outbox.hold_until, at))
+      .all()
+      .map((r) => r.suggestion_id)
+      .filter((id): id is string => id !== null)
+    return db
+      .select()
+      .from(outbox)
+      .where(
+        and(
+          or(isNull(outbox.hold_until), lte(outbox.hold_until, at)),
+          or(isNull(outbox.suggestion_id), notInArray(outbox.suggestion_id, held)),
+        ),
+      )
+      .orderBy(asc(outbox.seq))
+      .limit(PUSH_BATCH)
+      .all()
+  }
+
   async function pushAll(t: SyncTransport): Promise<number> {
     let pushed = 0
     for (;;) {
-      const batch = db.select().from(outbox).orderBy(asc(outbox.seq)).limit(PUSH_BATCH).all()
+      const batch = sendable(now())
       if (batch.length === 0) return pushed
       db.update(outbox)
         .set({ attempts: sql`${outbox.attempts} + 1` })

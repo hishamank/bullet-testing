@@ -1,16 +1,13 @@
 import type { TrackerConfig, TrackerEntryValue } from '@bullet/core'
-import DateTimePicker from '@expo/ui/community/datetime-picker'
-import { eq } from 'drizzle-orm'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useState } from 'react'
 import { KeyboardAvoidingView, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { InboxPill, OptionButton } from '@/components/inbox/parts'
+import { WhenPicker } from '@/components/inbox/WhenPicker'
 import { BackHeader, Label, Placeholder, PrimaryButton, Screen, TextButton } from '@/components/ui'
-import { suggestions } from '@/data/schema'
 import { accept } from '@/features/inbox/actions'
 import { applyEdit, type EditForm, editFormFor, payloadChanged } from '@/features/inbox/edit'
-import { summaryContext } from '@/features/inbox/model'
-import { summarize } from '@/features/inbox/summary'
+import { loadEditable } from '@/features/inbox/model'
 import { useLocalQuery } from '@/hooks'
 import { deviceDeps } from '@/sync/runtime'
 import { radius, size, space, type, useTheme } from '@/theme'
@@ -19,18 +16,10 @@ import { radius, size, space, type, useTheme } from '@/theme'
 export default function EditSuggestion() {
   const router = useRouter()
   const { suggestion: id } = useLocalSearchParams<{ suggestion: string }>()
-  const loaded = useLocalQuery((db) => {
-    const s = db
-      .select()
-      .from(suggestions)
-      .where(eq(suggestions.id, id ?? ''))
-      .get()
-    if (!s || s.state !== 'active' || s.status !== 'pending') return null
-    const ctx = summaryContext(db, [s], Date.now(), deviceDeps.timezone())
-    const trackerId =
-      typeof s.payload.tracker_id === 'string' ? s.payload.tracker_id : (s.target_id ?? '')
-    return { s, summary: summarize(s, ctx), tracker: ctx.trackers.get(trackerId) ?? null }
-  }, id)
+  const loaded = useLocalQuery(
+    (db) => loadEditable(db, id ?? '', Date.now(), deviceDeps.timezone()),
+    id,
+  )
   const [form, setForm] = useState<EditForm | null>(() => (loaded ? editFormFor(loaded.s) : null))
   const [error, setError] = useState<string | null>(null)
   const close = () => router.back()
@@ -111,7 +100,11 @@ function Fields({
             />
           ) : (
             <View style={styles.inline}>
-              <When value={form.due_at} onChange={(due_at) => onChange({ ...form, due_at })} />
+              <WhenPicker
+                label="Due"
+                value={form.due_at}
+                onChange={(due_at) => onChange({ ...form, due_at })}
+              />
               <TextButton
                 title="No due date"
                 tone="secondary"
@@ -132,7 +125,11 @@ function Fields({
           <Label tone="secondary" size={type.label}>
             Starts
           </Label>
-          <When value={form.starts_at} onChange={(starts_at) => onChange({ ...form, starts_at })} />
+          <WhenPicker
+            label="Starts"
+            value={form.starts_at}
+            onChange={(starts_at) => onChange({ ...form, starts_at })}
+          />
         </>
       )
     case 'tracker':
@@ -196,19 +193,6 @@ function Field({
   )
 }
 
-function When({ value, onChange }: { value: number; onChange: (at: number) => void }) {
-  const t = useTheme()
-  return (
-    <DateTimePicker
-      value={new Date(value)}
-      mode="datetime"
-      display="compact"
-      accentColor={t.accent}
-      onValueChange={(_, date) => onChange(date.getTime())}
-    />
-  )
-}
-
 /** A reading's value, shaped by its tracker: scale/select/boolean as buttons, else typed. */
 function ValueField({
   name,
@@ -221,20 +205,16 @@ function ValueField({
   value: TrackerEntryValue
   onChange: (v: TrackerEntryValue) => void
 }) {
-  const t = useTheme()
   const choices = (options: { title: string; value: TrackerEntryValue; selected: boolean }[]) => (
     <View style={styles.choices}>
       {options.map((o) => (
-        <View
+        <OptionButton
           key={o.title}
-          style={o.selected ? [styles.selected, { borderColor: t.accent }] : styles.unselected}
-        >
-          <OptionButton
-            title={o.title}
-            label={`${name} ${o.title}${o.selected ? ', selected' : ''}`}
-            onPress={() => onChange(o.value)}
-          />
-        </View>
+          title={o.title}
+          label={`${name} ${o.title}`}
+          selected={o.selected}
+          onPress={() => onChange(o.value)}
+        />
       ))}
     </View>
   )
@@ -328,6 +308,4 @@ const styles = StyleSheet.create({
   },
   inline: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space.sm },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  selected: { borderWidth: 2, borderRadius: radius.pill },
-  unselected: { borderWidth: 2, borderColor: 'transparent', borderRadius: radius.pill },
 })

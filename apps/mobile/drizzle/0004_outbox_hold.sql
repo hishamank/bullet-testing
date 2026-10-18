@@ -1,0 +1,1 @@
+ALTER TABLE `outbox` ADD `hold_until` integer;

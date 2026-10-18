@@ -5,6 +5,16 @@ import type { DoneItem } from '@/features/inbox/model'
 import { radius, space, type, useTheme } from '@/theme'
 import { Label, TextButton, touch } from '../ui'
 
+/** "From your answer", "On this phone · will sync", or both. */
+function doneNote(item: DoneItem): string {
+  const parts = [
+    item.viaQuestion ? 'From your answer' : null,
+    item.confirmed ? null : 'on this phone · will sync',
+  ]
+  const text = parts.filter(Boolean).join(' · ')
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
 export function DoneList({
   items,
   onUndo,
@@ -30,9 +40,9 @@ export function DoneList({
             <Label tone="secondary" size={type.bodySmall}>
               {item.summary.done}
             </Label>
-            {item.viaQuestion ? (
+            {item.viaQuestion || !item.confirmed ? (
               <Label tone="muted" size={type.caption}>
-                From your answer
+                {doneNote(item)}
               </Label>
             ) : null}
           </View>

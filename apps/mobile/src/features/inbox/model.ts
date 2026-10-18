@@ -312,3 +312,13 @@ export function summaryContext(
   }
   return { now, timezone, trackers: trackerMap, titles }
 }
+
+/** A waiting suggestion for the Edit sheet, with its summary and tracker; null once decided. */
+export function loadEditable(db: PhoneDb, suggestionId: string, now: number, timezone: string) {
+  const s = db.select().from(suggestions).where(eq(suggestions.id, suggestionId)).get()
+  if (!s || s.state !== 'active' || s.status !== 'pending') return null
+  const ctx = summaryContext(db, [s], now, timezone)
+  const trackerId =
+    typeof s.payload.tracker_id === 'string' ? s.payload.tracker_id : (s.target_id ?? '')
+  return { s, summary: summarize(s, ctx), tracker: ctx.trackers.get(trackerId) ?? null }
+}

@@ -103,31 +103,41 @@ function SuggestionRow({
     )
   }
 
-  return (
-    <View style={styles.row}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={summary.spoken}
-        accessibilityHint={item.editable ? 'Double-tap to edit before adding' : undefined}
-        disabled={!item.editable}
-        onPress={() => onEdit(item)}
-        style={({ pressed }) => [styles.text, { opacity: pressed ? 0.6 : 1 }]}
-      >
-        <View style={styles.pillLine}>
-          <InboxPill kind={summary.pill.kind} label={summary.pill.label} />
-          {item.editable ? (
-            <Label tone="accent" size={type.caption}>
-              Edit
-            </Label>
-          ) : null}
-        </View>
-        <Label size={type.bodySmall}>{summary.text}</Label>
-        {hint ? (
-          <Label tone="muted" size={type.caption}>
-            {hint}
+  const body = (
+    <>
+      <View style={styles.pillLine}>
+        <InboxPill kind={summary.pill.kind} label={summary.pill.label} />
+        {item.editable ? (
+          <Label tone="accent" size={type.caption}>
+            Edit
           </Label>
         ) : null}
-      </Pressable>
+      </View>
+      <Label size={type.bodySmall}>{summary.text}</Label>
+      {hint ? (
+        <Label tone="muted" size={type.caption}>
+          {hint}
+        </Label>
+      ) : null}
+    </>
+  )
+  return (
+    <View style={styles.row}>
+      {item.editable ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={summary.spoken}
+          accessibilityHint="Double-tap to edit before adding"
+          onPress={() => onEdit(item)}
+          style={({ pressed }) => [styles.text, { opacity: pressed ? 0.6 : 1 }]}
+        >
+          {body}
+        </Pressable>
+      ) : (
+        <View accessible accessibilityLabel={summary.spoken} style={styles.text}>
+          {body}
+        </View>
+      )}
       <View style={styles.buttons}>
         <DecideButton
           variant="dismiss"

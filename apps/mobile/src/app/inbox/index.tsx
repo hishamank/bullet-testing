@@ -59,7 +59,10 @@ export default function Inbox() {
 
         {view.groups.length > 0 ? (
           <>
-            <SectionTitle title="To decide" count={view.pendingCount} />
+            <SectionTitle
+              title="To decide"
+              count={view.pendingCount > 0 ? view.pendingCount : undefined}
+            />
             {view.groups.map((g) => (
               <DecideGroup
                 key={g.bulletId}
