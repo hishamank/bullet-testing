@@ -57,6 +57,23 @@ describe('createWhisperCppTranscriber', () => {
     await expect(t.transcribe(req)).rejects.toMatchObject({ code: 'TRANSCRIPTION_FAILED' })
   })
 
+  test('a 500 "FFmpeg conversion failed." (undecodable audio, --convert) → TRANSCRIPTION_FAILED', async () => {
+    // What whisper-server answers for a damaged recording when started with --convert.
+    const t = createWhisperCppTranscriber({
+      baseUrl: 'http://x',
+      fetch: (async () =>
+        jsonResponse({ error: 'FFmpeg conversion failed.' }, 500)) as typeof fetch,
+    })
+    await expect(t.transcribe(req)).rejects.toMatchObject({ code: 'TRANSCRIPTION_FAILED' })
+    // Any other 500 is still the server's problem.
+    const busy = createWhisperCppTranscriber({
+      baseUrl: 'http://x',
+      fetch: (async () =>
+        jsonResponse({ error: 'failed to process audio' }, 500)) as typeof fetch,
+    })
+    await expect(busy.transcribe(req)).rejects.toMatchObject({ code: 'TRANSCRIBER_HTTP' })
+  })
+
   test('a 5xx or a network failure → TRANSCRIBER_HTTP', async () => {
     const down = createWhisperCppTranscriber({
       baseUrl: 'http://x',
