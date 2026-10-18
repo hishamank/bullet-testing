@@ -10,6 +10,7 @@ import { eq, isNotNull } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import {
   activities,
+  audioAttachments,
   bullets,
   events,
   outbox,
@@ -18,6 +19,7 @@ import {
   tasks,
   trackerEntries,
   trackers,
+  transcripts,
 } from './schema'
 
 export const ENTITY_TABLES = {
@@ -103,6 +105,22 @@ export function applyPull(db: PhoneDb, page: PullResponse): void {
     upsert(tx, t(trackers), page.changes.trackers.map(local))
     upsert(tx, t(trackerEntries), page.changes.tracker_entries.map(local))
     upsert(tx, t(activities), page.changes.activities.map(local))
+
+    // Recordings: the server's view of the upload wins; the local file path is ours to keep.
+    for (const a of page.changes.audio_attachments) {
+      const row = local(a)
+      tx.insert(audioAttachments)
+        .values({ ...row, local_path: null })
+        .onConflictDoUpdate({ target: audioAttachments.id, set: row })
+        .run()
+    }
+    for (const t of page.changes.transcripts) {
+      const row = local(t)
+      tx.insert(transcripts)
+        .values(row)
+        .onConflictDoUpdate({ target: transcripts.id, set: row })
+        .run()
+    }
 
     setState(tx, CURSOR_KEY, page.cursor)
   })

@@ -1,6 +1,7 @@
 /** Vitest-only: an in-memory home server speaking the sync contract (idempotent push, cursor pull). */
 
 import type {
+  AudioUploadState,
   PullChanges,
   PullResponse,
   PushOp,
@@ -28,6 +29,37 @@ export class FakeServer implements SyncTransport {
   /** Reject these op types as malformed (HTTP 400). */
   malformedTypes = new Set<string>()
   now = 1_000
+  /** Recordings declared by bullet.create: declared size + bytes received so far. */
+  audio = new Map<string, { size: number; bytes: number[] }>()
+  uploadCalls = 0
+  /** Fail the Nth upload call (1-based) with a network error, to test resuming. */
+  failUploadCall: number | null = null
+
+  private audioState(id: string): AudioUploadState {
+    const a = this.audio.get(id)
+    if (!a) throw new TransportError('not_found', 'no such recording', 404)
+    return {
+      attachment_id: id,
+      size_bytes: a.size,
+      received_bytes: a.bytes.length,
+      upload_status: a.bytes.length === a.size ? 'uploaded' : 'pending',
+    }
+  }
+
+  async audioStatus(id: string): Promise<AudioUploadState> {
+    this.maybeFail()
+    return this.audioState(id)
+  }
+
+  async uploadAudio(id: string, offset: number, bytes: Uint8Array): Promise<AudioUploadState> {
+    this.uploadCalls += 1
+    if (this.failUploadCall === this.uploadCalls) throw new TransportError('network', 'dropped')
+    const state = this.audioState(id)
+    if (state.upload_status === 'uploaded') return state
+    if (offset !== state.received_bytes) throw new TransportError('conflict', 'offset', 409)
+    this.audio.get(id)?.bytes.push(...bytes)
+    return this.audioState(id)
+  }
 
   private maybeFail() {
     if (this.failNext && this.failNext.count > 0) {
@@ -62,8 +94,11 @@ export class FakeServer implements SyncTransport {
       this.received.push(op)
       let result: PushOpResult = { op_id: op.op_id, status: 'applied' }
       if (op.type === 'bullet.create') {
+        const { audio, ...bullet } = op.bullet
+        if (audio) this.audio.set(audio.id, { size: audio.size_bytes, bytes: [] })
         this.bullets.set(op.bullet.id, {
-          ...op.bullet,
+          ...bullet,
+          text_edited_by_user: bullet.text_edited_by_user ?? false,
           owner_id: OWNER,
           created_at: this.now,
           updated_at: this.now,
@@ -120,6 +155,8 @@ export class FakeServer implements SyncTransport {
       trackers: [],
       tracker_entries: [],
       activities: [],
+      audio_attachments: [],
+      transcripts: [],
     }
     const last = page.at(-1)
     return {

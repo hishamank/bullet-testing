@@ -1,5 +1,6 @@
 /**
- * The sync client: drain the outbox (oldest first, in batches), then pull until caught up.
+ * The sync client: drain the outbox (oldest first, in batches), upload voice recordings the
+ * server doesn't fully have (resuming where they stopped), then pull until caught up.
  *
  *  - Single-flight: overlapping requests coalesce; one more run follows if asked mid-run.
  *  - Idempotent retries: an op leaves the outbox only once the server answered it, and the
@@ -12,16 +13,21 @@
  * triggers.ts and just call `requestSync()`.
  */
 
-import { MAX_PUSH_OPS, type PushOpResult } from '@bullet/core'
-import { asc, eq, inArray, sql } from 'drizzle-orm'
+import {
+  type AudioUploadState,
+  MAX_AUDIO_CHUNK_BYTES,
+  MAX_PUSH_OPS,
+  type PushOpResult,
+} from '@bullet/core'
+import { and, asc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import type { PhoneDb } from '../data/db'
 import { applyPull, CURSOR_KEY, getState, setState } from '../data/mirror'
-import { bullets, outbox } from '../data/schema'
+import { audioAttachments, bullets, outbox } from '../data/schema'
 import { type SyncTransport, TransportError } from './transport'
 
 export type SyncOutcome =
-  | { ok: true; pushed: number; pulled: number }
-  | { ok: false; error: TransportError; pushed: number; pulled: number }
+  | { ok: true; pushed: number; uploaded: number; pulled: number }
+  | { ok: false; error: TransportError; pushed: number; uploaded: number; pulled: number }
 
 export interface SyncClientOptions {
   db: PhoneDb
@@ -33,6 +39,9 @@ export interface SyncClientOptions {
   onChange?: () => void
   /** Backoff after a failed sync: `min(maxMs, baseMs * 2^(failures-1))`. */
   backoff?: { baseMs: number; maxMs: number }
+  /** Reads part of a local recording; without it, recordings are not uploaded. */
+  readAudioChunk?: (localPath: string, offset: number, length: number) => Promise<Uint8Array>
+  audioChunkBytes?: number
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
 }
@@ -128,6 +137,81 @@ export function createSyncClient(opts: SyncClientOptions): SyncClient {
     return pushed
   }
 
+  /** Upload one recording from wherever the server's copy stops. Throws TransportError. */
+  async function uploadOne(
+    t: SyncTransport,
+    row: typeof audioAttachments.$inferSelect,
+    read: NonNullable<SyncClientOptions['readAudioChunk']>,
+  ) {
+    const chunk = opts.audioChunkBytes ?? MAX_AUDIO_CHUNK_BYTES
+    let state: AudioUploadState = await t.audioStatus(row.id)
+    let conflicts = 0
+    while (state.upload_status !== 'uploaded') {
+      const length = Math.min(chunk, state.size_bytes - state.received_bytes)
+      const bytes = await read(row.local_path as string, state.received_bytes, length)
+      try {
+        state = await t.uploadAudio(row.id, state.received_bytes, bytes)
+      } catch (err) {
+        // Someone else moved the offset (a parallel attempt): re-read it and carry on.
+        if (err instanceof TransportError && err.kind === 'conflict' && conflicts++ < 3) {
+          state = await t.audioStatus(row.id)
+          continue
+        }
+        throw err
+      }
+      db.update(audioAttachments)
+        .set({ received_bytes: state.received_bytes, upload_status: state.upload_status })
+        .where(eq(audioAttachments.id, row.id))
+        .run()
+    }
+    db.update(audioAttachments)
+      .set({ received_bytes: state.received_bytes, upload_status: 'uploaded' })
+      .where(eq(audioAttachments.id, row.id))
+      .run()
+  }
+
+  /** Upload pending recordings whose bullet the server has already accepted. */
+  async function uploadAll(t: SyncTransport): Promise<number> {
+    const read = opts.readAudioChunk
+    if (!read) return 0
+    const unacked = new Set(
+      db
+        .select({ bullet_id: outbox.bullet_id })
+        .from(outbox)
+        .where(eq(outbox.type, 'bullet.create'))
+        .all()
+        .map((r) => r.bullet_id),
+    )
+    const pending = db
+      .select()
+      .from(audioAttachments)
+      .where(
+        and(
+          eq(audioAttachments.upload_status, 'pending'),
+          eq(audioAttachments.state, 'active'),
+          isNotNull(audioAttachments.local_path),
+        ),
+      )
+      .all()
+      .filter((a) => !unacked.has(a.bullet_id))
+    let uploaded = 0
+    for (const row of pending) {
+      try {
+        await uploadOne(t, row, read)
+        uploaded += 1
+      } catch (err) {
+        // Checksum mismatch (server restarted it at 0) or unknown to the server: try next sync.
+        if (
+          err instanceof TransportError &&
+          (err.kind === 'unprocessable' || err.kind === 'not_found')
+        )
+          continue
+        throw err
+      }
+    }
+    return uploaded
+  }
+
   async function pullAll(t: SyncTransport): Promise<number> {
     let pulled = 0
     for (;;) {
@@ -143,17 +227,19 @@ export function createSyncClient(opts: SyncClientOptions): SyncClient {
     const t = opts.transport()
     if (!t) return null
     let pushed = 0
+    let uploaded = 0
     let pulled = 0
     try {
       pushed = await pushAll(t)
+      uploaded = await uploadAll(t)
       pulled = await pullAll(t)
       setState(db, 'last_sync_at', String(now()))
-      return { ok: true, pushed, pulled }
+      return { ok: true, pushed, uploaded, pulled }
     } catch (err) {
       const error = err instanceof TransportError ? err : new TransportError('server', String(err))
-      return { ok: false, error, pushed, pulled }
+      return { ok: false, error, pushed, uploaded, pulled }
     } finally {
-      if (pushed + pulled > 0) opts.onChange?.()
+      if (pushed + uploaded + pulled > 0) opts.onChange?.()
     }
   }
 

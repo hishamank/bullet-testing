@@ -8,7 +8,7 @@ import type { BulletDeleteMode, BulletSource, PushOp, SuggestionPayload } from '
 import { and, eq } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { ENTITY_TABLES } from './mirror'
-import { bullets, outbox, suggestions } from './schema'
+import { audioAttachments, bullets, outbox, suggestions, transcripts } from './schema'
 
 /** Injected so pure logic stays testable: the device clock, UUIDs and time zone. */
 export interface LocalDeps {
@@ -62,13 +62,103 @@ export function captureBullet(db: PhoneDb, input: CaptureInput, deps: LocalDeps)
   return id
 }
 
+export interface VoiceCaptureInput {
+  /** What the user sends: the live draft, or their edit of it. */
+  text: string
+  /** True when the user changed the draft before sending: the server transcript won't replace it. */
+  textEditedByUser: boolean
+  /** The recording, already written to a file by the recorder. */
+  audio: {
+    localPath: string
+    mimeType: string
+    durationMs: number
+    sizeBytes: number
+    sha256: string | null
+  }
+  /** The live on-device transcript (Apple SpeechAnalyzer). */
+  draft: { text: string; engine: string; model: string | null; languages: string[] }
+}
+
+/**
+ * Save a voice capture: the bullet, its recording (kept permanently), the device draft transcript
+ * and the outbox op — all in one transaction. The audio bytes upload after the op is acked.
+ */
+export function captureVoiceBullet(db: PhoneDb, input: VoiceCaptureInput, deps: LocalDeps): string {
+  const text = input.text.trim()
+  if (text === '') throw new Error('cannot capture an empty bullet')
+  const now = deps.now()
+  const id = deps.uuid()
+  const audioId = deps.uuid()
+  const a = input.audio
+  const bullet = {
+    id,
+    text,
+    captured_at: now,
+    timezone: deps.timezone(),
+    source: 'voice' as const,
+    text_edited_by_user: input.textEditedByUser,
+  }
+  db.transaction((tx) => {
+    tx.insert(bullets)
+      .values({ ...bullet, created_at: now, updated_at: now })
+      .run()
+    tx.insert(audioAttachments)
+      .values({
+        id: audioId,
+        bullet_id: id,
+        mime_type: a.mimeType,
+        duration_ms: a.durationMs,
+        size_bytes: a.sizeBytes,
+        sha256: a.sha256,
+        local_path: a.localPath,
+        upload_status: 'pending',
+        created_at: now,
+        updated_at: now,
+      })
+      .run()
+    tx.insert(transcripts)
+      .values({
+        id: deps.uuid(),
+        bullet_id: id,
+        attachment_id: audioId,
+        kind: 'device_draft',
+        ...input.draft,
+        transcribed_at: now,
+        created_at: now,
+        updated_at: now,
+      })
+      .run()
+    appendOp(
+      tx,
+      {
+        op_id: deps.uuid(),
+        type: 'bullet.create',
+        bullet: {
+          ...bullet,
+          audio: {
+            id: audioId,
+            mime_type: a.mimeType,
+            duration_ms: a.durationMs,
+            size_bytes: a.sizeBytes,
+            sha256: a.sha256,
+            draft: input.draft,
+          },
+        },
+      },
+      { bullet_id: id },
+      now,
+    )
+  })
+  return id
+}
+
 export function editBullet(db: PhoneDb, bulletId: string, text: string, deps: LocalDeps): void {
   const next = text.trim()
   if (next === '') throw new Error('cannot save an empty bullet')
   const now = deps.now()
   db.transaction((tx) => {
     tx.update(bullets)
-      .set({ text: next, updated_at: now, sync_rejection: null })
+      .set({ text: next, text_edited_by_user: true, updated_at: now, sync_rejection: null })
       .where(eq(bullets.id, bulletId))
       .run()
     appendOp(
@@ -92,6 +182,15 @@ export function deleteBullet(
     tx.update(bullets)
       .set({ state: 'deleted', updated_at: now })
       .where(eq(bullets.id, bulletId))
+      .run()
+    // The recording + transcripts go with the bullet (soft delete; the file is kept).
+    tx.update(audioAttachments)
+      .set({ state: 'deleted', updated_at: now })
+      .where(eq(audioAttachments.bullet_id, bulletId))
+      .run()
+    tx.update(transcripts)
+      .set({ state: 'deleted', updated_at: now })
+      .where(eq(transcripts.bullet_id, bulletId))
       .run()
     const own = eq(suggestions.source_bullet_id, bulletId)
     tx.update(suggestions)

@@ -12,6 +12,7 @@
 
 import * as BackgroundTask from 'expo-background-task'
 import { randomUUID } from 'expo-crypto'
+import { File } from 'expo-file-system'
 import * as Network from 'expo-network'
 import * as TaskManager from 'expo-task-manager'
 import { AppState } from 'react-native'
@@ -34,8 +35,19 @@ export const deviceDeps: LocalDeps = {
   timezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
 }
 
+/** Read part of a recording file (for resumable uploads). */
+async function readAudioChunk(localPath: string, offset: number, length: number) {
+  const handle = new File(localPath).open()
+  try {
+    handle.offset = offset
+    return handle.readBytes(length)
+  } finally {
+    handle.close()
+  }
+}
+
 export function getSyncClient(): SyncClient {
-  client ??= createSyncClient({ db: getDb(), transport: () => transport })
+  client ??= createSyncClient({ db: getDb(), transport: () => transport, readAudioChunk })
   return client
 }
 

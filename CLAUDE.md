@@ -104,12 +104,23 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
 - **Dates:** the model **quotes** date phrases (`fields.when`); `@bullet/engine` `time/`
   resolves them against the bullet's `captured_at` + IANA `timezone`. The engine never reads the
   clock; records default to capture time.
+- **Voice notes keep their audio** (user decision, 2026-10-18). The recording is the source of
+  truth, kept permanently on the phone and the server (soft delete only). The phone saves the
+  live on-device draft (Apple SpeechAnalyzer) as the bullet text plus a `device_draft`
+  transcript. The server re-transcribes in the `transcribing` state, before extraction, through
+  the injected `Transcriber` interface (`@bullet/engine`; whisper.cpp later, scripted in tests).
+  It stores a `server` transcript, which replaces the bullet text unless `text_edited_by_user`.
+  Transcription is multilingual (English, Lebanese Arabic and French mixed): never force a
+  language. A voice bullet's job waits (`waiting_audio`) until its recording has fully uploaded.
+  Audio upload is `PUT /sync/audio/:id` with an `upload-offset` header: resumable, idempotent by
+  attachment id, sha256-verified. Recordings live under `AUDIO_DIR` on the server. Until a
+  transcriber is wired, voice bullets are processed on their device draft.
 - **Phone data layer** (`apps/mobile/src/data`, `src/sync`): expo-sqlite + Drizzle. Every local
   action writes its change **and** its outbox op in one transaction. Migrations are drizzle-kit
   SQL inlined into `migrations.gen.ts` (`pnpm --filter mobile db:generate`) and applied by a
   driver-agnostic runner, so the same code runs on device and in Vitest (better-sqlite3).
-  React Native / Expo APIs live only in `open.ts`, `settings.ts`, `runtime.ts`; everything else
-  is testable logic. The mobile test script is `pnpm exec vp test` because the app's TypeScript
+  React Native / Expo APIs live only in `open.ts`, `settings.ts` and `runtime.ts` (which also
+  reads recording chunks with expo-file-system); everything else is testable logic. The mobile test script is `pnpm exec vp test` because the app's TypeScript
   (Expo's ~6.x) gives it its own `vite-plus` peer variant.
 
 ## 4. Domain model

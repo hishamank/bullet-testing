@@ -13,6 +13,7 @@
  */
 
 import type {
+  AudioUploadStatus,
   BulletSource,
   ProcessingErrorCode,
   PushOp,
@@ -28,6 +29,7 @@ import type {
   TrackerConfig,
   TrackerEntryValue,
   TrackerInputType,
+  TranscriptKind,
 } from '@bullet/core'
 import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -46,6 +48,9 @@ export const bullets = sqliteTable(
     captured_at: integer('captured_at').notNull(),
     timezone: text('timezone').notNull(),
     source: text('source').$type<BulletSource>().notNull(),
+    text_edited_by_user: integer('text_edited_by_user', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     server_status: text('server_status').$type<ServerBulletProcessingStatus>(),
     server_attempts: integer('server_attempts').notNull().default(0),
     server_error_code: text('server_error_code').$type<ProcessingErrorCode>(),
@@ -147,6 +152,42 @@ export const activities = sqliteTable('activities', {
   unit: text('unit'),
 })
 
+/**
+ * A voice note's recording. `local_path` is the file on this phone (null for one recorded on
+ * another device); it is kept permanently. `received_bytes` / `upload_status` track the upload.
+ */
+export const audioAttachments = sqliteTable(
+  'audio_attachments',
+  {
+    ...rowFields(),
+    bullet_id: text('bullet_id').notNull(),
+    mime_type: text('mime_type').notNull(),
+    duration_ms: integer('duration_ms').notNull(),
+    size_bytes: integer('size_bytes').notNull(),
+    sha256: text('sha256'),
+    local_path: text('local_path'),
+    received_bytes: integer('received_bytes').notNull().default(0),
+    upload_status: text('upload_status').$type<AudioUploadStatus>().notNull(),
+  },
+  (t) => [index('audio_bullet_idx').on(t.bullet_id)],
+)
+
+export const transcripts = sqliteTable(
+  'transcripts',
+  {
+    ...rowFields(),
+    bullet_id: text('bullet_id').notNull(),
+    attachment_id: text('attachment_id').notNull(),
+    kind: text('kind').$type<TranscriptKind>().notNull(),
+    text: text('text').notNull(),
+    engine: text('engine').notNull(),
+    model: text('model'),
+    languages: text('languages', { mode: 'json' }).$type<string[]>().notNull(),
+    transcribed_at: integer('transcribed_at').notNull(),
+  },
+  (t) => [index('transcripts_bullet_idx').on(t.bullet_id)],
+)
+
 export const syncState = sqliteTable('sync_state', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
@@ -161,5 +202,7 @@ export const schema = {
   trackers,
   trackerEntries,
   activities,
+  audioAttachments,
+  transcripts,
   syncState,
 }
