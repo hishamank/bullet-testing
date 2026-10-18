@@ -184,3 +184,37 @@ describe('scheduling', () => {
     expect(await client.sync()).toBeNull()
   })
 })
+
+describe('outcome listener', () => {
+  test('hears every run, success or failure, whoever started it', async () => {
+    const db = openTestDb()
+    const server = new FakeServer()
+    const seen: string[] = []
+    const client = createSyncClient({
+      db,
+      transport: () => server,
+      onOutcome: (o) => seen.push(o.ok ? 'ok' : o.error.kind),
+      setTimer: () => 0,
+      clearTimer: () => {},
+    })
+    captureBullet(db, { text: 'heard' }, testDeps())
+    server.failNext = { count: 1, error: new TransportError('network', 'offline') }
+    await client.sync()
+    client.requestSync()
+    await flush()
+    await flush()
+    expect(seen).toEqual(['network', 'ok'])
+  })
+
+  test("a listener that throws doesn't fail the sync", async () => {
+    const db = openTestDb()
+    const client = createSyncClient({
+      db,
+      transport: () => new FakeServer(),
+      onOutcome: () => {
+        throw new Error('listener bug')
+      },
+    })
+    expect(await client.sync()).toMatchObject({ ok: true })
+  })
+})

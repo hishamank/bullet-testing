@@ -229,11 +229,14 @@ export function BackHeader({
   backLabel,
   onBack,
   side = 'left',
+  right,
 }: {
   title?: string
   backLabel: string
   onBack: () => void
   side?: 'left' | 'right'
+  /** An action on the far side (e.g. Edit), when the back button is on the left. */
+  right?: ReactNode
 }) {
   const t = useTheme()
   const back = (
@@ -259,7 +262,7 @@ export function BackHeader({
       ) : (
         <View style={{ flex: 1 }} />
       )}
-      {side === 'right' ? back : null}
+      {side === 'right' ? back : (right ?? null)}
     </View>
   )
 }

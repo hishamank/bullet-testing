@@ -7,7 +7,6 @@ import {
   type MonitorState,
   nextSyncDelay,
   POLL,
-  recordExternalSuccess,
   recordOutcome,
   resetForNewServer,
   showUnreachableNote,
@@ -58,14 +57,6 @@ describe('sync monitor', () => {
     const s = run([ok, { ok: false, error: { kind: 'conflict', message: 'x' } }])
     expect(s.reachability).toBe('ok')
     expect(s.failures).toBe(1)
-  })
-
-  it('takes successes it did not run from the last sync time', () => {
-    const s = run([down, down])
-    expect(recordExternalSuccess(s, 5000).reachability).toBe('ok')
-    // A success older than the failure doesn't end the outage.
-    expect(recordExternalSuccess(s, 500).reachability).toBe('unreachable')
-    expect(recordExternalSuccess(run([ok]), 1000)).toEqual(run([ok]))
   })
 
   it('re-pairing forgets the old server without re-showing an old note', () => {

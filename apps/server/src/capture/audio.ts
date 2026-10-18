@@ -163,6 +163,33 @@ export function readAudio(db: Db, store: AudioStore, ownerId: string, id: string
   return { bytes: store.read(a.storage_key), mimeType: a.mime_type }
 }
 
+export type ByteRange = { start: number; end: number }
+
+/**
+ * An HTTP `Range` header against a file of `size` bytes (RFC 9110, a single `bytes=` range):
+ * null when absent or not one we serve (send the whole file), 'unsatisfiable' when it starts past
+ * the end (416), else the inclusive byte range to send (206). Multi-range requests get the file.
+ */
+export function parseByteRange(
+  header: string | undefined,
+  size: number,
+): ByteRange | 'unsatisfiable' | null {
+  const m = header?.trim().match(/^bytes=(\d*)-(\d*)$/)
+  if (!m) return null
+  const [, from, to] = m
+  if (from === '' && to === '') return null
+  if (from === '') {
+    // Suffix range: the last N bytes.
+    const n = Number(to)
+    if (n === 0) return 'unsatisfiable'
+    return size === 0 ? 'unsatisfiable' : { start: Math.max(0, size - n), end: size - 1 }
+  }
+  const start = Number(from)
+  if (start >= size) return 'unsatisfiable'
+  const end = to === '' ? size - 1 : Math.min(Number(to), size - 1)
+  return end < start ? null : { start, end }
+}
+
 /** The server transcript of a recording, if Whisper already ran on it. */
 export function serverTranscriptFor(db: Db, attachmentId: string) {
   return db
