@@ -11,6 +11,7 @@ const validSuggestion = {
   id: '11111111-1111-4111-8111-111111111111',
   owner_id: '22222222-2222-4222-8222-222222222222',
   source_bullet_id: '33333333-3333-4333-8333-333333333333',
+  source_thought_id: null,
   created_at: 1_700_000_000_000,
   updated_at: 1_700_000_000_000,
   state: 'active' as const,

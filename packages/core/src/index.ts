@@ -30,6 +30,7 @@ export {
 // Entities — Bullet
 export {
   type Bullet,
+  type Capture,
   type BulletInsert,
   bulletInsertSchema,
   bulletSelectSchema,
@@ -134,3 +135,6 @@ export {
 export * from './sync'
 // Voice notes: audio attachments + transcripts
 export * from './entities/audio'
+// Capture → thoughts → things: thoughts and clarifying questions
+export * from './entities/question'
+export * from './entities/thought'

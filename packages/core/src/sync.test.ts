@@ -35,6 +35,8 @@ describe('push', () => {
       { op_id: OP, type: 'suggestion.accept', suggestion_id: BULLET, payload: { title: 'y' } },
       { op_id: OP, type: 'suggestion.reject', suggestion_id: BULLET },
       { op_id: OP, type: 'suggestion.undo', suggestion_id: BULLET },
+      { op_id: OP, type: 'thought.reclassify', thought_id: BULLET, kind: 'worry' },
+      { op_id: OP, type: 'question.dismiss', question_id: BULLET },
     ]
     for (const op of ops) expect(pushOpSchema.safeParse(op).success, op.type).toBe(true)
   })
@@ -120,6 +122,7 @@ describe('pull', () => {
       timezone: 'UTC',
       source: 'text',
       text_edited_by_user: false,
+      answers_question_id: null,
       processing: {
         status: 'synced',
         attempts: 0,
@@ -138,6 +141,8 @@ describe('pull', () => {
       activities: [],
       audio_attachments: [],
       transcripts: [],
+      thoughts: [],
+      questions: [],
     }
     const ok = {
       cursor: '1',

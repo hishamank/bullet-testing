@@ -9,6 +9,8 @@ import {
 } from './entities/audio'
 import { bulletSelectSchema } from './entities/bullet'
 import { eventSelectSchema } from './entities/event'
+import { questionSelectSchema } from './entities/question'
+import { thoughtKindSchema, thoughtSelectSchema } from './entities/thought'
 import { taskSelectSchema } from './entities/task'
 import { trackerSelectSchema } from './entities/tracker'
 import { trackerEntrySelectSchema } from './entities/trackerEntry'
@@ -73,6 +75,8 @@ export const bulletCreateOpSchema = z.object({
       source: bulletSourceSchema,
       text_edited_by_user: z.boolean().optional(),
       audio: voiceAudioSchema.optional(),
+      /** This capture answers a clarifying question. */
+      answers_question_id: uuid().optional(),
     })
     .refine((b) => b.audio === undefined || b.source === 'voice', {
       message: "audio requires source 'voice'",
@@ -137,6 +141,21 @@ export const suggestionUndoOpSchema = z.object({
   suggestion_id: uuid(),
 })
 
+/** The user re-classified a thought (sticky: re-processing never overrides it). */
+export const thoughtReclassifyOpSchema = z.object({
+  ...opBase,
+  type: z.literal('thought.reclassify'),
+  thought_id: uuid(),
+  kind: thoughtKindSchema,
+})
+
+/** The user dismissed a clarifying question without answering. */
+export const questionDismissOpSchema = z.object({
+  ...opBase,
+  type: z.literal('question.dismiss'),
+  question_id: uuid(),
+})
+
 export const pushOpSchema = z.discriminatedUnion('type', [
   bulletCreateOpSchema,
   bulletEditOpSchema,
@@ -145,6 +164,8 @@ export const pushOpSchema = z.discriminatedUnion('type', [
   suggestionAcceptOpSchema,
   suggestionRejectOpSchema,
   suggestionUndoOpSchema,
+  thoughtReclassifyOpSchema,
+  questionDismissOpSchema,
 ])
 export type PushOp = z.infer<typeof pushOpSchema>
 export type PushOpType = PushOp['type']
@@ -224,6 +245,8 @@ export const pullChangesSchema = z.object({
   activities: z.array(activitySelectSchema),
   audio_attachments: z.array(audioAttachmentSelectSchema),
   transcripts: z.array(transcriptSelectSchema),
+  thoughts: z.array(thoughtSelectSchema),
+  questions: z.array(questionSelectSchema),
 })
 export type PullChanges = z.infer<typeof pullChangesSchema>
 export type PullChangeKind = keyof PullChanges

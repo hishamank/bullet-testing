@@ -1,26 +1,38 @@
 # Capture-loop contract
 
-**Status:** stable for slice 1 (2026-10-18; voice-note audio and the `transcribing` state added
-the same day). The code version lives in `@bullet/core`
+**Status:** stable for slice 1 (2026-10-18; voice-note audio, the `transcribing` state, and
+thoughts + clarifying questions were added the same day). The code version lives in `@bullet/core`
 (`processing.ts`, `sync.ts`). We may **add** things later (new operations, new kinds of data); we
 won't rename or remove anything below without updating this page.
 
 This page is for anyone designing screens. Technical details are at the end.
 
+**Words used here.** A **capture** is what you typed or said in one go (with its recording, if
+spoken). It is split into **thoughts**, and from thoughts the app extracts **things**: tasks,
+events, tracker readings, activities. In the code and the API a capture is still called a
+`bullet`, because renaming it would break this contract for no change in behaviour. On this page,
+"capture" and "bullet" mean the same thing.
+
 ---
 
 ## 1. The idea
 
-1. You type or speak a thought and tap **Send**. It's saved **on the phone** straight away,
+1. You type or speak (one thought, or a long ramble) and tap **Send**. It's saved **on the phone** straight away,
    even with no signal. When you speak, the phone **keeps the recording** and shows a live draft
    of the words as you talk.
 2. When the phone can reach your **home server**, it sends the thought over (**sync**).
 3. For a voice note, the home server first **transcribes the recording again**, more accurately
-   (it handles a mix of English, Lebanese Arabic and French). Then it reads the text with a local
-   AI model, **in the background**, and works out what's in it: a task, an event, a tracker
-   reading, something you did.
-4. What it finds comes back to the phone as **suggestions**. Safe, obvious ones are applied
-   automatically (with Undo). The rest wait for you to review, whenever you like.
+   (it handles a mix of English, Lebanese Arabic and French). Then a local AI model, **in the
+   background**:
+   - splits the capture into separate **thoughts** (a worry, something to check, a question, an
+     idea, a note, a task, an event, a reading, something you did). **Every thought is kept**,
+     even when nothing needs doing about it, so you can empty your mind knowing nothing is lost;
+   - works out the **things** in the actionable thoughts: tasks, events, tracker readings,
+     activities.
+4. Things come back to the phone as **suggestions**. Safe, obvious ones are applied
+   automatically (with Undo). The rest wait for you to review, whenever you like. When something
+   is genuinely ambiguous, the app may also ask a short **clarifying question** ("Which
+   Thursday?"). Answering is optional.
 
 Capture never waits on any of this: Send always works right away.
 
@@ -118,6 +130,44 @@ Every bullet carries:
 - The bullet's text is the server transcript once it exists, unless you edited the text yourself.
   The UI can always show both transcripts and play the recording.
 
+## 2c. Thoughts
+
+Each capture is split into one or more thoughts, in order. A thought has:
+
+- its **text** (the segment, lightly cleaned of "um"s and false starts);
+- where it sits in the capture text (a **span**; occasionally unknown when the text was
+  paraphrased);
+- a **kind**, one of: `worry`, `to_check`, `question` (one you asked yourself), `idea`, `note`,
+  `task`, `event`, `tracker`, `activity`.
+
+Rules the design can rely on:
+
+- **Every thought is kept**, actionable or not, and needs **no review**. The kind is a label, not
+  a suggestion.
+- You can **re-classify** a thought. Your choice sticks, even if the capture is processed again.
+- Things (and their suggestions) say which **thought** they came from, as well as which capture.
+- Worries, ideas, notes and self-questions are kept as thoughts and nothing is extracted from
+  them in slice 1. Thinking about them with you (reflective questions) comes in a later slice,
+  as do links between captures and recurring themes.
+- Long recordings work: the capture is split in pieces for the AI and the thoughts are put back
+  together in order.
+
+## 2d. Clarifying questions
+
+Sometimes a thing is ambiguous. The app may then ask a **clarifying question**: short, concrete,
+about one thing. Examples: "Which Thursday: today or next week?", "Start tracking sleep?".
+
+- At most **3** per capture.
+- Each has a **topic** (`date`, `new_tracker` or `other`), the question text, up to 4 quick
+  **options** to show as buttons (or none, for a free answer), and links to the thought and
+  suggestion it is about.
+- **Optional, never blocking:** the suggestion it is about stays reviewable as usual. Status:
+  `open`, `answered` or `dismissed`.
+- **Answering is itself a capture** (typed or spoken) that points at the question. The question
+  becomes `answered`.
+- There are no open-ended or reflective questions in slice 1. Those come later, are optional, and
+  never nag.
+
 ## 3. Suggestions
 
 A bullet can produce several suggestions ("ran 5k, dentist Thursday 3pm" → an activity **and** an
@@ -150,8 +200,8 @@ Rules the design can rely on:
 
 ## 4. Editing and deleting a bullet
 
-- **Edit:** the bullet is read again. Suggestions that still match are **kept** (including ones
-  you already accepted). New findings are **added**. Things that no longer appear in the text are
+- **Edit:** the bullet is read again and split into thoughts again (kinds you set by hand are
+  kept). Suggestions that still match are **kept** (including ones you already accepted). New findings are **added**. Things that no longer appear in the text are
   **withdrawn**: waiting suggestions disappear, and applied ones are undone. All of this happens
   in one step, so you never see a half-updated mix.
 - **Delete** offers three choices:
@@ -159,6 +209,9 @@ Rules the design can rely on:
   - **Delete + extractions:** the bullet and everything it produced go away.
   - **Delete but keep extractions:** only the bullet goes. Tasks, events and entries it created
     stay. Suggestions still waiting are withdrawn.
+
+  Either way, the capture's own parts go with it: its recording, transcripts, thoughts and open
+  questions.
 
 Nothing is ever erased for good. Deletes are "soft", so they can be recovered later.
 
@@ -171,8 +224,8 @@ Nothing is ever erased for good. Deletes are "soft", so they can be recovered la
   1. **pushes** the outbox, oldest first; then
   2. **uploads** any recording the server doesn't fully have yet (only after the server has
      accepted its bullet), continuing interrupted uploads where they stopped; then
-  3. **pulls** everything that changed on the server since last time: bullet states,
-     suggestions, transcripts, recordings' upload states, and the
+  3. **pulls** everything that changed on the server since last time: bullet states, thoughts,
+     questions, suggestions, transcripts, recordings' upload states, and the
      tasks/events/trackers/entries/activities they produced.
 - Sending the same thing twice is harmless: the server recognises it and won't duplicate
   anything. So the phone can just resend after any network hiccup.
@@ -191,16 +244,21 @@ of it.
 client-minted UUID `op_id`. The op types are `bullet.create` (with a client-minted bullet `id`,
 `text`, `captured_at`, `timezone`, `source`, optional `text_edited_by_user`, and for a voice note
 optional `audio`: recording `id`, `mime_type`, `duration_ms`, `size_bytes`, `sha256` and the
-device `draft` transcript), `bullet.edit` (`text`, `edited_at`; marks the text user-edited),
+device `draft` transcript, and optional `answers_question_id`), `bullet.edit` (`text`, `edited_at`; marks the text user-edited),
 `bullet.delete` (`mode: cascade | keep_extractions`), `bullet.retry`, `suggestion.accept`
-(optional edited `payload`), `suggestion.reject` and `suggestion.undo`.
+(optional edited `payload`), `suggestion.reject`, `suggestion.undo`, `thought.reclassify`
+(`thought_id`, `kind`) and `question.dismiss` (`question_id`).
+
+Provenance: every thing and suggestion carries `source_bullet_id` (the capture) and
+`source_thought_id` (the thought; null for things made by hand or before thoughts existed).
 
 The response is `{ results: [{ op_id, status: applied | duplicate | rejected, error? }],
 server_time }`. Rejection codes are `not_found`, `invalid`, `conflict` and `stale`. A rejected op
 is final.
 
 **`GET /sync/pull?cursor=<opaque>&limit=<1..500>`** returns `{ changes: { bullets, suggestions,
-tasks, events, trackers, tracker_entries, activities, audio_attachments, transcripts }, cursor,
+tasks, events, trackers, tracker_entries, activities, audio_attachments, transcripts,
+thoughts, questions }, cursor,
 has_more, server_time }`. Rows
 are full current versions, soft-deleted ones included (`state: 'deleted'`). Omit `cursor` for a
 full sync. Repeat while `has_more`.

@@ -42,16 +42,19 @@ export const ownedTimestampedStateInsertFields = {
 } as const
 
 /**
- * Provenance: the bullet this entity was extracted from. Nullable — null for
- * manually-created entities (CLAUDE.md "Provenance"). Bullets themselves omit this field.
+ * Provenance: the capture (`bullet`) this entity was extracted from, and the thought within it.
+ * Nullable — null for manually-created entities (CLAUDE.md "Provenance"). `source_thought_id`
+ * defaults to null so rows from before thoughts existed stay valid. Bullets omit both.
  */
 export const sourceBulletIdNullable = {
   source_bullet_id: uuid().nullable(),
+  source_thought_id: uuid().nullable().default(null),
 } as const
 
-/** Provenance for a Suggestion: ALWAYS derived from a bullet, so non-null. */
+/** Provenance for a Suggestion: ALWAYS derived from a capture, so non-null; thought optional. */
 export const sourceBulletIdRequired = {
   source_bullet_id: uuid(),
+  source_thought_id: uuid().nullable().default(null),
 } as const
 
 /** Convenience: a tiny standalone schema for the lifecycle fields (rarely needed directly). */
