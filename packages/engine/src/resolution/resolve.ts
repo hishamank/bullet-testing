@@ -40,7 +40,8 @@ import type {
 import type { EngineConfig } from '../config'
 import type { Candidate } from '../extraction/schema'
 import type { ExtractionSnapshot, SnapshotTask, SnapshotTracker } from '../extraction/snapshot'
-import { type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
+import type { QuestionTopic } from '@bullet/core'
+import { ambiguousWeekday, type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
 import { type Match, matchOpenTask, matchTracker } from './match'
 import { assignTier } from './tier'
 
@@ -55,14 +56,29 @@ export interface ResolvedSuggestion {
 }
 
 /**
- * The outcome of resolving a batch: the drafts to persist plus a count of candidates SKIPPED
- * (durable_fact / out-of-scope) so the data is never silently lost (we log/count it).
+ * A clarifying question the resolver wants to ask about an ambiguous extraction (CLAUDE.md:
+ * clarifying questions only in slice 1). `suggestionIndex` points into `suggestions`.
+ */
+export interface QuestionDraft {
+  topic: QuestionTopic
+  text: string
+  options: string[]
+  suggestionIndex: number | null
+}
+
+/**
+ * The outcome of resolving a batch: the drafts to persist, clarifying questions, plus a count of
+ * candidates SKIPPED (durable_fact / out-of-scope) so the data is never silently lost.
  */
 export interface ResolveOutcome {
   suggestions: ResolvedSuggestion[]
+  questions: QuestionDraft[]
   /** Count of candidates intentionally dropped (currently: durable_fact notes). */
   skipped: number
 }
+
+/** Collects questions about the suggestion currently being resolved. */
+type Ask = (q: Omit<QuestionDraft, 'suggestionIndex'>) => void
 
 /**
  * Turn a {@link ResolvedSuggestion} draft into a full Suggestion INSERT, attaching provenance.
@@ -85,8 +101,10 @@ export function withProvenance(
   draft: ResolvedSuggestion,
   ownerId: string,
   sourceBulletId: string,
+  sourceThoughtId: string | null = null,
 ): SuggestionInsert {
   return {
+    source_thought_id: sourceThoughtId,
     target_kind: draft.target_kind,
     operation: draft.operation,
     target_id: draft.target_id,
@@ -103,7 +121,12 @@ export function withProvenance(
     payload:
       draft.operation === 'update'
         ? { ...draft.payload }
-        : { ...draft.payload, owner_id: ownerId, source_bullet_id: sourceBulletId },
+        : {
+            ...draft.payload,
+            owner_id: ownerId,
+            source_bullet_id: sourceBulletId,
+            source_thought_id: sourceThoughtId,
+          },
   }
 }
 
@@ -174,7 +197,10 @@ export function resolveCandidates(
   ctx: CaptureContext,
 ): ResolveOutcome {
   const suggestions: ResolvedSuggestion[] = []
+  const questions: QuestionDraft[] = []
   let skipped = 0
+  // A question raised while resolving a candidate is about the suggestion it pushes next.
+  const ask: Ask = (q) => questions.push({ ...q, suggestionIndex: suggestions.length })
 
   for (const candidate of candidates) {
     // Small local models (e.g. gemma3:4b) sometimes WRAP field values one level deep under
@@ -183,12 +209,12 @@ export function resolveCandidates(
     const normalized: Candidate = { ...candidate, fields: flattenFields(candidate.fields) }
     switch (normalized.orientation) {
       case 'happened': {
-        const resolved = resolveHappened(normalized, snapshot, config, ctx)
+        const resolved = resolveHappened(normalized, snapshot, config, ctx, ask)
         suggestions.push(resolved)
         break
       }
       case 'future_oneoff': {
-        suggestions.push(resolveFutureOneoff(normalized, config, ctx))
+        suggestions.push(resolveFutureOneoff(normalized, config, ctx, ask))
         break
       }
       case 'future_recurring': {
@@ -215,7 +241,7 @@ export function resolveCandidates(
     }
   }
 
-  return { suggestions, skipped }
+  return { suggestions, questions, skipped }
 }
 
 /** Route a 'happened' candidate: append a tracker entry, mark a task done, or create activity. */
@@ -224,6 +250,7 @@ function resolveHappened(
   snapshot: ExtractionSnapshot,
   config: EngineConfig,
   ctx: CaptureContext,
+  ask: Ask,
 ): ResolvedSuggestion {
   const occurredAt = recordTime(candidate, ctx)
   const trackerHit = matchTracker(candidate, snapshot.trackers)
@@ -261,7 +288,19 @@ function resolveHappened(
   // wasn't a quantity, so `quantity` reads null) that is therefore auto-eligible again. This is
   // consistent with the value rule: no WRONG value is ever silently written — only a value-less
   // record can auto-apply.
-  return createActivity(candidate, config, occurredAt)
+  const activity = createActivity(candidate, config, occurredAt)
+  // A reading with a number but no tracker to log it under: offer to start tracking it.
+  if (
+    candidate.kind === 'tracker_entry' &&
+    numberFieldOrNull(candidate.fields, ['value', 'quantity']) !== null
+  ) {
+    ask({
+      topic: 'new_tracker',
+      text: `Start tracking "${String(activity.payload.name)}"?`,
+      options: ['Yes', 'No'],
+    })
+  }
+  return activity
 }
 
 /**
@@ -399,9 +438,24 @@ function resolveFutureOneoff(
   candidate: Candidate,
   config: EngineConfig,
   ctx: CaptureContext,
+  ask: Ask,
 ): ResolvedSuggestion {
   const when = whenFor(candidate, ctx, 'future')
   const title = stringField(candidate.fields, ['title', 'name'], candidate.text)
+  const quoted = stringFieldOrNull(candidate.fields, ['when', 'date', 'due', 'starts'])
+  if (quoted && !when) {
+    // The user said when, but we could not read it: ask rather than guess.
+    ask({ topic: 'date', text: `When is "${title}"? ("${quoted}")`, options: [] })
+  } else if (when) {
+    const day = ambiguousWeekday(quoted ?? candidate.text, ctx)
+    if (day) {
+      ask({
+        topic: 'date',
+        text: `Which ${day} for "${title}"?`,
+        options: ['Today', `Next ${day}`],
+      })
+    }
+  }
   const isHappening =
     candidate.kind === 'event' ||
     (candidate.kind === 'task' &&

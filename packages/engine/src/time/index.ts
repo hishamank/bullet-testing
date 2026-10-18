@@ -1,6 +1,7 @@
 /** Time barrel — zone arithmetic and relative-date resolution against the capture context. */
 
 export {
+  ambiguousWeekday,
   type CaptureContext,
   resolveEnd,
   resolveWhen,

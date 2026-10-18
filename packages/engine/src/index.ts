@@ -13,3 +13,11 @@ export * from './llm'
 export * from './resolution'
 export * from './time'
 export * from './transcription'
+export * from './segmentation'
+export {
+  type CaptureOutcome,
+  type CaptureQuestionDraft,
+  EXTRACTABLE_THOUGHT_KINDS,
+  processCapture,
+  type ThingDraft,
+} from './pipeline'

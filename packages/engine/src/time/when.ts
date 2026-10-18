@@ -225,3 +225,19 @@ export function resolveEnd(text: string, startsAt: number, timezone: string): nu
   if (!end || end.at < startsAt) return null
   return end.at
 }
+
+/**
+ * A bare weekday that names TODAY ("dentist Thursday" said on a Thursday) is ambiguous: today, or
+ * a week from now? Returns the weekday as written (capitalised) when so, else null. The resolver
+ * still picks today; this only lets the engine ask.
+ */
+export function ambiguousWeekday(text: string, ctx: CaptureContext): string | null {
+  const s = text.toLowerCase()
+  const wd = WEEKDAY_RE.exec(s)
+  if (!wd || (wd[1] !== undefined && wd[1] !== 'on')) return null
+  if (/\b(today|tonight|tomorrow|this (morning|afternoon|evening))\b/.test(s)) return null
+  const now = zonedParts(ctx.capturedAt, safeTimezone(ctx.timezone))
+  if (weekdayNumber(wd[2] ?? '') !== now.weekday) return null
+  const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  return names[now.weekday] ?? null
+}

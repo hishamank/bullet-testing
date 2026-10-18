@@ -199,7 +199,7 @@ describe('future happenings route to Event vs Task', () => {
       config,
       CTX,
     )
-    expect(out).toEqual({ suggestions: [], skipped: 1 })
+    expect(out).toEqual({ suggestions: [], questions: [], skipped: 1 })
   })
 })
 
