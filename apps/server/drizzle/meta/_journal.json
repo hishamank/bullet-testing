@@ -22,6 +22,13 @@
       "when": 1792328816638,
       "tag": "0002_thoughts_questions",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792358749730,
+      "tag": "0003_manual_edits_open_loops",
+      "breakpoints": true
     }
   ]
 }

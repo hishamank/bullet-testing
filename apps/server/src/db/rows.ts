@@ -19,6 +19,7 @@ export function toSyncedBullet(row: BulletRow): SyncedBullet {
     source: row.source,
     text_edited_by_user: row.text_edited_by_user,
     answers_question_id: row.answers_question_id,
+    resolves_thought_id: row.resolves_thought_id,
     processing: {
       status: row.proc_status,
       attempts: row.proc_attempts,

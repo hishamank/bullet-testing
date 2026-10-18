@@ -232,3 +232,84 @@ describe('clarifying questions', () => {
     ).toBe(true)
   })
 })
+
+describe('open loops', () => {
+  const loops: SegmentScript = (capture) =>
+    capture.startsWith('check')
+      ? [
+          {
+            text: 'check if the passport expires',
+            quote: 'check if the passport expires',
+            kind: 'to_check',
+          },
+          { text: 'worried about rent', quote: 'worried about rent', kind: 'worry' },
+        ]
+      : [{ text: capture, quote: capture, kind: 'note' }]
+
+  async function setup() {
+    const h = createHarness(llmByText({}), {}, loops)
+    const b = await h.capture('check if the passport expires worried about rent')
+    await h.worker.drain()
+    const all = h.db.select().from(thoughts).all()
+    const loop = all.find((t) => t.kind === 'to_check')
+    const worry = all.find((t) => t.kind === 'worry')
+    if (!loop || !worry) throw new Error('thoughts missing')
+    return { h, b, loop, worry }
+  }
+
+  test('resolve / unresolve a to_check thought; other kinds are not open loops', async () => {
+    const { h, loop, worry } = await setup()
+    h.clock.now = T0 + 5_000
+    const res = await h.push([
+      { op_id: uid(), type: 'thought.resolve', thought_id: loop.id },
+      { op_id: uid(), type: 'thought.resolve', thought_id: loop.id },
+      { op_id: uid(), type: 'thought.resolve', thought_id: worry.id },
+    ])
+    expect(res.results.map((r) => (r.status === 'rejected' ? r.error.code : r.status))).toEqual([
+      'applied',
+      'applied',
+      'invalid',
+    ])
+    const pulled = pullResponseSchema.parse(await h.pull())
+    expect(pulled.changes.thoughts.find((t) => t.id === loop.id)?.resolved_at).toBe(T0 + 5_000)
+
+    await h.push([{ op_id: uid(), type: 'thought.unresolve', thought_id: loop.id }])
+    expect(
+      h.db
+        .select()
+        .from(thoughts)
+        .all()
+        .find((t) => t.id === loop.id)?.resolved_at,
+    ).toBe(null)
+  })
+
+  test('a capture "with a note" resolves the thought, is processed, and reprocessing keeps it', async () => {
+    const { h, b, loop } = await setup()
+    const note = await h.capture('it expires in 2031', { resolves_thought_id: loop.id })
+    const t = () =>
+      h.db
+        .select()
+        .from(thoughts)
+        .all()
+        .find((x) => x.id === loop.id)
+    expect(t()).toMatchObject({ resolved_at: T0, resolved_by_bullet_id: note })
+    await h.worker.drain()
+    const pulled = pullResponseSchema.parse(await h.pull())
+    expect(pulled.changes.bullets.find((x) => x.id === note)).toMatchObject({
+      resolves_thought_id: loop.id,
+      processing: { status: 'processed' },
+    })
+
+    await h.push([
+      {
+        op_id: uid(),
+        type: 'bullet.edit',
+        bullet_id: b,
+        text: 'check if the passport expires worried about rent!',
+        edited_at: T0 + 1,
+      },
+    ])
+    await h.worker.drain()
+    expect(t()?.resolved_at).toBe(T0)
+  })
+})

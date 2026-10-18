@@ -9,7 +9,8 @@
  *  - Field-level updates: an UPDATE writes only the fields in its patch, so it never reverts edits
  *    made since extraction. The previous values are kept for undo.
  *  - Undo: reverts an applied suggestion (soft-deletes what it created, restores what it changed),
- *    refusing with `conflict` when the user has changed that thing by hand since.
+ *    refusing with `conflict` when the user has changed that thing by hand since (its
+ *    `user_edited_at`, or for kinds without one, any write after the apply).
  *
  * Plain functions over a Db/transaction; routes and the queue are thin callers.
  */
@@ -49,7 +50,7 @@ export function getSuggestion(db: Db, ownerId: string, id: string): SuggestionRo
     .get()
 }
 
-function updateSuggestionRow(
+export function updateSuggestionRow(
   db: Db,
   s: SuggestionRow,
   patch: Partial<SuggestionRow>,
@@ -252,6 +253,14 @@ export function undoSuggestion(db: Db, s: SuggestionRow, now: number): Suggestio
     throw new ApplyError('invalid', 'suggestion is not applied')
   }
   const entity = getEntity(db, s.target_kind, s.owner_id, s.applied_entity_id)
+  // Changed (or deleted) by hand since it was applied: the user's version stays.
+  if (
+    entity &&
+    typeof entity.user_edited_at === 'number' &&
+    entity.user_edited_at >= s.applied_at
+  ) {
+    throw new ApplyError('conflict', `${s.target_kind} was edited by you since; not undone`)
+  }
   if (s.operation === 'update') {
     if (entity) {
       for (const [k, v] of Object.entries(s.applied_after ?? {})) {

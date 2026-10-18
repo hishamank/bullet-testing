@@ -8,7 +8,7 @@ import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { audioAttachments, bullets, suggestions, transcripts } from '../db/schema'
 import { declareAudio } from './audio'
-import { answerQuestion, retireThoughtsAndQuestions } from './thoughts'
+import { answerQuestion, resolveThought, retireThoughtsAndQuestions } from './thoughts'
 import { ApplyError } from '../apply/apply'
 import { ENTITY_KINDS, listActiveBySource, softDeleteEntity } from '../apply/entities'
 import { retireSuggestion } from '../apply/reconcile'
@@ -59,6 +59,7 @@ export function createBullet(
     source: input.source,
     text_edited_by_user: input.text_edited_by_user ?? false,
     answers_question_id: input.answers_question_id ?? null,
+    resolves_thought_id: input.resolves_thought_id ?? null,
     text_updated_at: input.captured_at,
     text_version: 1,
     proc_status: 'synced',
@@ -75,6 +76,14 @@ export function createBullet(
       answerQuestion(db, ownerId, input.answers_question_id, row.id, now)
     } catch (err) {
       // An answer to a question that no longer exists is still a capture: keep it.
+      if (!(err instanceof ApplyError)) throw err
+    }
+  }
+  if (input.resolves_thought_id) {
+    try {
+      resolveThought(db, ownerId, input.resolves_thought_id, now, row.id)
+    } catch (err) {
+      // A note for a thought that is gone (or not an open loop) is still a capture: keep it.
       if (!(err instanceof ApplyError)) throw err
     }
   }

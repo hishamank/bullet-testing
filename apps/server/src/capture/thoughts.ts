@@ -1,11 +1,12 @@
 /**
  * Persisting the thoughts and clarifying questions of a processed capture, and the user's actions
- * on them (re-classify a thought, dismiss or answer a question).
+ * on them (re-classify or resolve a thought, dismiss or answer a question). Tapping an answer
+ * option acts on suggestions and lives in `apply/answer.ts`.
  */
 
 import { randomUUID } from 'node:crypto'
 import type { CaptureQuestionDraft, SegmentedThought } from '@bullet/engine'
-import type { ThoughtKind } from '@bullet/core'
+import { RESOLVABLE_THOUGHT_KINDS, type ThoughtKind } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { questions, thoughts } from '../db/schema'
@@ -149,7 +150,52 @@ export function reclassifyThought(
   touch(db, ownerId, 'thoughts', t.id)
 }
 
-function getQuestion(db: Db, ownerId: string, id: string) {
+function getThought(db: Db, ownerId: string, id: string) {
+  const t = db
+    .select()
+    .from(thoughts)
+    .where(and(eq(thoughts.id, id), eq(thoughts.owner_id, ownerId)))
+    .get()
+  if (!t) throw new ApplyError('not_found', `thought ${id} not found`)
+  if (t.state !== 'active') throw new ApplyError('invalid', 'thought was deleted')
+  return t
+}
+
+/**
+ * Close an open loop (`to_check` / `question` thought), directly or by a capture "with a note"
+ * (`byBulletId`). Already resolved: left as it is.
+ */
+export function resolveThought(
+  db: Db,
+  ownerId: string,
+  thoughtId: string,
+  now: number,
+  byBulletId: string | null = null,
+): void {
+  const t = getThought(db, ownerId, thoughtId)
+  if (!(RESOLVABLE_THOUGHT_KINDS as readonly ThoughtKind[]).includes(t.kind)) {
+    throw new ApplyError('invalid', `a ${t.kind} thought is not an open loop`)
+  }
+  if (t.resolved_at !== null) return
+  db.update(thoughts)
+    .set({ resolved_at: now, resolved_by_bullet_id: byBulletId, updated_at: now })
+    .where(eq(thoughts.id, t.id))
+    .run()
+  touch(db, ownerId, 'thoughts', t.id)
+}
+
+/** Re-open a resolved thought. */
+export function unresolveThought(db: Db, ownerId: string, thoughtId: string, now: number): void {
+  const t = getThought(db, ownerId, thoughtId)
+  if (t.resolved_at === null) return
+  db.update(thoughts)
+    .set({ resolved_at: null, resolved_by_bullet_id: null, updated_at: now })
+    .where(eq(thoughts.id, t.id))
+    .run()
+  touch(db, ownerId, 'thoughts', t.id)
+}
+
+export function getQuestion(db: Db, ownerId: string, id: string) {
   const q = db
     .select()
     .from(questions)
