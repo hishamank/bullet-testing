@@ -4,16 +4,25 @@ export interface ServerConfig {
   /** Interface to bind. Defaults to loopback; expose over Tailscale deliberately. */
   host: string
   port: number
+  /** SQLite database file. */
+  dbPath: string
   /** llama.cpp `llama-server` root URL. */
   llmBaseUrl: string
   llmModel: string
+  /** Optional llama-server `--api-key`. */
+  llmApiKey: string | undefined
+  /** Deadline for one model call. */
+  llmTimeoutMs: number
 }
 
 export function loadServerConfig(env: Record<string, string | undefined>): ServerConfig {
   return {
     host: env.HOST?.trim() || '127.0.0.1',
     port: Number(env.PORT) || 3001,
+    dbPath: env.DB_PATH?.trim() || './data/bullet.db',
     llmBaseUrl: env.LLM_BASE_URL?.trim() || 'http://127.0.0.1:8080',
     llmModel: env.LLM_MODEL?.trim() || 'default',
+    llmApiKey: env.LLM_API_KEY?.trim() || undefined,
+    llmTimeoutMs: Number(env.LLM_TIMEOUT_MS) || 120_000,
   }
 }

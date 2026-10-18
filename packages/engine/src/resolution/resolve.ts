@@ -99,11 +99,11 @@ export function withProvenance(
     applied_entity_id: null,
     applied_at: null,
     auto_applied: false,
-    payload: {
-      ...draft.payload,
-      owner_id: ownerId,
-      source_bullet_id: sourceBulletId,
-    },
+    // An UPDATE payload is a field-level patch of the target and must not carry provenance.
+    payload:
+      draft.operation === 'update'
+        ? { ...draft.payload }
+        : { ...draft.payload, owner_id: ownerId, source_bullet_id: sourceBulletId },
   }
 }
 

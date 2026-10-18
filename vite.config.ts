@@ -5,7 +5,12 @@ export default defineConfig({
     singleQuote: true,
     semi: false,
     printWidth: 100,
-    ignorePatterns: ['apps/mobile/ios/**', 'apps/mobile/android/**', '**/expo-env.d.ts'],
+    ignorePatterns: [
+      'apps/mobile/ios/**',
+      'apps/mobile/android/**',
+      '**/expo-env.d.ts',
+      '**/drizzle/meta/**',
+    ],
   },
   lint: {
     jsPlugins: [{ name: 'vite-plus', specifier: 'vite-plus/oxlint-plugin' }],

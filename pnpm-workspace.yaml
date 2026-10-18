@@ -2,14 +2,22 @@ packages:
   - apps/*
   - packages/*
 
-catalogMode: prefer
-
 catalog:
+  '@types/better-sqlite3': ^9.6.0
   '@types/node': ^24
+  better-sqlite3: ^13.0.3
+  drizzle-kit: ^0.31.11
+  drizzle-orm: ^0.45.4
   typescript: ^7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@1.3.0
   vite-plus: 1.3.0
   zod: ^3.25.76
+
+catalogMode: prefer
+
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
 
 overrides:
   vite@*: 'catalog:'
@@ -19,6 +27,3 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: '*'
-
-onlyBuiltDependencies:
-  - esbuild
