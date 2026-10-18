@@ -155,6 +155,11 @@ describe('resolveWhen — French and Lebanese Arabic (Arabizi) day words', () =>
     expect(f('yom el sabt')?.at).toBe(paris(10, 17))
     expect(f('demain à 9h30')).toEqual({ at: paris(10, 16, 9, 30), hasTime: true })
     expect(f('15h')).toEqual({ at: paris(10, 15, 15), hasTime: true })
+    // A time right after the day, no "à" (seen live: "RDV chez le coiffeur jeudi 15h").
+    expect(f('jeudi 15h')).toEqual({ at: paris(10, 15, 15), hasTime: true })
+    expect(f('RDV chez le coiffeur jeudi 15h')).toEqual({ at: paris(10, 15, 15), hasTime: true })
+    expect(f('demain 9h')).toEqual({ at: paris(10, 16, 9), hasTime: true })
+    expect(f('bukra 18h')).toEqual({ at: paris(10, 16, 18), hasTime: true })
     expect(p('hier soir')).toEqual({ at: paris(10, 14, 20), hasTime: true })
     expect(f('dans 2 heures')?.at).toBe(CAPTURED + 2 * 3_600_000)
     expect(p('il y a 3 jours')?.at).toBe(paris(10, 12))
@@ -162,6 +167,7 @@ describe('resolveWhen — French and Lebanese Arabic (Arabizi) day words', () =>
 
   test('look-alikes are not dates', () => {
     expect(p('slept 6h')).toBeNull()
+    expect(p('slept 6h today')?.hasTime).toBe(false)
     expect(f('wa7ad')).toBeNull()
     expect(f('yom hilo')).toBeNull()
   })
