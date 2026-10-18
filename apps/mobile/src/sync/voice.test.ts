@@ -1,11 +1,12 @@
 import { pushOpSchema } from '@bullet/core'
 import { describe, expect, test } from 'vite-plus/test'
 import { captureVoiceBullet, editBullet, type VoiceCaptureInput } from '../data/local'
+import { getState } from '../data/mirror'
 import { listBullets } from '../data/queries'
 import { audioAttachments, bullets, outbox, transcripts } from '../data/schema'
 import { FakeServer } from '../test/fake-server'
 import { openTestDb, testDeps } from '../test/db'
-import { createSyncClient } from './client'
+import { audioReadErrorKey, createSyncClient } from './client'
 import { TransportError } from './transport'
 
 const FILE = Uint8Array.from({ length: 10 }, (_, i) => i + 1)
@@ -107,6 +108,32 @@ describe('recording upload', () => {
       upload_status: 'uploaded',
       received_bytes: 10,
     })
+  })
+
+  test('an unreadable file is skipped (and noted); later recordings still upload', async () => {
+    const db = openTestDb()
+    const server = new FakeServer()
+    const client = createSyncClient({
+      db,
+      transport: () => server,
+      audioChunkBytes: 4,
+      readAudioChunk: async (path, offset, length) => {
+        if (path.endsWith('gone.wav')) throw new Error('no such file')
+        return FILE.slice(offset, offset + length)
+      },
+    })
+    const deps = testDeps()
+    const audio = voice().audio
+    captureVoiceBullet(db, voice({ audio: { ...audio, localPath: 'recordings/gone.wav' } }), deps)
+    deps.clock.now += 1
+    captureVoiceBullet(db, voice({ audio: { ...audio, localPath: 'recordings/ok.wav' } }), deps)
+    const outcome = await client.sync()
+    expect(outcome).toMatchObject({ ok: true, pushed: 2, uploaded: 1 })
+    const rows = db.select().from(audioAttachments).all()
+    const gone = rows.find((a) => a.local_path === 'recordings/gone.wav')
+    expect(gone?.upload_status).toBe('pending')
+    expect(rows.find((a) => a.local_path === 'recordings/ok.wav')?.upload_status).toBe('uploaded')
+    expect(getState(db, audioReadErrorKey(gone?.id ?? ''))).toMatch(/no such file/)
   })
 
   test('never uploads before the server has accepted the bullet', async () => {

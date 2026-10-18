@@ -4,7 +4,7 @@
  * seconds and the page clears. The state machine is pure (features/capture/composer.ts).
  */
 
-import { type ReactNode, useEffect, useReducer, useRef } from 'react'
+import { type ReactNode, useEffect, useReducer, useRef, useState } from 'react'
 import {
   AccessibilityInfo,
   Animated,
@@ -22,7 +22,8 @@ import {
   initialComposer,
   SAVED_MS,
 } from '@/features/capture/composer'
-import { useReduceMotion } from '@/hooks'
+import { voiceReturnStore } from '@/features/voice/return'
+import { useReduceMotion, useStore } from '@/hooks'
 import { size, space, type, useTheme } from '@/theme'
 import { Icon } from '../Icon'
 import { IconButton, Label, RoundButton } from '../ui'
@@ -41,6 +42,11 @@ export interface ComposerProps {
   onSend: (text: string) => void
   /** "Saved" has finished showing. */
   onSavedShown?: () => void
+  /**
+   * Which recording returns this page reacts to (see features/voice/return.ts): the id of the
+   * question or loop being answered, or null (default) for the plain capture page.
+   */
+  voiceContext?: string | null
 }
 
 export function Composer(p: ComposerProps) {
@@ -52,6 +58,21 @@ export function Composer(p: ComposerProps) {
   const mode = composerMode(state)
   const { savedAt } = state
   const { onSavedShown } = p
+  const voiceReturn = useStore(voiceReturnStore)
+  const voiceContext = p.voiceContext ?? null
+  const [mountedAt] = useState(() => Date.now())
+
+  // Back from the recorder: show "Saved" (a voice note was saved) or start typing.
+  useEffect(() => {
+    if (!voiceReturn || voiceReturn.context !== voiceContext || voiceReturn.at < mountedAt) return
+    if (voiceReturn.kind === 'saved') {
+      dispatch({ type: 'saved_elsewhere', at: voiceReturn.at })
+      return
+    }
+    // After the recorder's dismiss animation, or the keyboard won't come up.
+    const focus = setTimeout(() => input.current?.focus(), 400)
+    return () => clearTimeout(focus)
+  }, [voiceReturn, voiceContext, mountedAt])
 
   useEffect(() => {
     if (savedAt === null) return

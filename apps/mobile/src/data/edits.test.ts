@@ -5,6 +5,7 @@ import { openTestDb, T0, testDeps } from '../test/db'
 import {
   answerQuestion,
   captureBullet,
+  captureVoiceBullet,
   deleteEvent,
   deleteTask,
   deleteTrackerEntry,
@@ -287,6 +288,51 @@ describe('open loops on the phone', () => {
     })
     const [op] = ops(db)
     expect(pushOpSchema.parse(op?.op)).toMatchObject({ bullet: { id, resolves_thought_id: LOOP } })
+  })
+
+  test('a voice answer links like a typed one: question answered, loop closed, op carries both', () => {
+    const db = seeded()
+    const id = captureVoiceBullet(
+      db,
+      {
+        text: 'next week sometime',
+        textEditedByUser: false,
+        answersQuestionId: Q_DATE,
+        resolvesThoughtId: LOOP,
+        audio: {
+          localPath: 'file:///rec/a.wav',
+          mimeType: 'audio/wav',
+          durationMs: 2000,
+          sizeBytes: 64_044,
+          sha256: null,
+        },
+        draft: { text: 'next week sometime', engine: 'apple-sfspeech', model: null, languages: [] },
+      },
+      testDeps(),
+    )
+    expect(
+      db
+        .select()
+        .from(questions)
+        .all()
+        .find((q) => q.id === Q_DATE),
+    ).toMatchObject({
+      status: 'answered',
+      answer_bullet_id: id,
+    })
+    expect(
+      db
+        .select()
+        .from(thoughts)
+        .all()
+        .find((t) => t.id === LOOP),
+    ).toMatchObject({
+      resolved_by_bullet_id: id,
+    })
+    const [op] = ops(db)
+    expect(pushOpSchema.parse(op?.op)).toMatchObject({
+      bullet: { id, source: 'voice', answers_question_id: Q_DATE, resolves_thought_id: LOOP },
+    })
   })
 })
 

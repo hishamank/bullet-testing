@@ -118,8 +118,8 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
   clock; records default to capture time.
 - **Voice notes keep their audio** (user decision, 2026-10-18). The recording is the source of
   truth, kept permanently on the phone and the server (soft delete only). The phone saves the
-  live on-device draft (Apple SpeechAnalyzer) as the bullet text plus a `device_draft`
-  transcript. The server re-transcribes in the `transcribing` state, before extraction, through
+  live on-device draft (Apple SFSpeechRecognizer, on-device only) as the bullet text plus a
+  `device_draft` transcript. The server re-transcribes in the `transcribing` state, before extraction, through
   the injected `Transcriber` interface (`@bullet/engine`; whisper.cpp later, scripted in tests).
   It stores a `server` transcript, which replaces the bullet text unless `text_edited_by_user`.
   Transcription is multilingual (English, Lebanese Arabic and French mixed): never force a
@@ -127,6 +127,12 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
   Audio upload is `PUT /sync/audio/:id` with an `upload-offset` header: resumable, idempotent by
   attachment id, sha256-verified. Recordings live under `AUDIO_DIR` on the server. Until a
   transcriber is wired, voice bullets are processed on their device draft.
+- **Voice capture on the phone** (`apps/mobile/src/features/voice`, `docs/voice-capture.md`):
+  expo-speech-recognition writes 16 kHz WAV segments (one per stretch; Pause ends one) while the
+  same mic tap feeds the on-device recognizer; Send joins them (`wav.ts`). expo-audio (m4a, no
+  draft) when speech recognition is denied or can't start. Recording pauses (never stops) on a
+  call, Siri or backgrounding; a killed recording is saved on the next one (`recoverRecordings`).
+  Session logic is pure (`session.ts`, driver injected); needs a dev build, not Expo Go.
 - **Phone data layer** (`apps/mobile/src/data`, `src/sync`): expo-sqlite + Drizzle. Every local
   action writes its change **and** its outbox op in one transaction. Migrations are drizzle-kit
   SQL inlined into `migrations.gen.ts` (`pnpm --filter mobile db:generate`) and applied by a

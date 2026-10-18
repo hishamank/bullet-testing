@@ -187,10 +187,16 @@ export function audioSource(
   opts: {
     localExists: (path: string) => boolean
     server: { baseUrl: string; token: string } | null
+    /**
+     * `local_path` is stored relative to Documents (`recordings/<id>.wav`): turn it into today's
+     * file uri (`recordingUri` in sync/runtime.ts). Defaults to using it as is.
+     */
+    resolveLocal?: (path: string) => string
   },
 ): AudioSourceResult {
-  if (audio.local_path && opts.localExists(audio.local_path)) {
-    return { kind: 'local', uri: audio.local_path }
+  const local = audio.local_path ? (opts.resolveLocal ?? ((p) => p))(audio.local_path) : null
+  if (local && opts.localExists(local)) {
+    return { kind: 'local', uri: local }
   }
   if (audio.upload_status !== 'uploaded') {
     return {

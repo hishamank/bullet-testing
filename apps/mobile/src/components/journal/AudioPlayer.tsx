@@ -12,7 +12,7 @@ import { Label, RoundButton } from '@/components/ui'
 import { usePairing } from '@/hooks'
 import { type AudioRow, audioSource } from '@/features/journal/capture'
 import { duration, spokenDuration } from '@/features/journal/format'
-import { currentServerSettings } from '@/sync/runtime'
+import { currentServerSettings, recordingUri } from '@/sync/runtime'
 import { radius, space, type, useTheme } from '@/theme'
 
 function fileExists(path: string): boolean {
@@ -29,7 +29,7 @@ export function AudioPlayer({ audio }: { audio: AudioRow }) {
   const pairing = usePairing()
   const server = currentServerSettings()
   const source = useMemo(
-    () => audioSource(audio, { localExists: fileExists, server }),
+    () => audioSource(audio, { localExists: fileExists, server, resolveLocal: recordingUri }),
     [audio.id, audio.local_path, audio.upload_status, pairing, server?.baseUrl, server?.token],
   )
   if (source.kind === 'unavailable') {

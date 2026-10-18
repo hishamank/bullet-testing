@@ -146,6 +146,13 @@ describe('audio source', () => {
       uri: 'file:///r.m4a',
     })
   })
+  test('a path stored relative to Documents is resolved before it is played', () => {
+    const rel = { ...a, local_path: 'recordings/r.wav' }
+    const resolveLocal = (p: string) => `file:///Documents/${p}`
+    expect(
+      audioSource(rel, { localExists: (p) => p.startsWith('file:'), server, resolveLocal }),
+    ).toEqual({ kind: 'local', uri: 'file:///Documents/recordings/r.wav' })
+  })
   test('else streamed from the home server with the device token', () => {
     expect(audioSource(a, { localExists: () => false, server })).toEqual({
       kind: 'remote',

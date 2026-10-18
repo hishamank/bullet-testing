@@ -19,6 +19,8 @@ export type ComposerEvent =
   | { type: 'blur' }
   | { type: 'change'; text: string }
   | { type: 'sent'; at: number }
+  /** A capture was saved from another screen (a voice note): show "Saved", keep any typed text. */
+  | { type: 'saved_elsewhere'; at: number }
   | { type: 'saved_elapsed'; at: number }
 
 export const initialComposer: ComposerState = { text: '', focused: false, savedAt: null }
@@ -33,6 +35,8 @@ export function composerReducer(s: ComposerState, e: ComposerEvent): ComposerSta
       return { ...s, text: e.text, savedAt: e.text === '' ? s.savedAt : null }
     case 'sent':
       return { text: '', focused: false, savedAt: e.at }
+    case 'saved_elsewhere':
+      return { ...s, focused: false, savedAt: e.at }
     case 'saved_elapsed':
       // Only the timer of the latest save clears it.
       return s.savedAt !== null && e.at - s.savedAt >= SAVED_MS ? { ...s, savedAt: null } : s

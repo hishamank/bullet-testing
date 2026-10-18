@@ -13,12 +13,13 @@
 
 import * as BackgroundTask from 'expo-background-task'
 import { randomUUID } from 'expo-crypto'
-import { File } from 'expo-file-system'
+import { File, Paths } from 'expo-file-system'
 import * as Network from 'expo-network'
 import * as TaskManager from 'expo-task-manager'
 import { AppState } from 'react-native'
 import type { LocalDeps } from '../data/local'
 import { getDb } from '../data/open'
+import { resolveRecordingUri } from './audio-path'
 import { createSyncClient, type SyncClient, type SyncOutcome } from './client'
 import { loadServerSettings, type ServerSettings } from './settings'
 import { createHttpTransport, type SyncTransport } from './transport'
@@ -52,9 +53,14 @@ export const deviceDeps: LocalDeps = {
   timezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
 }
 
+/** Today's uri of a stored recording path (see audio-path.ts). */
+export function recordingUri(localPath: string): string {
+  return resolveRecordingUri(localPath, Paths.document.uri, (uri) => new File(uri).exists)
+}
+
 /** Read part of a recording file (for resumable uploads). */
 async function readAudioChunk(localPath: string, offset: number, length: number) {
-  const handle = new File(localPath).open()
+  const handle = new File(recordingUri(localPath)).open()
   try {
     handle.offset = offset
     return handle.readBytes(length)

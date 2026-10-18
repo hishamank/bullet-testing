@@ -6,7 +6,7 @@ import { nonEmptyString, timestampMs, uuid } from '../primitives'
  * Voice notes. A voice bullet keeps its AUDIO as the source of truth, permanently, on the phone
  * and on the server (soft delete only, like every row). Its text comes from transcripts:
  *
- *  - a `device_draft` — the live on-device transcript (Apple SpeechAnalyzer) saved at capture;
+ *  - a `device_draft` — the live on-device transcript (Apple's on-device recognizer) saved at capture;
  *  - a `server` transcript — the home server's re-transcription (Whisper), which replaces the
  *    bullet text unless the user edited the draft (`bullet.text_edited_by_user`): then the user's
  *    text wins and the server transcript is only stored.
