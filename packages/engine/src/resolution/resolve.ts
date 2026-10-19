@@ -463,7 +463,8 @@ function readingActivityName(
   fallback: string,
 ): string {
   const said = stringField(candidate.fields, ['name', 'title'], candidate.text)
-  const phrase = reading.phrase?.trim()
+  // A value the model gave (not read from the words) still has its words: find them to strip.
+  const phrase = (reading.phrase ?? readingFromText(said, { allowBare: true })?.phrase)?.trim()
   const without = phrase
     ? said.replace(
         new RegExp(`${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+(?:of|de|d'))?`, 'iu'),

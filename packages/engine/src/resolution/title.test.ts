@@ -35,6 +35,7 @@ describe('cleanTitle', () => {
     ["Prepare the slides for Monday's meeting", "Prepare the slides for Monday's meeting"],
     ['Pay rent on the 1st of November', 'Pay rent'],
     ['Book a table for tomorrow night', 'Book a table'],
+    ["Prepare for tomorrow evening's party", "Prepare for tomorrow evening's party"],
     ['call mom tomorrow morning', 'Call mom'],
     // French
     ['RDV chez le coiffeur jeudi 15h', 'RDV chez le coiffeur'],

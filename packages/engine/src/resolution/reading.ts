@@ -79,6 +79,10 @@ export function convertDuration(
 const COUNT_NOUNS =
   'glass(?:es)?|cups?|bottles?|cigarettes?|clopes?|coffees?|cafés?|beers?|pages?|reps?|sets?|pills?|verres?|tasses?|bi[e]res?'
 
+/** Plural nouns that are spans of time or filler, never a count of something done. */
+const NOT_COUNTS =
+  /^(seconds|days|weeks|months|years|ages|jours|semaines|mois|ans|années|annees|nights|mornings|evenings|others|things|ones|minutes|hours|heures)$/
+
 /** A clock time is not a duration: "at 11pm", "à 15h", "vers 7h". */
 const AT_TIME = /(?:^|\s)(?:at|à|vers|3al|3a|@)\s*$/
 
@@ -170,6 +174,20 @@ export function readingFromText(text: string, opts: { allowBare: boolean }): Rea
         unit: normalizeUnit(counted[2]),
         scale: null,
         phrase: counted[0].trim(),
+      },
+    })
+  }
+  // Any other counted thing ("did 30 pushups", "ate 2 pizzas"): the noun is the unit. Last, so a
+  // known measure said at the same place wins; spans of time ("3 days ago") are not readings.
+  const generic = new RegExp(`${NUM}\\s+(\\p{L}{2,}(?:s|x))(?![\\p{L}\\d])`, 'u').exec(s)
+  if (generic && !NOT_COUNTS.test(generic[2] ?? '') && !AT_TIME.test(s.slice(0, generic.index))) {
+    found.push({
+      at: generic.index,
+      reading: {
+        value: toNumber(generic[1] ?? ''),
+        unit: normalizeUnit(generic[2]),
+        scale: null,
+        phrase: generic[0].trim(),
       },
     })
   }

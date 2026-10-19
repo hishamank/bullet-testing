@@ -92,7 +92,7 @@ const RELATIVE =
 const LEAD = `(?:(?:at|on|by|before|from|until|till|around|for|the|à|a|le|la|vers|avant|pour|jusqu'à|dès|3al|3a|abel|2abel|abl|2abl|qabl|l|el)\\s+)*`
 
 const DAY_RE = new RegExp(
-  `${B}${LEAD}(?:${DAY_WORDS}|${DATES})(?:\\s+(?:${PART_OF_DAY}))?(?:\\s*,?\\s*${LEAD}(?:${TIMES}|${HOUR_H}))?${E}`,
+  `${B}${LEAD}(?:${DAY_WORDS}|${DATES})(?!\\s+(?:${PART_OF_DAY})['’]\\p{L})(?:\\s+(?:${PART_OF_DAY}))?(?:\\s*,?\\s*${LEAD}(?:${TIMES}|${HOUR_H}))?${E}`,
   'giu',
 )
 const TIME_RE = new RegExp(`${B}${LEAD}(?:${TIMES})${E}`, 'giu')

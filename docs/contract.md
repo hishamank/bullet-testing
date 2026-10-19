@@ -251,9 +251,14 @@ event). Each suggestion is one proposed change:
   `applied_entity_id` = the existing tracker (it created nothing), its question is answered, and
   its reading becomes an ordinary pending reading of that tracker ("Log 7 h to Sleep?"), one per
   capture. Accepting an offer whose (edited) name matches an existing tracker links it the same
-  way rather than refusing. Undoing a linked offer never deletes the tracker. Undoing a new
-  tracker is refused (`conflict`) when a reading logged with it was edited by hand, or when the
-  tracker has readings from other captures.
+  way rather than refusing. Undoing a linked offer never deletes the tracker. Undoing the new
+  tracker itself opens every offer linked to it again ("Start tracking Sleep?" with its reading
+  waiting on it, its question open), unless that would orphan something: it is refused
+  (`conflict`) when a reading logged with it was edited by hand, or when another capture's
+  reading is already logged to it.
+- **Declining a plain reading** ("Log 7 h to Sleep?" → dismiss) keeps no record: the reading is
+  not logged anywhere, and its words stay in the capture's thought. (Only "Not now" on a _new_
+  tracker keeps its reading as an activity.)
 - **Tier:** how sure the system is. This is what to show, rather than a percentage:
   - `auto`: applied automatically. The UI should offer **Undo**.
   - `suggest`: probably right; one tap to confirm.

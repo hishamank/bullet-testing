@@ -470,6 +470,38 @@ describe('review follow-ups (2026-10-19)', () => {
     expect(plan[0]?.target_kind).toBe('task')
   })
 
+  test('the kept activity drops the value words even when the model gave the value', () => {
+    const { suggestions } = resolve(
+      candidate({
+        text: 'Slept 6 hours',
+        fields: { name: 'Slept 6 hours', value: 6, unit: 'hours' },
+      }),
+      EMPTY,
+      { kind: 'tracker' },
+    )
+    expect(suggestions[1]?.payload.activity_name).toBe('Slept')
+  })
+
+  test('a count of anything keeps its value on the activity, never auto', () => {
+    const { suggestions } = resolve(
+      candidate({ text: 'ate 2 pizzas', fields: { name: 'ate 2 pizzas' } }),
+      EMPTY,
+      { kind: 'activity' },
+    )
+    expect(suggestions).toEqual([
+      expect.objectContaining({
+        target_kind: 'activity',
+        tier: 'suggest',
+        payload: expect.objectContaining({ quantity: 2, unit: 'pizzas' }),
+      }),
+    ])
+    expect(readingFromText('did 30 pushups', { allowBare: false })).toMatchObject({
+      value: 30,
+      unit: 'pushups',
+    })
+    expect(readingFromText('3 days ago I called mom', { allowBare: false })).toBeNull()
+  })
+
   test('a declined tracker keeps its reading as an activity with the value', () => {
     const { suggestions } = resolve(
       candidate({ text: 'Slept 6 hours.', fields: { name: 'Slept 6 hours.' } }),
