@@ -22,6 +22,14 @@ import { deleteByHand, editByHand } from '../apply/manual'
 import { createBullet, deleteBullet, editBullet, retryBullet } from '../capture/bullets'
 import { pickEvergreen, snoozeQuestion } from '../reflect/actions'
 import {
+  dismissCard,
+  mergeTheme,
+  openCard,
+  renameTheme,
+  retireTheme,
+  vetoLink,
+} from '../connections/actions'
+import {
   dismissQuestion,
   reclassifyThought,
   resolveThought,
@@ -106,6 +114,19 @@ function executeOp(db: Db, ownerId: string, op: PushOp, now: number): 'applied' 
     case 'tracker_entry.delete':
       deleteByHand(db, 'tracker_entry', ownerId, op.tracker_entry_id, now)
       return 'applied'
+    case 'link.veto':
+      return vetoLink(db, ownerId, op.link_id, now)
+    case 'theme.rename':
+      renameTheme(db, ownerId, op.theme_id, op.name, now)
+      return 'applied'
+    case 'theme.retire':
+      return retireTheme(db, ownerId, op.theme_id, now)
+    case 'theme.merge':
+      return mergeTheme(db, ownerId, op.theme_id, op.into_theme_id, now)
+    case 'noticed.open':
+      return openCard(db, ownerId, op.card_id, now)
+    case 'noticed.dismiss':
+      return dismissCard(db, ownerId, op.card_id, now)
     default: {
       const never: never = op
       throw new ApplyError('invalid', `unknown op ${String((never as PushOp).type)}`)

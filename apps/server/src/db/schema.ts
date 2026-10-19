@@ -27,8 +27,21 @@ import type {
   ThoughtKind,
   TrackerInputType,
   TranscriptKind,
+  LinkType,
+  NoticedQuote,
+  NoticedStatus,
+  ThemeStatus,
 } from '@bullet/core'
-import { index, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import {
+  blob,
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core'
 
 const ownedFields = () => ({
   id: text('id').primaryKey(),
@@ -173,6 +186,8 @@ export const thoughts = sqliteTable(
     sensitive: integer('sensitive', { mode: 'boolean' }).notNull().default(false),
     /** "Not this one" on a reflective question about it: it is never asked about again. */
     never_ask: integer('never_ask', { mode: 'boolean' }).notNull().default(false),
+    /** Named people, places, projects (segmentation), for linking. Server-only. */
+    entities: text('entities', { mode: 'json' }).$type<string[]>().notNull().default([]),
   },
   (t) => [index('thoughts_bullet_idx').on(t.source_bullet_id)],
 )
@@ -203,6 +218,8 @@ export const questions = sqliteTable(
     snooze_count: integer('snooze_count').notNull().default(0),
     /** Evergreen questions: which template. */
     template_id: text('template_id'),
+    /** Connection questions: the earlier thought it asks about. */
+    related_thought_id: text('related_thought_id'),
   },
   (t) => [
     index('questions_bullet_idx').on(t.source_bullet_id),
@@ -235,6 +252,209 @@ export const reflectJobs = sqliteTable(
   },
   (t) => [index('reflect_jobs_ready_idx').on(t.status, t.run_after)],
 )
+
+/**
+ * Link jobs (slice 3): one per capture, run right after its extraction (before its reflect job):
+ * embed the thoughts, link them, check open loops. `pending_question` holds a connection-question
+ * candidate while the capture's reflect job may still ask its own question.
+ */
+export const linkJobs = sqliteTable(
+  'link_jobs',
+  {
+    bullet_id: text('bullet_id')
+      .primaryKey()
+      .references(() => bullets.id),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    status: text('status').$type<JobStatus>().notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    text_version: integer('text_version').notNull(),
+    run_after: integer('run_after').notNull(),
+    locked_at: integer('locked_at'),
+    last_error: text('last_error'),
+    pending_question: text('pending_question', { mode: 'json' }).$type<{
+      thought_id: string
+      related_thought_id: string
+      score: number
+    }>(),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+  },
+  (t) => [index('link_jobs_ready_idx').on(t.status, t.run_after)],
+)
+
+/**
+ * One vector per thought, with the embedder key (model + template) and a hash of the text it was
+ * made from: another key or another text means embedding it again.
+ */
+export const thoughtEmbeddings = sqliteTable(
+  'thought_embeddings',
+  {
+    thought_id: text('thought_id')
+      .primaryKey()
+      .references(() => thoughts.id),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    model: text('model').notNull(),
+    text_hash: text('text_hash').notNull(),
+    dim: integer('dim').notNull(),
+    vector: blob('vector', { mode: 'buffer' }).notNull(),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+  },
+  (t) => [index('thought_embeddings_owner_idx').on(t.owner_id, t.model)],
+)
+
+/** The mean of the background sentences per embedder key (centres an LLM's embeddings). */
+export const embeddingBaselines = sqliteTable('embedding_baselines', {
+  model: text('model').primaryKey(),
+  dim: integer('dim').notNull(),
+  /** Sum of the unit vectors (Float32 bytes) and how many. */
+  sum: blob('sum', { mode: 'buffer' }).notNull(),
+  count: integer('count').notNull(),
+  created_at: integer('created_at').notNull(),
+})
+
+/**
+ * Links between thoughts of different captures. Undirected, stored once with `a` the earlier
+ * thought. `origin`: made per capture, by a "Same thing" answer, or kept by a nightly review.
+ * `reviewed_at`: the nightly model typed/confirmed it.
+ */
+export const thoughtLinks = sqliteTable(
+  'thought_links',
+  {
+    ...ownedFields(),
+    a_thought_id: text('a_thought_id')
+      .notNull()
+      .references(() => thoughts.id),
+    a_bullet_id: text('a_bullet_id').notNull(),
+    b_thought_id: text('b_thought_id')
+      .notNull()
+      .references(() => thoughts.id),
+    b_bullet_id: text('b_bullet_id').notNull(),
+    type: text('type').$type<LinkType>().notNull(),
+    score: real('score').notNull(),
+    origin: text('origin').$type<'capture' | 'user'>().notNull(),
+    reviewed_at: integer('reviewed_at'),
+  },
+  (t) => [
+    uniqueIndex('thought_links_pair_idx').on(t.owner_id, t.a_thought_id, t.b_thought_id),
+    index('thought_links_b_idx').on(t.b_thought_id),
+  ],
+)
+
+/**
+ * Pairs that must never be linked (`link`) or proposed as an answer (`resolve`) again. Stored
+ * with the smaller id first, so one row covers both directions. `source`: the user's correction,
+ * or a nightly review that found them unrelated.
+ */
+export const linkVetoes = sqliteTable(
+  'link_vetoes',
+  {
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    lo_thought_id: text('lo_thought_id').notNull(),
+    hi_thought_id: text('hi_thought_id').notNull(),
+    scope: text('scope').$type<'link' | 'resolve'>().notNull(),
+    source: text('source').$type<'user' | 'model'>().notNull(),
+    created_at: integer('created_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.owner_id, t.lo_thought_id, t.hi_thought_id, t.scope] })],
+)
+
+/**
+ * Themes. `model_name` is the nightly model's name (kept, never shown once the user renamed it:
+ * `user_name`). `vetoed_thought_ids`: "Not a theme" — the thoughts it held then. `sensitive_share`
+ * is server-only.
+ */
+export const themes = sqliteTable(
+  'themes',
+  {
+    ...ownedFields(),
+    model_name: text('model_name'),
+    user_name: text('user_name'),
+    status: text('status').$type<ThemeStatus>().notNull(),
+    retired_by: text('retired_by').$type<'user' | 'merge'>(),
+    merged_into_theme_id: text('merged_into_theme_id'),
+    vetoed_thought_ids: text('vetoed_thought_ids', { mode: 'json' })
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    thought_count: integer('thought_count').notNull().default(0),
+    day_count: integer('day_count').notNull().default(0),
+    first_seen_at: integer('first_seen_at'),
+    last_seen_at: integer('last_seen_at'),
+    sensitive_share: real('sensitive_share').notNull().default(0),
+  },
+  (t) => [index('themes_owner_idx').on(t.owner_id, t.status)],
+)
+
+/** The thoughts of a theme (deleted rows: thoughts it held before a merge or an edit). */
+export const themeThoughts = sqliteTable(
+  'theme_thoughts',
+  {
+    ...ownedFields(),
+    theme_id: text('theme_id')
+      .notNull()
+      .references(() => themes.id),
+    thought_id: text('thought_id')
+      .notNull()
+      .references(() => thoughts.id),
+    bullet_id: text('bullet_id').notNull(),
+  },
+  (t) => [
+    uniqueIndex('theme_thoughts_pair_idx').on(t.theme_id, t.thought_id),
+    index('theme_thoughts_thought_idx').on(t.thought_id),
+  ],
+)
+
+/** A merged theme points at the theme it was merged into; later matches fold into that one. */
+export const themeAliases = sqliteTable('theme_aliases', {
+  alias_theme_id: text('alias_theme_id')
+    .primaryKey()
+    .references(() => themes.id),
+  owner_id: text('owner_id')
+    .notNull()
+    .references(() => users.id),
+  survivor_theme_id: text('survivor_theme_id')
+    .notNull()
+    .references(() => themes.id),
+  created_at: integer('created_at').notNull(),
+})
+
+/** Noticed cards: "«quote» · came up N times in M days". */
+export const noticedCards = sqliteTable(
+  'noticed_cards',
+  {
+    ...ownedFields(),
+    theme_id: text('theme_id')
+      .notNull()
+      .references(() => themes.id),
+    headline: text('headline').notNull(),
+    quotes: text('quotes', { mode: 'json' }).$type<NoticedQuote[]>().notNull(),
+    count: integer('count').notNull(),
+    days: integer('days').notNull(),
+    status: text('status').$type<NoticedStatus>().notNull(),
+    opened_at: integer('opened_at'),
+    resolved_at: integer('resolved_at'),
+  },
+  (t) => [index('noticed_cards_owner_idx').on(t.owner_id, t.created_at)],
+)
+
+/** Nightly runs (themes, link review, Noticed): one row per run, for scheduling and catch-up. */
+export const nightlyRuns = sqliteTable('nightly_runs', {
+  id: text('id').primaryKey(),
+  /** The 02:00 slot this run covers. */
+  slot_at: integer('slot_at').notNull(),
+  started_at: integer('started_at').notNull(),
+  finished_at: integer('finished_at'),
+  status: text('status').$type<'running' | 'done' | 'failed'>().notNull(),
+  stats: text('stats', { mode: 'json' }).$type<Record<string, unknown>>(),
+  error: text('error'),
+})
 
 export const tasks = sqliteTable(
   'tasks',
@@ -391,6 +611,16 @@ export const schema = {
   transcripts,
   thoughts,
   questions,
+  linkJobs,
+  thoughtEmbeddings,
+  embeddingBaselines,
+  thoughtLinks,
+  linkVetoes,
+  themes,
+  themeThoughts,
+  themeAliases,
+  noticedCards,
+  nightlyRuns,
   syncOps,
   syncChanges,
   syncCounter,

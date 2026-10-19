@@ -19,7 +19,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { readingAsActivity, type ResolvedSuggestion, withProvenance } from '@bullet/engine'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { suggestions } from '../db/schema'
 import { touch } from '../sync/changes'
@@ -129,10 +129,17 @@ export function reconcileSuggestions(
   incoming: ThingDraftWithThought[],
   now: number,
 ): ReconcileResult {
+  // "Did this close it?" comes from the link job, not extraction: reconciling leaves it alone.
   const existing = db
     .select()
     .from(suggestions)
-    .where(and(eq(suggestions.source_bullet_id, bullet.id), eq(suggestions.state, 'active')))
+    .where(
+      and(
+        eq(suggestions.source_bullet_id, bullet.id),
+        eq(suggestions.state, 'active'),
+        ne(suggestions.target_kind, 'thought_resolve'),
+      ),
+    )
     .all()
   const drafts = declinedReadingsAsActivities(incoming, existing)
 
@@ -204,7 +211,10 @@ export function reconcileSuggestions(
   return { kept: pairs.length, added: added.length, retired: pool.length, ids }
 }
 
-/** Is any of the bullet's suggestions still waiting for the user? */
+/**
+ * Is any of the bullet's suggestions still waiting for the user? ("Did this close it?" is about
+ * another capture's loop and never counts.)
+ */
 export function hasPendingSuggestions(db: Db, bulletId: string): boolean {
   return (
     db
@@ -215,6 +225,7 @@ export function hasPendingSuggestions(db: Db, bulletId: string): boolean {
           eq(suggestions.source_bullet_id, bulletId),
           eq(suggestions.state, 'active'),
           eq(suggestions.status, 'pending'),
+          ne(suggestions.target_kind, 'thought_resolve'),
         ),
       )
       .get() !== undefined

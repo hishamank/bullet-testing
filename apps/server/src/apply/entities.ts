@@ -4,7 +4,7 @@
  * can be missed by a pull.
  */
 
-import type { PullChangeKind, TargetKind } from '@bullet/core'
+import type { PullChangeKind, ThingKind } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { activities, events, tasks, trackerEntries, trackers } from '../db/schema'
@@ -16,7 +16,7 @@ const TABLES = {
   tracker: trackers,
   tracker_entry: trackerEntries,
   activity: activities,
-} as const satisfies Record<TargetKind, unknown>
+} as const satisfies Record<ThingKind, unknown>
 
 export const CHANGE_KIND = {
   task: 'tasks',
@@ -24,7 +24,7 @@ export const CHANGE_KIND = {
   tracker: 'trackers',
   tracker_entry: 'tracker_entries',
   activity: 'activities',
-} as const satisfies Record<TargetKind, PullChangeKind>
+} as const satisfies Record<ThingKind, PullChangeKind>
 
 /**
  * The kinds share `id`/`owner_id`/`state`/`updated_at`/`source_bullet_id` columns; the generic
@@ -32,7 +32,7 @@ export const CHANGE_KIND = {
  * all of them. Field sets are validated against `@bullet/core` schemas before reaching here.
  */
 type EntityTable = typeof tasks
-const tableFor = (kind: TargetKind): EntityTable => TABLES[kind] as unknown as EntityTable
+const tableFor = (kind: ThingKind): EntityTable => TABLES[kind] as unknown as EntityTable
 
 export type EntityRow = Record<string, unknown> & {
   id: string
@@ -44,7 +44,7 @@ export type EntityRow = Record<string, unknown> & {
 
 export function getEntity(
   db: Db,
-  kind: TargetKind,
+  kind: ThingKind,
   ownerId: string,
   id: string,
 ): EntityRow | undefined {
@@ -62,7 +62,7 @@ export function getEntity(
  */
 export function insertEntity(
   db: Db,
-  kind: TargetKind,
+  kind: ThingKind,
   row: Record<string, unknown> & { id: string; owner_id: string },
   now: number,
 ): boolean {
@@ -80,7 +80,7 @@ export function insertEntity(
 /** Write exactly the given fields (a field-level patch) and nothing else. */
 export function patchEntity(
   db: Db,
-  kind: TargetKind,
+  kind: ThingKind,
   ownerId: string,
   id: string,
   patch: Record<string, unknown>,
@@ -96,7 +96,7 @@ export function patchEntity(
 
 export function softDeleteEntity(
   db: Db,
-  kind: TargetKind,
+  kind: ThingKind,
   ownerId: string,
   id: string,
   now: number,
@@ -107,7 +107,7 @@ export function softDeleteEntity(
 /** Active entities of `kind` extracted from `bulletId`. */
 export function listActiveBySource(
   db: Db,
-  kind: TargetKind,
+  kind: ThingKind,
   ownerId: string,
   bulletId: string,
 ): EntityRow[] {
@@ -119,4 +119,4 @@ export function listActiveBySource(
     .all() as EntityRow[]
 }
 
-export const ENTITY_KINDS = Object.keys(TABLES) as TargetKind[]
+export const ENTITY_KINDS = Object.keys(TABLES) as ThingKind[]

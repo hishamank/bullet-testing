@@ -34,7 +34,7 @@ test('0005 keeps every question and thought, reading them as clarifying and not 
       VALUES ('q', 'u', 1, 2, 'b', 't', NULL, 'clarifying', 'date', 'Which Thursday?',
         '["Today","Next Thursday"]', 'answered', NULL, 'Today', 3);
   `)
-  apply(db, (f) => f >= '0005')
+  apply(db, (f) => f >= '0005' && f < '0006')
   expect(db.prepare('SELECT * FROM questions').all()).toEqual([
     {
       id: 'q',
@@ -70,4 +70,47 @@ test('0005 keeps every question and thought, reading them as clarifying and not 
   expect(db.prepare("SELECT source_bullet_id FROM questions WHERE id = 'e'").get()).toEqual({
     source_bullet_id: null,
   })
+})
+
+test('0006 adds connections without touching existing rows', () => {
+  const db = new Database(':memory:')
+  db.pragma('foreign_keys = ON')
+  apply(db, (f) => f < '0006')
+  db.exec(`
+    INSERT INTO users (id, name, created_at, updated_at) VALUES ('u', 'me', 1, 1);
+    INSERT INTO bullets (id, owner_id, created_at, updated_at, text, captured_at, timezone, source,
+      text_updated_at, proc_status, proc_updated_at)
+      VALUES ('b', 'u', 1, 1, 'dinner with Karim', 1, 'Europe/Paris', 'text', 1, 'processed', 1);
+    INSERT INTO thoughts (id, owner_id, created_at, updated_at, source_bullet_id, position, text,
+      kind, kind_source) VALUES ('t', 'u', 1, 1, 'b', 0, 'dinner with Karim', 'event', 'engine');
+    INSERT INTO questions (id, owner_id, created_at, updated_at, kind, origin, topic, text,
+      options, status, template_id) VALUES ('e', 'u', 5, 5, 'reflective', 'evergreen', 'other',
+      'What surprised you this week?', '[]', 'open', 'surprised');
+  `)
+  apply(db, (f) => f >= '0006')
+  expect(db.prepare('SELECT entities, sensitive FROM thoughts').get()).toEqual({
+    entities: '[]',
+    sensitive: 0,
+  })
+  expect(db.prepare('SELECT related_thought_id, origin FROM questions').get()).toEqual({
+    related_thought_id: null,
+    origin: 'evergreen',
+  })
+  const tables = (
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]
+  ).map((r) => r.name)
+  for (const t of [
+    'thought_embeddings',
+    'thought_links',
+    'link_vetoes',
+    'themes',
+    'theme_thoughts',
+    'theme_aliases',
+    'noticed_cards',
+    'link_jobs',
+    'nightly_runs',
+    'embedding_baselines',
+  ]) {
+    expect(tables).toContain(t)
+  }
 })
