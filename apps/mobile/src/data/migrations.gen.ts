@@ -24,5 +24,9 @@ export const MIGRATIONS: readonly { tag: string; sql: string }[] = [
   {
     "tag": "0005_text_from_draft",
     "sql": "ALTER TABLE `bullets` ADD `text_from_draft` integer DEFAULT false NOT NULL;"
+  },
+  {
+    "tag": "0006_reflective_questions",
+    "sql": "PRAGMA foreign_keys=OFF;--> statement-breakpoint\nCREATE TABLE `__new_questions` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`created_at` integer NOT NULL,\n\t`updated_at` integer NOT NULL,\n\t`state` text DEFAULT 'active' NOT NULL,\n\t`source_bullet_id` text,\n\t`source_thought_id` text,\n\t`suggestion_id` text,\n\t`kind` text DEFAULT 'clarifying' NOT NULL,\n\t`origin` text DEFAULT 'capture' NOT NULL,\n\t`topic` text NOT NULL,\n\t`text` text NOT NULL,\n\t`options` text NOT NULL,\n\t`status` text NOT NULL,\n\t`answer_bullet_id` text,\n\t`answer_option` text,\n\t`resolved_at` integer,\n\t`snoozed_until` integer,\n\t`snooze_count` integer DEFAULT 0 NOT NULL,\n\t`template_id` text\n);\n--> statement-breakpoint\nINSERT INTO `__new_questions`(\"id\", \"created_at\", \"updated_at\", \"state\", \"source_bullet_id\", \"source_thought_id\", \"suggestion_id\", \"kind\", \"topic\", \"text\", \"options\", \"status\", \"answer_bullet_id\", \"answer_option\", \"resolved_at\") SELECT \"id\", \"created_at\", \"updated_at\", \"state\", \"source_bullet_id\", \"source_thought_id\", \"suggestion_id\", \"kind\", \"topic\", \"text\", \"options\", \"status\", \"answer_bullet_id\", \"answer_option\", \"resolved_at\" FROM `questions`;--> statement-breakpoint\nDROP TABLE `questions`;--> statement-breakpoint\nALTER TABLE `__new_questions` RENAME TO `questions`;--> statement-breakpoint\nPRAGMA foreign_keys=ON;--> statement-breakpoint\nCREATE INDEX `questions_bullet_idx` ON `questions` (`source_bullet_id`);--> statement-breakpoint\nALTER TABLE `thoughts` ADD `sensitive` integer DEFAULT false NOT NULL;--> statement-breakpoint\nALTER TABLE `thoughts` ADD `never_ask` integer DEFAULT false NOT NULL;"
   }
 ]

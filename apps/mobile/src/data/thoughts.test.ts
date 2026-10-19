@@ -39,6 +39,8 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         kind_source: 'engine',
         resolved_at: null,
         resolved_by_bullet_id: null,
+        sensitive: false,
+        never_ask: false,
       },
       {
         ...base,
@@ -51,6 +53,8 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         kind_source: 'engine',
         resolved_at: null,
         resolved_by_bullet_id: null,
+        sensitive: false,
+        never_ask: false,
       },
     ],
     questions: [
@@ -67,6 +71,10 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         status: 'open',
         answer_bullet_id: null,
         answer_option: null,
+        origin: 'capture' as const,
+        snoozed_until: null,
+        snooze_count: 0,
+        template_id: null,
         resolved_at: null,
       },
     ],
