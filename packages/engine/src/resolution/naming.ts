@@ -253,6 +253,8 @@ const FILLER = new Set(
     'très',
     // Arabizi / Arabic
     'ana',
+    'j',
+    'd',
     'l',
     'el',
     'il',
@@ -347,4 +349,55 @@ export function trackerName(sources: (string | null | undefined)[], fallback = '
     if (name) return name
   }
   return fallback
+}
+
+/** Things people commonly measure, beyond the verbs above (lowercase). */
+const KNOWN_MEASURES = new Set([
+  'mood',
+  'energy',
+  'stress',
+  'anxiety',
+  'pain',
+  'focus',
+  'weight',
+  'water',
+  'steps',
+  'coffee',
+  'coffees',
+  'tea',
+  'alcohol',
+  'beer',
+  'beers',
+  'cigarettes',
+  'pushups',
+  'push-ups',
+  'situps',
+  'pages',
+  'calories',
+  'sleep',
+  'run',
+  'walk',
+  'meditation',
+  'workout',
+  'study',
+  'screen time',
+  'heart rate',
+  'blood pressure',
+  'humeur',
+  'poids',
+  'eau',
+  'sommeil',
+  'stress',
+  'pas',
+])
+
+const VERB_TARGETS = new Set(VERB_NOUNS.map(([, n]) => n.toLowerCase()))
+
+/**
+ * Is `name` a thing people track (a known measure, or the noun of a reading verb: "Sleep",
+ * "Run")? Only those are offered as a NEW tracker from a thought that is not itself a reading.
+ */
+export function isKnownMeasure(name: string): boolean {
+  const n = name.toLowerCase().trim()
+  return KNOWN_MEASURES.has(n) || VERB_TARGETS.has(n) || KNOWN_MEASURES.has(n.replace(/s$/, ''))
 }

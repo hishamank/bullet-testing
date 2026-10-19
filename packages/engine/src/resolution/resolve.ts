@@ -45,8 +45,14 @@ import type { QuestionTopic } from '@bullet/core'
 import { ambiguousWeekday, type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
 import { safeTimezone, zonedParts, zonedToEpoch } from '../time/zoned'
 import { type Match, matchOpenTask, matchTracker, TRACKER_NAME_FIELDS } from './match'
-import { trackerName, trackerNounFrom } from './naming'
-import { convertDuration, type Reading, readingFromFields, readingFromText } from './reading'
+import { isKnownMeasure, trackerName, trackerNounFrom } from './naming'
+import {
+  convertDuration,
+  normalizeUnit,
+  type Reading,
+  readingFromFields,
+  readingFromText,
+} from './reading'
 import { assignTier } from './tier'
 import { cleanTitle } from './title'
 
@@ -111,6 +117,9 @@ interface Happened {
 
 /** Thoughts about the future (a plan, an appointment): nothing in them has happened yet. */
 const PLAN_THOUGHTS: readonly ThoughtKind[] = ['task', 'event']
+
+/** Wanting to track something ("start tracking my mood", "suivre mon sommeil"). */
+const TRACKING = /\b(track|tracking|suivre|log my|logging)\b/i
 
 /** "Remind me to…", "don't forget to…": a one-off intention, never a tracker definition. */
 const REMINDER =
@@ -243,7 +252,11 @@ export function resolveCandidates(
     // Small local models (e.g. gemma3:4b) sometimes WRAP field values one level deep under
     // structured output — `value: { value: 3 }`, `name: { name: 'mood' }`. Flatten that single
     // level ONCE here so every downstream reader works on primitives unchanged (see flattenFields).
-    const normalized = rerouted({ ...candidate, fields: flattenFields(candidate.fields) }, thought)
+    const normalized = rerouted(
+      { ...candidate, fields: flattenFields(candidate.fields) },
+      thought,
+      ctx,
+    )
     switch (normalized.orientation) {
       case 'happened': {
         const resolved = resolveHappened(normalized, snapshot, config, ctx, thought)
@@ -302,13 +315,18 @@ export function resolveCandidates(
  *    reminder, a dated one-off, or a thought the segmenter called a task/event is a TASK;
  *  - an `activity` the model labelled a plan in a plan thought keeps its plan orientation.
  */
-function rerouted(candidate: Candidate, thought: ThoughtContext): Candidate {
+function rerouted(candidate: Candidate, thought: ThoughtContext, ctx: CaptureContext): Candidate {
   if (candidate.orientation === 'future_recurring' && candidate.kind === 'tracker') {
     const said = `${candidate.text} ${thought.text ?? ''}`
-    const oneOff =
-      REMINDER.test(said) ||
-      (thought.kind !== undefined && PLAN_THOUGHTS.includes(thought.kind)) ||
-      /\b(tomorrow|tonight|today|demain|bukra|bokra|ce soir)\b/i.test(said)
+    // "Start tracking my mood from tomorrow" really is a tracker.
+    if (TRACKING.test(said) && !REMINDER.test(said)) return candidate
+    // A plan thought ("Buy olive oil tomorrow") whose date is its "when", or a reminder.
+    const when = stringFieldOrNull(candidate.fields, ['when', 'date', 'due']) ?? candidate.text
+    const plan =
+      thought.kind !== undefined &&
+      PLAN_THOUGHTS.includes(thought.kind) &&
+      resolveWhen(when, ctx, 'future') !== null
+    const oneOff = REMINDER.test(said) || plan
     if (oneOff) {
       const title = stringFieldOrNull(candidate.fields, ['title', 'name']) ?? candidate.text
       return {
@@ -378,12 +396,12 @@ function resolveHappened(
   ]
   // What is measured, as a short noun ("Sleep"): the tracker's name, and one more way to match.
   const name = trackerName([...modelNames.filter(borneOut), candidate.text, ...modelNames])
-  const anyHit = matchTracker(candidate, snapshot.trackers, reading ? [name] : [])
-  // A number logged under the wrong measurement is the harm; a select/yes-no value is checked
-  // against the tracker's options instead.
+  // A number logged under the wrong measurement is the harm, so a number/scale tracker the words
+  // don't name is not a candidate at all (the best match among the others still wins); a
+  // select/yes-no value is checked against the tracker's options instead.
   const measured = (t: SnapshotTracker) => t.input_type === 'number' || t.input_type === 'scale'
-  const trackerHit =
-    anyHit && (!measured(anyHit.item) || borneOut(anyHit.item.name)) ? anyHit : undefined
+  const eligible = snapshot.trackers.filter((t) => !measured(t) || borneOut(t.name))
+  const trackerHit = matchTracker(candidate, eligible, reading ? [name] : [])
   const taskHit = matchOpenTask(candidate, snapshot.openTasks)
   const one = (s: ResolvedSuggestion): Happened => ({ suggestions: [s], questions: [] })
 
@@ -413,8 +431,14 @@ function resolveHappened(
   // tracker ("Start tracking Sleep?", a definition: never auto) and the reading as a tracker
   // entry that depends on it, waiting for a tap. A tracker that matched but rejected the value
   // keeps the value on an activity instead (value-bearing, so never auto either).
-  if (reading && !(trackerHit && trackerScore >= BORDERLINE_MATCH)) {
-    return newTrackerWithReading(candidate, config, occurredAt, reading, name)
+  // A NEW tracker is only offered for a reading (a tracker thought or candidate) or a thing people
+  // track ("Sleep", "Water"); "spent 2 hours at the dentist" keeps its value on an activity.
+  if (
+    reading &&
+    !(trackerHit && trackerScore >= BORDERLINE_MATCH) &&
+    (readingKind || isKnownMeasure(name))
+  ) {
+    return newTrackerWithReading(candidate, config, ctx, occurredAt, reading, name)
   }
 
   // No match that clears BORDERLINE (or a tracker matched but its value was invalid for that
@@ -431,6 +455,49 @@ function resolveHappened(
   return one(createActivity(candidate, config, ctx, occurredAt, reading))
 }
 
+/** The words of a reading without its value ("Slept 6 hours." → "Slept"); `fallback` if none. */
+function readingActivityName(
+  candidate: Candidate,
+  ctx: CaptureContext,
+  reading: Reading,
+  fallback: string,
+): string {
+  const said = stringField(candidate.fields, ['name', 'title'], candidate.text)
+  const phrase = reading.phrase?.trim()
+  const without = phrase
+    ? said.replace(
+        new RegExp(`${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+(?:of|de|d'))?`, 'iu'),
+        ' ',
+      )
+    : said
+  const name = cleanTitle(without, ctx, { direction: 'past' })
+  return /[\p{L}]/u.test(name) ? name : fallback
+}
+
+/**
+ * "Not now" on a new tracker keeps its waiting reading as a plain activity with the value
+ * ("Slept · 6 h", no tracker). The activity payload for a reading `entry` of tracker offer
+ * `tracker` (both suggestion payloads); provenance is carried over.
+ */
+export function readingAsActivity(
+  entry: SuggestionPayload,
+  tracker: SuggestionPayload,
+): SuggestionPayload {
+  const config = (tracker.config ?? {}) as { unit?: unknown }
+  const named = typeof entry.activity_name === 'string' && entry.activity_name.trim() !== ''
+  return {
+    name: named ? entry.activity_name : typeof tracker.name === 'string' ? tracker.name : 'Reading',
+    occurred_at: entry.logged_at,
+    tracker_id: null,
+    notes: null,
+    quantity: typeof entry.value === 'number' ? entry.value : null,
+    unit: typeof config.unit === 'string' ? config.unit : null,
+    owner_id: entry.owner_id,
+    source_bullet_id: entry.source_bullet_id,
+    source_thought_id: entry.source_thought_id ?? null,
+  }
+}
+
 /** The question offered with a new tracker (decision 4: "Start tracking Mood?"). */
 export function startTrackingQuestion(name: string): string {
   return `Start tracking ${name}?`
@@ -444,6 +511,7 @@ export function startTrackingQuestion(name: string): string {
 function newTrackerWithReading(
   candidate: Candidate,
   config: EngineConfig,
+  ctx: CaptureContext,
   loggedAt: number,
   reading: Reading,
   name: string,
@@ -467,7 +535,13 @@ function newTrackerWithReading(
     target_kind: 'tracker_entry',
     operation: 'create',
     target_id: null,
-    payload: { value: reading.value, logged_at: loggedAt },
+    // `activity_name`: what the reading is called if the tracker is declined ("Not now" keeps it
+    // as an activity: "Slept · 6 h"). Ignored when it is logged as an entry.
+    payload: {
+      value: reading.value,
+      logged_at: loggedAt,
+      activity_name: readingActivityName(candidate, ctx, reading, name),
+    },
     confidence,
     // Its tracker does not exist yet: it can never apply on its own, whatever the config says.
     tier: capToSuggest(
@@ -540,9 +614,11 @@ function appendTrackerEntry(
   loggedAt: number,
   reading: Reading | null,
 ): ResolvedSuggestion | null {
-  const value =
-    readingValueFor(reading, trackerHit.item.config) ??
-    coerceEntryValue(candidate.fields, trackerHit.item.input_type)
+  const fromReading = readingValueFor(reading, trackerHit.item.config)
+  // A reading on another scale or unit ("mood 7/10" for a 1–5 tracker, "5 miles" for km) is not
+  // clamped or converted silently: the caller keeps it on an activity, for the user to look at.
+  if (fromReading === MISMATCH) return null
+  const value = fromReading ?? coerceEntryValue(candidate.fields, trackerHit.item.input_type)
   // No usable value (e.g. "checked my weight" against a number tracker) → never invent one.
   if (value === null) return null
   // Validate/clamp against the tracker's config (@bullet/db defers this to us — see snapshot.ts).
@@ -844,13 +920,29 @@ function numberFieldOrNull(fields: Record<string, unknown>, keys: string[]): num
  * between hours and minutes when the units differ. Null when it does not apply (the caller then
  * reads the model's fields as before).
  */
-function readingValueFor(reading: Reading | null, config: TrackerConfig): number | null {
+const MISMATCH = 'mismatch' as const
+
+function readingValueFor(
+  reading: Reading | null,
+  config: TrackerConfig,
+): number | null | typeof MISMATCH {
   if (!reading) return null
-  if (config.input_type === 'scale') return reading.value
+  if (config.input_type === 'scale') {
+    if (reading.scale && reading.scale.max !== config.max) return MISMATCH
+    if (reading.value < config.min || reading.value > config.max) return MISMATCH
+    return reading.value
+  }
   if (config.input_type !== 'number') return null
-  const want = config.unit ?? null
-  if (want === null || reading.unit === null) return reading.value
-  return convertDuration(reading.value, reading.unit, want) ?? reading.value
+  const want = normalizeUnit(config.unit)
+  let value = reading.value
+  if (want !== null && reading.unit !== null && want !== reading.unit) {
+    const converted = convertDuration(reading.value, reading.unit, want)
+    if (converted === null) return MISMATCH
+    value = converted
+  }
+  if (config.min !== undefined && value < config.min) return MISMATCH
+  if (config.max !== undefined && value > config.max) return MISMATCH
+  return value
 }
 
 /** Read a task priority (P1..P4) if present, else null. */

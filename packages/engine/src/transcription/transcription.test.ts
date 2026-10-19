@@ -100,6 +100,10 @@ describe('the phone draft as a fallback', () => {
     expect(isUsableDraft('buy olive oil')).toBe(false)
     expect(isUsableDraft('Thank you. Thank you. Thank you. Thank you.')).toBe(false)
     expect(isUsableDraft('Thanks for watching')).toBe(false)
+    // Repeats and hesitations are not content.
+    expect(isUsableDraft('thank you thank you thank you thank you')).toBe(false)
+    expect(isUsableDraft('um uh like so um buy milk')).toBe(false)
+    expect(isUsableDraft('euh yaane bukra lazem eb3at el report')).toBe(true)
     expect(isUsableDraft('')).toBe(false)
     expect(isUsableDraft(null)).toBe(false)
     expect(wordCount('  [BLANK_AUDIO] hi there, you. ')).toBe(3)

@@ -404,7 +404,7 @@ describe('a matched scale/number tracker with no value does not invent one', () 
     expect(s.payload.value).toBe(72.5)
   })
 
-  test('a real scale value is still logged (and clamped)', () => {
+  test('a value off the scale is never clamped: it waits on an activity with its value', () => {
     const s = one(
       candidate({
         kind: 'tracker_entry',
@@ -414,7 +414,17 @@ describe('a matched scale/number tracker with no value does not invent one', () 
       }),
       trackers,
     )
-    expect(s.payload.value).toBe(5)
+    expect(s).toMatchObject({ target_kind: 'activity', tier: 'suggest', payload: { quantity: 9 } })
+    const ok = one(
+      candidate({
+        kind: 'tracker_entry',
+        text: 'mood 4',
+        referenceName: 'mood',
+        fields: { value: 4 },
+      }),
+      trackers,
+    )
+    expect(ok).toMatchObject({ target_kind: 'tracker_entry', payload: { value: 4 } })
   })
 
   test('a boolean tracker mentioned as happened logs true, not false', () => {

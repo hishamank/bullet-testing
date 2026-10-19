@@ -73,6 +73,52 @@ export function isSilenceHallucination(text: string): boolean {
   return sentences.every((s) => HALLUCINATIONS.has(s))
 }
 
+/** Hesitations that carry no content (English, French, Lebanese Arabic). */
+const FILLERS = new Set([
+  'um',
+  'umm',
+  'uh',
+  'uhh',
+  'er',
+  'erm',
+  'hmm',
+  'mm',
+  'like',
+  'so',
+  'euh',
+  'heu',
+  'ben',
+  'bah',
+  'yaane',
+  'ya3ne',
+  'ya3ni',
+  'yaani',
+  'ahh',
+  'ah',
+  'eh',
+])
+
+/** Drop a phrase repeated back to back ("thank you thank you thank you" → "thank you"). */
+function collapseRepeats(words: string[]): string[] {
+  const out = [...words]
+  for (let n = 1; n <= 4; n++) {
+    for (let i = 0; i + 2 * n <= out.length;) {
+      const a = out.slice(i, i + n).join(' ')
+      const b = out.slice(i + n, i + 2 * n).join(' ')
+      if (a === b) out.splice(i + n, n)
+      else i++
+    }
+  }
+  return out
+}
+
+/** Content words in a text (any script): no punctuation, markers, fillers or back-to-back repeats. */
+function contentWords(text: string): string[] {
+  const b = bare(text)
+  if (b === '') return []
+  return collapseRepeats(b.split(' ').filter((w) => !FILLERS.has(w)))
+}
+
 /** Words in a text (any script), ignoring punctuation and non-speech markers. */
 export function wordCount(text: string): number {
   const b = bare(text)
@@ -85,7 +131,13 @@ export function wordCount(text: string): number {
  */
 export function isUsableDraft(draft: string | null | undefined): boolean {
   if (!draft) return false
-  return hasSpeech(draft) && wordCount(draft) > 3 && !isSilenceHallucination(draft)
+  const words = contentWords(draft)
+  return (
+    hasSpeech(draft) &&
+    words.length > 3 &&
+    !isSilenceHallucination(draft) &&
+    !isSilenceHallucination(words.join(' '))
+  )
 }
 
 /** Recordings up to this long are "short": a hallucination there is almost surely silence. */

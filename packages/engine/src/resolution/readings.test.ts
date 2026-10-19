@@ -10,7 +10,7 @@ import type { ExtractionSnapshot } from '../extraction/snapshot'
 import { zonedToEpoch } from '../time/zoned'
 import { trackerName, trackerNounFrom } from './naming'
 import { convertDuration, readingFromFields, readingFromText } from './reading'
-import { resolveCandidates, type ThoughtContext } from './resolve'
+import { readingAsActivity, resolveCandidates, type ThoughtContext } from './resolve'
 
 const config = ENGINE_CONFIG_DEFAULTS
 const PARIS = 'Europe/Paris'
@@ -48,12 +48,12 @@ describe('reading parsing', () => {
     ['mood 3/5', { value: 3, unit: null, scale: { min: 1, max: 5 } }],
     ['energy 3 out of 5 today', { value: 3, unit: null, scale: { min: 1, max: 5 } }],
   ])('%s', (text, want) => {
-    expect(readingFromText(text, { allowBare: false })).toEqual(want)
+    expect(readingFromText(text, { allowBare: false })).toMatchObject(want)
   })
 
   test('a bare number only when the text is known to be a reading', () => {
     expect(readingFromText('mood 3', { allowBare: false })).toBeNull()
-    expect(readingFromText('mood 3', { allowBare: true })).toEqual({
+    expect(readingFromText('mood 3', { allowBare: true })).toMatchObject({
       value: 3,
       unit: null,
       scale: null,
@@ -338,5 +338,161 @@ describe('routing backstops', () => {
       }),
     )
     expect(suggestions[0]).toMatchObject({ target_kind: 'tracker', payload: { name: 'Mood' } })
+  })
+})
+
+describe('review follow-ups (2026-10-19)', () => {
+  const meditation = {
+    id: 't-med',
+    name: 'Meditation',
+    input_type: 'number' as const,
+    config: { input_type: 'number' as const, unit: 'min' },
+  }
+  const sleep = {
+    id: 't-sleep',
+    name: 'Sleep',
+    input_type: 'number' as const,
+    config: { input_type: 'number' as const, unit: 'h' },
+  }
+
+  test('a wrong model reference still finds the right tracker among the others', () => {
+    const { suggestions } = resolve(
+      candidate({
+        kind: 'tracker_entry',
+        text: 'I slept seven hours last night.',
+        referenceName: 'Meditation',
+        fields: { tracker: 'Meditation', value: 7 },
+      }),
+      { trackers: [meditation, sleep], openTasks: [] },
+      { kind: 'tracker' },
+    )
+    expect(suggestions).toHaveLength(1)
+    expect(suggestions[0]).toMatchObject({
+      target_kind: 'tracker_entry',
+      operation: 'append',
+      target_id: 't-sleep',
+      payload: { value: 7 },
+    })
+  })
+
+  test('another scale or unit is never clamped or converted silently', () => {
+    const mood = {
+      id: 't-mood',
+      name: 'Mood',
+      input_type: 'scale' as const,
+      config: { input_type: 'scale' as const, min: 1, max: 5 },
+    }
+    const run = {
+      id: 't-run',
+      name: 'Run',
+      input_type: 'number' as const,
+      config: { input_type: 'number' as const, unit: 'km' },
+    }
+    const snapshot = { trackers: [mood, run], openTasks: [] }
+    const ten = resolve(candidate({ kind: 'tracker_entry', text: 'mood 7/10' }), snapshot, {
+      kind: 'tracker',
+    }).suggestions
+    expect(ten).toEqual([
+      expect.objectContaining({
+        target_kind: 'activity',
+        tier: 'suggest',
+        payload: expect.objectContaining({ quantity: 7 }),
+      }),
+    ])
+    const miles = resolve(candidate({ text: 'ran 5 miles' }), snapshot).suggestions
+    expect(miles).toEqual([
+      expect.objectContaining({
+        target_kind: 'activity',
+        tier: 'suggest',
+        payload: expect.objectContaining({ quantity: 5, unit: 'mi' }),
+      }),
+    ])
+    const km = resolve(candidate({ text: 'ran 5k' }), snapshot).suggestions
+    expect(km[0]).toMatchObject({
+      target_kind: 'tracker_entry',
+      target_id: 't-run',
+      payload: { value: 5 },
+    })
+  })
+
+  test('"ran 5k in 30 min": the first thing said is the reading', () => {
+    expect(readingFromText('ran 5k in 30 min', { allowBare: false })).toMatchObject({
+      value: 5,
+      unit: 'km',
+    })
+    expect(
+      readingFromText('meditated 20 minutes after 2 glasses of water', { allowBare: false }),
+    ).toMatchObject({ value: 20, unit: 'min' })
+  })
+
+  test('no new tracker for a measured activity nobody tracks ("spent 2 hours at the dentist")', () => {
+    const { suggestions } = resolve(
+      candidate({
+        text: 'spent 2 hours at the dentist',
+        fields: { name: 'spent 2 hours at the dentist' },
+      }),
+      EMPTY,
+      { kind: 'activity' },
+    )
+    expect(suggestions).toEqual([
+      expect.objectContaining({
+        target_kind: 'activity',
+        tier: 'suggest',
+        payload: expect.objectContaining({ quantity: 2, unit: 'h' }),
+      }),
+    ])
+    expect(trackerNounFrom("j'ai dormi 7h")).toBe('Sommeil')
+    expect(trackerNounFrom('j ai dormi 7h')).toBe('Sommeil')
+  })
+
+  test('"start tracking my mood from tomorrow" stays a tracker; a dated plan becomes a task', () => {
+    const tracking = resolve(
+      candidate({
+        kind: 'tracker',
+        orientation: 'future_recurring',
+        text: 'start tracking my mood from tomorrow',
+        fields: { name: 'mood', input_type: 'scale' },
+      }),
+      EMPTY,
+      { kind: 'tracker' },
+    ).suggestions
+    expect(tracking[0]).toMatchObject({ target_kind: 'tracker', payload: { name: 'Mood' } })
+    const plan = resolve(
+      candidate({
+        kind: 'tracker',
+        orientation: 'future_recurring',
+        text: 'buy olive oil tomorrow',
+        fields: { name: 'olive oil', when: 'tomorrow' },
+      }),
+      EMPTY,
+      { kind: 'task' },
+    ).suggestions
+    expect(plan[0]?.target_kind).toBe('task')
+  })
+
+  test('a declined tracker keeps its reading as an activity with the value', () => {
+    const { suggestions } = resolve(
+      candidate({ text: 'Slept 6 hours.', fields: { name: 'Slept 6 hours.' } }),
+      EMPTY,
+      { kind: 'tracker' },
+    )
+    const [tracker, entry] = suggestions
+    expect(entry?.payload.activity_name).toBe('Slept')
+    expect(
+      readingAsActivity(
+        { ...entry!.payload, owner_id: 'o', source_bullet_id: 'b' },
+        tracker!.payload,
+      ),
+    ).toEqual({
+      name: 'Slept',
+      occurred_at: entry!.payload.logged_at,
+      tracker_id: null,
+      notes: null,
+      quantity: 6,
+      unit: 'h',
+      owner_id: 'o',
+      source_bullet_id: 'b',
+      source_thought_id: null,
+    })
   })
 })

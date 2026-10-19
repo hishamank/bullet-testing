@@ -7,12 +7,13 @@ export {
   type QuestionDraft,
   type ResolvedSuggestion,
   type ResolveOutcome,
+  readingAsActivity,
   resolveCandidates,
   startTrackingQuestion,
   type ThoughtContext,
   withProvenance,
 } from './resolve'
-export { trackerName, trackerNounFrom } from './naming'
+export { isKnownMeasure, trackerName, trackerNounFrom } from './naming'
 export { cleanTitle, stripTrailingPunctuation, stripWhenPhrases } from './title'
 export {
   convertDuration,

@@ -14,7 +14,8 @@
 import { type CaptureContext, resolveWhen, type WhenDirection } from '../time/when'
 
 const B = '(?<![\\p{L}\\p{N}])'
-const E = '(?![\\p{L}\\p{N}])'
+/** Not inside a word, and not a possessive ("Monday's meeting" keeps its Monday). */
+const E = "(?![\\p{L}\\p{N}]|['’]\\p{L})"
 
 const WEEKDAYS =
   'monday|tuesday|tues|tue|wednesday|wed|thursday|thurs|thur|thu|friday|fri|saturday|sunday|' +
@@ -88,10 +89,10 @@ const RELATIVE =
   '(?:in|dans|ba3d)\\s+(?:\\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|une?|deux|trois)\\s+(?:minutes?|mins?|hours?|hrs?|days?|weeks?|heures?|jours?|semaines?|da2aye2|se3at|iyyem|jem3a)'
 
 /** A connector that only introduced the date/time: "at", "on", "by", "à", "le", "3al", "abel". */
-const LEAD = `(?:(?:at|on|by|before|from|until|till|around|for|à|a|le|la|vers|avant|pour|jusqu'à|dès|3al|3a|abel|2abel|abl|2abl|qabl|l|el)\\s+)*`
+const LEAD = `(?:(?:at|on|by|before|from|until|till|around|for|the|à|a|le|la|vers|avant|pour|jusqu'à|dès|3al|3a|abel|2abel|abl|2abl|qabl|l|el)\\s+)*`
 
 const DAY_RE = new RegExp(
-  `${B}${LEAD}(?:${DAY_WORDS}|${DATES})(?:\\s*,?\\s*${LEAD}(?:${TIMES}|${HOUR_H}))?${E}`,
+  `${B}${LEAD}(?:${DAY_WORDS}|${DATES})(?:\\s+(?:${PART_OF_DAY}))?(?:\\s*,?\\s*${LEAD}(?:${TIMES}|${HOUR_H}))?${E}`,
   'giu',
 )
 const TIME_RE = new RegExp(`${B}${LEAD}(?:${TIMES})${E}`, 'giu')

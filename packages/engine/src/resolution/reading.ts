@@ -11,6 +11,8 @@ export interface Reading {
   unit: string | null
   /** Set when the reading named its scale ("3/5", "2 sur 5", "3 out of 5"). */
   scale: { min: number; max: number } | null
+  /** The words that said it ("6 hours"), when read from text. */
+  phrase?: string
 }
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -98,11 +100,18 @@ export function readingFromText(text: string, opts: { allowBare: boolean }): Rea
     const value = toNumber(scale[1] ?? '')
     const max = Number(scale[2])
     if (Number.isFinite(value) && max > 0 && max <= 100 && value <= max) {
-      return { value, unit: null, scale: { min: value === 0 ? 0 : max === 100 ? 0 : 1, max } }
+      return {
+        value,
+        unit: null,
+        scale: { min: value === 0 ? 0 : max === 100 ? 0 : 1, max },
+        phrase: scale[0].trim(),
+      }
     }
   }
 
-  // Durations: "6 hours", "6h", "7h30", "1h 15", "20 minutes", "six hours", "2 heures".
+  // Durations ("6 hours", "6h", "7h30", "20 minutes", "six hours", "2 heures"), measures ("5k",
+  // "72 kg") and counts ("3 glasses"). "Ran 5k in 30 min" holds two: the first one said wins.
+  const found: { at: number; reading: Reading }[] = []
   const hours = new RegExp(
     `${NUM}\\s*(?:hours?|hrs?|h|heures?|sa3at|sa3a|se3at|ساعات|ساعة)(?:\\s*(\\d{1,2})\\s*(?:min(?:ute)?s?|m)?)?(?![\\p{L}\\d])`,
     'u',
@@ -111,33 +120,67 @@ export function readingFromText(text: string, opts: { allowBare: boolean }): Rea
     const h = toNumber(hours[1] ?? '')
     const m = hours[2] ? Number(hours[2]) : 0
     if (Number.isFinite(h) && h <= 48) {
-      return { value: Math.round((h + m / 60) * 100) / 100, unit: 'h', scale: null }
+      found.push({
+        at: hours.index,
+        reading: {
+          value: Math.round((h + m / 60) * 100) / 100,
+          unit: 'h',
+          scale: null,
+          phrase: hours[0].trim(),
+        },
+      })
     }
   }
   const minutes = new RegExp(
     `${NUM}\\s*(?:minutes?|mins?|da2i2a|d2i2a|دقيقة|دقائق)(?![\\p{L}\\d])`,
     'u',
   ).exec(s)
-  if (minutes) return { value: toNumber(minutes[1] ?? ''), unit: 'min', scale: null }
-
+  if (minutes) {
+    found.push({
+      at: minutes.index,
+      reading: {
+        value: toNumber(minutes[1] ?? ''),
+        unit: 'min',
+        scale: null,
+        phrase: minutes[0].trim(),
+      },
+    })
+  }
   const measured = new RegExp(
     `${NUM}\\s*(km|kms|k|miles?|mi|kgs?|kilos?|lbs?|pounds?|liters?|litres?|l|steps|pas)(?![\\p{L}\\d])`,
     'u',
   ).exec(s)
   if (measured && !AT_TIME.test(s.slice(0, measured.index))) {
-    return { value: toNumber(measured[1] ?? ''), unit: normalizeUnit(measured[2]), scale: null }
+    found.push({
+      at: measured.index,
+      reading: {
+        value: toNumber(measured[1] ?? ''),
+        unit: normalizeUnit(measured[2]),
+        scale: null,
+        phrase: measured[0].trim(),
+      },
+    })
   }
-
   const counted = new RegExp(`${NUM}\\s+(${COUNT_NOUNS})(?![\\p{L}\\d])`, 'u').exec(s)
   if (counted) {
-    return { value: toNumber(counted[1] ?? ''), unit: normalizeUnit(counted[2]), scale: null }
+    found.push({
+      at: counted.index,
+      reading: {
+        value: toNumber(counted[1] ?? ''),
+        unit: normalizeUnit(counted[2]),
+        scale: null,
+        phrase: counted[0].trim(),
+      },
+    })
   }
+  const first = found.sort((a, b) => a.at - b.at)[0]
+  if (first) return first.reading
 
   if (opts.allowBare) {
     // A lone number that is not a clock time or a date ("mood 3", "weight 72.5").
     for (const m of s.matchAll(/(?<![\d/:.,])(\d+(?:[.,]\d+)?)(?![\d/:]|\s*(?:am|pm|h\d))/g)) {
       if (AT_TIME.test(s.slice(0, m.index))) continue
-      return { value: toNumber(m[1] ?? ''), unit: null, scale: null }
+      return { value: toNumber(m[1] ?? ''), unit: null, scale: null, phrase: m[1] ?? '' }
     }
   }
   return null

@@ -339,7 +339,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
 })
 
 describe('tracker_entry value validation against the tracker config', () => {
-  test('a scale entry above max is CLAMPED to max', () => {
+  test('a scale entry above max is NOT clamped: it stays a valued activity', () => {
     const snapshot: ExtractionSnapshot = {
       trackers: [
         {
@@ -365,9 +365,9 @@ describe('tracker_entry value validation against the tracker config', () => {
       CTX,
     )
     const s = first(suggestions)
-    expect(s.target_kind).toBe('tracker_entry')
-    // 9 on a 1–5 scale is clamped to the max (5), not persisted unchecked.
-    expect(s.payload.value).toBe(5)
+    // 9 on a 1–5 scale is neither clamped nor persisted unchecked: the value waits on an activity
+    // for the user to look at (review, 2026-10-19).
+    expect(s).toMatchObject({ target_kind: 'activity', tier: 'suggest', payload: { quantity: 9 } })
   })
 
   test('a single_select with an out-of-set value falls back to an UNLINKED activity', () => {
