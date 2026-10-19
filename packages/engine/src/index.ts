@@ -15,6 +15,7 @@ export * from './time'
 export * from './transcription'
 export * from './segmentation'
 export * from './reflection'
+export * from './connections'
 export {
   type CaptureOutcome,
   type CaptureQuestionDraft,

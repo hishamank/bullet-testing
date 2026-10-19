@@ -18,7 +18,14 @@ import { requestStructured } from '../extraction/extract'
 import { renderCaptureContext } from '../extraction/prompt'
 import type { LlmClient, LlmMessage } from '../llm/types'
 import type { CaptureContext } from '../time/when'
+import { cleanEntities, normalizeEntity } from '../connections/entities'
 import { looksSensitive } from './sensitive'
+
+/** Does `text` contain the name (compared loosely, see `normalizeEntity`)? */
+function mentions(text: string, name: string): boolean {
+  const n = normalizeEntity(name)
+  return n !== '' && normalizeEntity(text).includes(n)
+}
 
 export const segmentationResponseSchema = z.object({
   thoughts: z.array(
@@ -30,6 +37,8 @@ export const segmentationResponseSchema = z.object({
       kind: thoughtKindSchema,
       /** Reads as self-harm, crisis or acute distress (see the prompt). */
       sensitive: z.boolean().default(false),
+      /** Named people, places, organisations or projects, as written (for linking captures). */
+      entities: z.array(z.string()).default([]),
     }),
   ),
 })
@@ -47,6 +56,7 @@ export const segmentationJsonSchema: Record<string, unknown> = zodToJsonSchema(
         text: z.string(),
         kind: thoughtKindSchema,
         sensitive: z.boolean(),
+        entities: z.array(z.string()),
       }),
     ),
   }),
@@ -73,9 +83,10 @@ For each thought give, in this order:
   - "tracker": a measurement or reading (mood 4, slept 6h, weight 72), or wanting to track something.
   - "activity": something the user did.
 - "sensitive": true when the thought reads as self-harm, suicidal thoughts, wanting to disappear or not wake up, a crisis, or acute distress. If you are unsure whether it is that serious, use true. Ordinary worries, stress, tiredness, sadness or a bad day are false. This never changes the kind or the text.
+- "entities": the names of specific people, places, organisations or projects the thought mentions, copied as written ("Karim", "Beirut", "the Hamra flat", "Project Atlas"). Not common nouns ("the bank", "work", "mum" are not names unless used as one). [] when there are none.
 
-Example capture: "um bade jib ghaz lal sayyara, w demain j'ai rdv chez le médecin à 11h. Feeling tired"
-Example answer: {"thoughts":[{"quote":"um bade jib ghaz lal sayyara","text":"bade jib ghaz lal sayyara","kind":"task","sensitive":false},{"quote":"w demain j'ai rdv chez le médecin à 11h","text":"demain j'ai rdv chez le médecin à 11h","kind":"event","sensitive":false},{"quote":"Feeling tired","text":"Feeling tired","kind":"note","sensitive":false}]}
+Example capture: "um bade jib ghaz lal sayyara, w demain j'ai rdv chez le médecin à 11h. Dinner with Karim. Feeling tired"
+Example answer: {"thoughts":[{"quote":"um bade jib ghaz lal sayyara","text":"bade jib ghaz lal sayyara","kind":"task","sensitive":false,"entities":[]},{"quote":"w demain j'ai rdv chez le médecin à 11h","text":"demain j'ai rdv chez le médecin à 11h","kind":"event","sensitive":false,"entities":[]},{"quote":"Dinner with Karim","text":"Dinner with Karim","kind":"event","sensitive":false,"entities":["Karim"]},{"quote":"Feeling tired","text":"Feeling tired","kind":"note","sensitive":false,"entities":[]}]}
 
 Output ONLY the JSON object matching the schema. No Markdown code fences, no commentary.`
 
@@ -135,6 +146,8 @@ export interface SegmentedThought {
    * words ({@link looksSensitive}). Never shown; it only keeps reflective questions away.
    */
   sensitive: boolean
+  /** Named people, places, organisations or projects it mentions, as written (may be empty). */
+  entities: string[]
 }
 
 /** Curly quotes the model may straighten (or the keyboard may curl). */
@@ -255,6 +268,7 @@ export async function segmentCapture(
         kind: 'note',
         span: { start: chunk.offset + lead, end: chunk.offset + lead + text.length },
         sensitive: looksSensitive(text),
+        entities: [],
       })
       continue
     }
@@ -270,7 +284,9 @@ export async function segmentCapture(
       let text = t.text.trim()
       if (verbatim !== '' && (text === '' || driftedFrom(text, verbatim))) text = verbatim
       const sensitive = t.sensitive || looksSensitive(text) || looksSensitive(verbatim)
-      thoughts.push({ position: thoughts.length, text, kind: t.kind, span, sensitive })
+      // A name the model invented is not the user's: keep only names found in their words.
+      const entities = cleanEntities(t.entities).filter((e) => mentions(input.text, e))
+      thoughts.push({ position: thoughts.length, text, kind: t.kind, span, sensitive, entities })
     }
   }
   return thoughts

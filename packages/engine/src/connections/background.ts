@@ -1,0 +1,43 @@
+/**
+ * Everyday journal lines on many unrelated subjects, in the user's languages. Their mean vector
+ * centres a general LLM's embeddings from the first capture on (the user's own thoughts join the
+ * mean as the journal grows). Never shown, never stored as thoughts.
+ */
+export const EMBED_BACKGROUND_SENTENCES: readonly string[] = [
+  'buy milk',
+  'call the plumber',
+  'mood 4 today',
+  'I love the smell of rain',
+  'what do I want from this year?',
+  'bade jib ghaz lal sayyara',
+  "demain j'ai rdv chez le médecin à 11h",
+  'feeling tired',
+  'pay the electricity bill',
+  'meeting at 3pm with the team',
+  'drank 2 litres of water',
+  'weight 72',
+  'read 20 pages of the novel',
+  'the weather is nice today',
+  'cleaned the kitchen',
+  'pick up the dry cleaning',
+  'had a long walk by the sea',
+  'need to fix the bike',
+  'watched a film with friends',
+  'cooked lentil soup',
+  'meditated for 10 minutes',
+  'the car makes a strange noise',
+  'birthday gift for Lina',
+  'idea: a small café in Beirut',
+  'learn some Spanish',
+  'the internet was down all morning',
+  'remember to water the plants',
+  'went to the gym',
+  'my phone screen cracked',
+  'book flights for December',
+  'slept 7 hours',
+  'worried about the exam results',
+  "j'ai oublié mes clés au bureau",
+  'kifak, l yom kan tawil',
+  'اشتقت لأهلي',
+  'should I learn to swim this summer?',
+]

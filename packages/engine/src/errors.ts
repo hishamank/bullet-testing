@@ -13,6 +13,8 @@ export type EngineErrorCode =
   | 'TRANSCRIPTION_NO_SPEECH' // the recording was read but holds no speech (silence, a tone)
   | 'LLM_PARSE' // the model returned content that is not valid JSON
   | 'EXTRACTION_INVALID' // the model's JSON did not satisfy the extraction schema
+  | 'EMBED_HTTP' // the embedding endpoint failed (transport, non-OK response, bad body)
+  | 'EMBED_TIMEOUT' // the embedding endpoint did not answer within the deadline
 
 export class EngineError extends Error {
   readonly code: EngineErrorCode
