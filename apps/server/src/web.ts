@@ -27,8 +27,8 @@ export function findWebRoot(dir: string): string | null {
 export const WEB_CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
-  // The palette is installed as a <style> element at start-up.
-  "style-src 'self' 'unsafe-inline'",
+  // The palette is a constructable stylesheet set through the CSSOM: no inline styles needed.
+  "style-src 'self'",
   "img-src 'self' data:",
   "media-src 'self' blob:",
   "connect-src 'self'",

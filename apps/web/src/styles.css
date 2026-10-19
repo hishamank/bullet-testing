@@ -1148,3 +1148,30 @@ textarea::placeholder {
     transition: background-color 0.12s;
   }
 }
+
+/* ---- very small windows (down to 320px): the tab bar must not push the page sideways ---- */
+@media (max-width: 380px) {
+  .rail {
+    padding-left: 4px;
+    padding-right: 4px;
+    min-width: 0;
+  }
+  .rail-link {
+    padding: 6px 7px;
+  }
+  .sync-status {
+    padding: 6px 8px;
+    min-width: 0;
+  }
+  .sync-status span:last-child {
+    display: none;
+  }
+  .content,
+  .capture-dock {
+    padding-left: var(--space-md);
+    padding-right: var(--space-md);
+  }
+  .capture-bar {
+    flex-wrap: wrap;
+  }
+}

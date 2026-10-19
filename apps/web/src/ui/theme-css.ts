@@ -53,10 +53,26 @@ export function themeCss(): string {
   )
 }
 
-/** Put the palette on the page (once, before the first render). */
+/**
+ * Put the palette on the page (once, before the first render). A constructable stylesheet is set
+ * through the CSSOM, which the page's Content-Security-Policy allows without `unsafe-inline`; a
+ * browser without it gets a <style> element instead.
+ */
 export function installTheme(doc: Document = document): void {
+  const css = themeCss()
+  const win = doc.defaultView
+  if (win && 'adoptedStyleSheets' in doc && typeof win.CSSStyleSheet === 'function') {
+    try {
+      const sheet = new win.CSSStyleSheet()
+      sheet.replaceSync(css)
+      doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet]
+      return
+    } catch {
+      // Fall through to the element.
+    }
+  }
   const style = doc.createElement('style')
   style.id = 'theme-tokens'
-  style.textContent = themeCss()
+  style.textContent = css
   doc.head.prepend(style)
 }

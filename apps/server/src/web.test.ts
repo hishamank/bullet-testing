@@ -57,6 +57,7 @@ describe('serving the built web app', () => {
     expect(WEB_CSP).toContain("default-src 'self'")
     expect(WEB_CSP).toContain("connect-src 'self'")
     expect(WEB_CSP).not.toMatch(/https?:|\*/)
+    expect(WEB_CSP).not.toContain('unsafe-inline')
     expect(page.headers.get('x-content-type-options')).toBe('nosniff')
     expect(page.headers.get('referrer-policy')).toBe('no-referrer')
     expect(page.headers.get('cache-control')).toBe('no-cache')

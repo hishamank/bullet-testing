@@ -62,8 +62,9 @@ export function AnswerPanel({ target, id }: { target: 'question' | 'thought'; id
         status={<span className="status-text">Your answer is saved as a capture too.</span>}
         onSend={(text) => {
           // A loop's note is a capture that resolves the thought (`resolves_thought_id`).
-          if (pinned.kind === 'loop') actions.sendLoopNote(text, pinned.id)
-          else actions.sendCapture(text, { answersQuestionId: pinned.id })
+          return pinned.kind === 'loop'
+            ? actions.sendLoopNote(text, pinned.id)
+            : actions.sendCapture(text, { answersQuestionId: pinned.id })
         }}
         onSavedShown={() => nav.closePanel()}
       />

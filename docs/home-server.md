@@ -289,12 +289,19 @@ every request.
    IndexedDB). It is a cache of the server plus any change the server has not confirmed yet.
    **Settings → Reset local copy** or **Unpair** wipes it, and the next full pull rebuilds it; a
    change that had not reached the server is lost with it, and the buttons say so first.
-   Only one tab of a browser opens the local copy at a time.
+   Only one tab of a browser opens the local copy at a time (Web Locks on https/localhost, a
+   BroadcastChannel ping on plain http). A capture shows "Saved" only once it is stored in
+   IndexedDB, and the browser asks before the tab closes with anything unsaved. If a stored copy
+   cannot be read, a backup of it is kept and a fresh one is rebuilt from the server.
+4. **The token lives in this browser's `localStorage`**, so a script injected into the page could
+   read it; XSS is the remaining exposure. The page ships no third-party scripts and its
+   Content-Security-Policy (`script-src 'self'`, no inline script or style, `connect-src 'self'`)
+   is what limits that. Revoke a lost browser's token with `pnpm --filter server device:revoke`.
 
 For development, `pnpm dev:web` runs Vite and forwards `/sync` and `/health` to
 `BULLET_SERVER_URL` (default `http://127.0.0.1:3001`), so enter `http://localhost:5173` as the
 address there. Over plain `http` on a tailnet address the app still works (ids fall back to
-`getRandomValues`), but the one-tab lock needs a secure context (https or localhost).
+`getRandomValues`, the one-tab check to a BroadcastChannel); https is still better.
 
 ## Judging Whisper on your own voice
 

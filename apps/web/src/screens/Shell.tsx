@@ -6,7 +6,7 @@
  */
 
 import { inboxCornerLabel } from '@bullet/client'
-import { type ReactNode, useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { useInboxCount, useMediaQuery, useStore, useSyncStatus } from '../app/hooks'
 import { NARROW_QUERY, WIDE_QUERY } from '../app/layout'
 import { useActions, useNav } from '../app/nav'
@@ -29,6 +29,9 @@ import { StatusLine } from './StatusLine'
 import { Stream } from './Stream'
 import { Trackers } from './Trackers'
 
+const RECOVERED_TEXT =
+  "Your local copy couldn't be read, so it was rebuilt from your home server. A backup of the old copy was kept."
+
 const VIEWS: { view: MainView; label: string }[] = [
   { view: 'capture', label: 'Capture' },
   { view: 'journal', label: 'Journal' },
@@ -43,6 +46,8 @@ export function Shell() {
   const narrow = useMediaQuery(NARROW_QUERY)
   // Beside the content (wide), the content stays usable; over it or instead of it, it doesn't.
   const covered = route.panel !== null && !wide
+  const rt = useRuntime()
+  const [recoveredShown, setRecoveredShown] = useState(rt.recoveredMirror)
 
   return (
     <div
@@ -55,6 +60,9 @@ export function Shell() {
       <div className="content-column" inert={covered}>
         <Announcer />
         <main id="main" className="content" tabIndex={-1}>
+          {recoveredShown ? (
+            <Note text={RECOVERED_TEXT} onDismiss={() => setRecoveredShown(false)} />
+          ) : null}
           <ServerNotes />
           <View />
         </main>

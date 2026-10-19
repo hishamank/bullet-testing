@@ -5,21 +5,32 @@
  *  - `BlobStore` is where the image lives: IndexedDB in the browser, memory in tests.
  *  - `createPersister` debounces the saves: every write marks the mirror dirty, one image is
  *    saved a moment later, and `flush()` saves at once (tab hidden, tab closing).
- *  - Saves never overlap, and a failed save leaves the mirror dirty so the next one retries.
+ *  - Writes that queue something for the server are flushed at once (see the runtime), so a
+ *    capture is in IndexedDB before "Saved" shows; `flush()` resolves true only when it is stored.
+ *  - Saves never overlap. A failed save leaves the mirror dirty and is retried with backoff.
+ *  - An image that cannot be opened is copied aside (`backup`) before anything is saved over it.
  */
 
 export interface BlobStore {
   load: () => Promise<Uint8Array | null>
   save: (bytes: Uint8Array) => Promise<void>
   clear: () => Promise<void>
+  /** Keep a copy of an image that could not be used, apart from the live one. */
+  backup: (bytes: Uint8Array) => Promise<void>
 }
 
 export function createMemoryBlobStore(initial: Uint8Array | null = null): BlobStore & {
   readonly saves: number
+  readonly backups: Uint8Array[]
 } {
   let blob = initial
   let saves = 0
+  const backups: Uint8Array[] = []
   return {
+    backups,
+    backup: async (bytes) => {
+      backups.push(bytes.slice())
+    },
     get saves() {
       return saves
     },
@@ -111,6 +122,12 @@ export function createIdbBlobStore(opts: IdbBlobStoreOptions = {}): BlobStore {
       tx.objectStore(storeName).delete(key)
       await transactionDone(tx)
     },
+    async backup(bytes) {
+      const db = await open()
+      const tx = db.transaction(storeName, 'readwrite')
+      tx.objectStore(storeName).put(bytes, `${key}.backup`)
+      await transactionDone(tx)
+    },
   }
 }
 
@@ -128,13 +145,16 @@ export interface PersisterOptions {
 export interface Persister {
   /** The mirror changed: save it soon. */
   markDirty: () => void
-  /** Save now if anything changed since the last save. Resolves when it is stored. */
-  flush: () => Promise<void>
+  /** Save now if anything changed since the last save. Resolves true when everything is stored. */
+  flush: () => Promise<boolean>
   /** Anything not saved yet? */
   readonly dirty: boolean
-  /** Stop the timer without saving (the mirror is being wiped or replaced). */
+  /** Stop the timers without saving (the mirror is being wiped or replaced). */
   dispose: () => void
 }
+
+/** Wait before retrying a failed save: 2 s, 4 s, 8 s … at most 30 s. */
+export const retryDelay = (failures: number) => Math.min(30_000, 2_000 * 2 ** (failures - 1))
 
 export function createPersister(opts: PersisterOptions): Persister {
   const delayMs = opts.delayMs ?? 1_500
@@ -142,27 +162,44 @@ export function createPersister(opts: PersisterOptions): Persister {
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>))
   let dirty = false
   let timer: unknown = null
-  let chain: Promise<void> = Promise.resolve()
+  let chain: Promise<unknown> = Promise.resolve()
   let disposed = false
+  let failures = 0
+  let saving = false
 
   function stopTimer() {
     if (timer !== null) clearTimer(timer)
     timer = null
   }
 
-  function flush(): Promise<void> {
+  function flush(): Promise<boolean> {
     stopTimer()
-    chain = chain.then(async () => {
-      if (!dirty || disposed) return
+    const run = chain.then(async () => {
+      if (disposed) return false
+      if (!dirty) return true
       dirty = false
+      saving = true
       try {
         await opts.store.save(opts.snapshot())
+        failures = 0
+        return true
       } catch (err) {
         dirty = true
+        failures += 1
         opts.onError?.(err)
+        if (!disposed && timer === null) {
+          timer = setTimer(() => {
+            timer = null
+            void flush()
+          }, retryDelay(failures))
+        }
+        return false
+      } finally {
+        saving = false
       }
     })
-    return chain
+    chain = run
+    return run
   }
 
   return {
@@ -178,7 +215,7 @@ export function createPersister(opts: PersisterOptions): Persister {
     },
     flush,
     get dirty() {
-      return dirty
+      return dirty || saving
     },
     dispose() {
       disposed = true

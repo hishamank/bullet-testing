@@ -51,7 +51,7 @@ export interface Runtime {
   inbox: InboxController
   /** The last thing worth saying to a screen reader (read into a live region). */
   announcements: Store<string>
-  /** True when a saved mirror could not be read and was started again. */
+  /** True when a saved mirror could not be read: a backup was kept and a fresh one started. */
   recoveredMirror: boolean
   /** The `fetch` the app talks to the home server with (pairing check, audio). */
   fetch: typeof fetch
@@ -59,10 +59,12 @@ export interface Runtime {
   transport: () => SyncTransport | null
   /** Re-run live queries and save the mirror soon (call after a local write). */
   notify: () => void
-  /** Run a local write, refresh the screens, and sync. */
+  /** Run a local write, refresh the screens, save the mirror at once and sync. */
   run<T>(write: () => T): T
-  /** Save the mirror now (tab hidden or closing). */
-  flush: () => Promise<void>
+  /** Save the mirror now. Resolves true only when it is stored in this browser. */
+  flush: () => Promise<boolean>
+  /** Anything not yet stored in this browser (guards closing the tab)? */
+  dirty: () => boolean
   /** Keep this browser's token and pair with the server. */
   pair: (settings: ServerSettings) => void
   /** Forget the server and wipe the local copy. Unsent captures are lost. */
@@ -118,8 +120,15 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     })
   }
 
+  /** Sync outcomes and the like: save soon. */
   const notify = () => {
     persister.markDirty()
+    sync.bump()
+  }
+  /** A local write (it queued something for the server): save right away, not after a delay. */
+  const notifyNow = () => {
+    persister.markDirty()
+    void persister.flush()
     sync.bump()
   }
 
@@ -137,7 +146,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   const inbox = createInboxController({
     db: () => mirror.db,
     deps,
-    notify,
+    notify: notifyNow,
     syncNow: () => void sync.syncNow(),
     announce: (message) => announcements.set(message),
     now,
@@ -145,16 +154,25 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     clearTimer: o.clearTimer,
   })
 
-  /** Replace the mirror with an empty one (and the sync client that belongs to it). */
+  /**
+   * Replace the mirror with an empty one (and the sync client that belongs to it). The new one is
+   * opened before the old one is closed, so a failure leaves the app as it was.
+   */
   async function wipe(): Promise<void> {
+    const next = await openMirror(o.sql, o.store, { fresh: true })
     persister.dispose()
     inbox.undoStore.set([])
     client.dispose()
     mirror.close()
-    await o.store.clear()
-    mirror = await openMirror(o.sql, o.store)
+    mirror = next
     persister = makePersister(mirror)
     client = makeClient()
+    try {
+      await o.store.clear()
+    } catch (err) {
+      // The old image stays in storage until the next save replaces it.
+      console.warn('could not clear the old local copy', err)
+    }
   }
 
   return {
@@ -170,11 +188,12 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     notify,
     run(write) {
       const result = write()
-      notify()
+      notifyNow()
       void sync.syncNow()
       return result
     },
     flush: () => persister.flush(),
+    dirty: () => persister.dirty,
     pair(settings) {
       o.settings.save(settings)
       server = settings

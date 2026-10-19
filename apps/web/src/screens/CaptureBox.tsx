@@ -6,7 +6,7 @@
  */
 
 import { canSend, composerReducer, initialComposer, SAVED_MS } from '@bullet/client'
-import { type ReactNode, useEffect, useId, useReducer, useRef } from 'react'
+import { type ReactNode, useEffect, useId, useReducer, useRef, useState } from 'react'
 import { isSendShortcut } from '../app/layout'
 import { Button } from '../ui/primitives'
 
@@ -36,8 +36,8 @@ export interface CaptureBoxProps {
   size: 'page' | 'bar'
   placeholder?: string
   label?: string
-  /** Save the capture. Must not throw for non-empty text. */
-  onSend: (text: string) => void
+  /** Save the capture. Resolves once it is stored in this browser; rejects if it could not be. */
+  onSend: (text: string) => Promise<unknown>
   /** A card pinned above the text (the question or loop being answered). */
   pinned?: ReactNode
   /** The quiet line next to Send when nothing was just saved. */
@@ -57,6 +57,8 @@ export function CaptureBox(p: CaptureBoxProps) {
   }))
   const input = useRef<HTMLTextAreaElement>(null)
   const inputId = useId()
+  const sending = useRef(false)
+  const [problem, setProblem] = useState(false)
   const { savedAt } = state
   const shown = useRef(p.onSavedShown)
   shown.current = p.onSavedShown
@@ -74,12 +76,23 @@ export function CaptureBox(p: CaptureBoxProps) {
     if (p.autoFocus) input.current?.focus()
   }, [p.autoFocus])
 
+  /** "Saved" only shows, and the draft only goes, once the capture is stored in this browser. */
   function send() {
-    if (!canSend(state.text)) return
-    p.onSend(state.text)
-    writeDraft(draftKey, '')
-    dispatch({ type: 'sent', at: Date.now() })
-    input.current?.focus()
+    if (!canSend(state.text) || sending.current) return
+    sending.current = true
+    setProblem(false)
+    p.onSend(state.text).then(
+      () => {
+        sending.current = false
+        writeDraft(draftKey, '')
+        dispatch({ type: 'sent', at: Date.now() })
+        input.current?.focus()
+      },
+      () => {
+        sending.current = false
+        setProblem(true)
+      },
+    )
   }
 
   const saved = savedAt !== null && state.text === ''
@@ -99,6 +112,7 @@ export function CaptureBox(p: CaptureBoxProps) {
         placeholder={p.placeholder ?? "What's on your mind?"}
         onChange={(e) => {
           writeDraft(draftKey, e.target.value)
+          setProblem(false)
           dispatch({ type: 'change', text: e.target.value })
         }}
         onFocus={() => dispatch({ type: 'focus' })}
@@ -116,7 +130,13 @@ export function CaptureBox(p: CaptureBoxProps) {
           <span className="saved" role="status" aria-live="polite">
             {saved ? '✓ Saved' : ''}
           </span>
-          {saved ? null : p.status}
+          {problem ? (
+            <span className="warn" role="alert">
+              Couldn't save this in your browser yet. Your text is still here: try Send again.
+            </span>
+          ) : saved ? null : (
+            p.status
+          )}
         </div>
         <span className="hint" aria-hidden="true">
           Ctrl or ⌘ + Enter to send

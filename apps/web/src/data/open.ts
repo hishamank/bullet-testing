@@ -3,8 +3,7 @@
  * this app, no CDN) behind drizzle's sql-js driver, over the same `schema` and `migrate()` the
  * phone uses. The file image comes from, and is saved to, a `BlobStore` (IndexedDB).
  *
- * The mirror is a cache: an image that cannot be read is dropped and the next full pull rebuilds
- * it.
+ * The mirror is a cache, but an image that cannot be read is backed up, never silently replaced.
  */
 
 import { migrate, type PhoneDb, schema } from '@bullet/client'
@@ -28,20 +27,32 @@ function create(sql: SqlJsStatic, bytes: Uint8Array | null): { raw: Database; db
   return { raw, db }
 }
 
-export async function openMirror(sql: SqlJsStatic, store: BlobStore): Promise<Mirror> {
-  let bytes: Uint8Array | null = null
-  try {
-    bytes = await store.load()
-  } catch {
-    bytes = null
-  }
+export interface OpenOptions {
+  /** Start empty without reading the store (the mirror is being wiped on purpose). */
+  fresh?: boolean
+}
+
+/**
+ * Open the mirror from the stored image.
+ *  - `store.load()` failing is thrown: never start empty because of a passing IndexedDB error,
+ *    the next save would overwrite the real image (and its unsent changes).
+ *  - Bytes that cannot be opened or migrated are copied to a backup first (a failing backup is
+ *    thrown too), and only then is a fresh mirror started (`recovered`).
+ */
+export async function openMirror(
+  sql: SqlJsStatic,
+  store: BlobStore,
+  opts: OpenOptions = {},
+): Promise<Mirror> {
+  const bytes = opts.fresh ? null : await store.load()
   let recovered = false
   let opened: { raw: Database; db: PhoneDb }
   try {
     opened = create(sql, bytes)
   } catch {
-    // Not a database we can use: it is only a cache, start again.
-    recovered = bytes !== null
+    if (bytes === null) throw new Error('could not start a new local copy')
+    await store.backup(bytes)
+    recovered = true
     opened = create(sql, null)
   }
   const { raw, db } = opened

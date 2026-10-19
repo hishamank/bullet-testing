@@ -50,23 +50,42 @@ describe('the in-browser mirror (sql.js + drizzle + the phone schema)', () => {
     again.close()
   })
 
-  test('a saved image that is not a database is dropped: the mirror is only a cache', async () => {
+  test('a saved image that is not a database is backed up first, then a fresh mirror starts', async () => {
     const sql = await loadSqlForTests()
-    const store = createMemoryBlobStore(new Uint8Array(2048).fill(7))
+    const junk = new Uint8Array(2048).fill(7)
+    const store = createMemoryBlobStore(junk)
     const mirror = await openMirror(sql, store)
     expect(mirror.recovered).toBe(true)
+    expect(store.backups).toHaveLength(1)
+    expect(Array.from(store.backups[0] ?? [])).toEqual(Array.from(junk))
     expect(mirror.db.select().from(bullets).all()).toEqual([])
     mirror.close()
   })
 
-  test('a store that cannot be read starts empty', async () => {
+  test('if the backup cannot be kept, nothing is replaced: opening fails', async () => {
+    const sql = await loadSqlForTests()
+    const store = {
+      ...createMemoryBlobStore(new Uint8Array(2048).fill(7)),
+      backup: () => Promise.reject(new Error('quota')),
+    }
+    await expect(openMirror(sql, store)).rejects.toThrow('quota')
+  })
+
+  test('a store that cannot be read fails opening; it never starts empty', async () => {
     const sql = await loadSqlForTests()
     const store = {
       ...createMemoryBlobStore(),
       load: () => Promise.reject(new Error('blocked')),
     }
-    const mirror = await openMirror(sql, store)
-    expect(mirror.db.select().from(bullets).all()).toEqual([])
+    await expect(openMirror(sql, store)).rejects.toThrow('blocked')
+  })
+
+  test('fresh starts empty without reading the store (a wipe on purpose)', async () => {
+    const sql = await loadSqlForTests()
+    const store = createMemoryBlobStore(new Uint8Array(2048).fill(7))
+    const mirror = await openMirror(sql, store, { fresh: true })
+    expect(mirror.recovered).toBe(false)
+    expect(store.backups).toHaveLength(0)
     mirror.close()
   })
 })

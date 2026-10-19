@@ -51,14 +51,29 @@ export function createActions(rt: Runtime) {
     if (message) rt.announcements.set(message)
   }
 
+  /** A capture written but not yet stored: sending it again only retries the store. */
+  let unstored: { key: string; id: string } | null = null
+  async function durable(key: string, write: () => string): Promise<string> {
+    const id = unstored?.key === key ? unstored.id : rt.run(write)
+    if (!(await rt.flush())) {
+      unstored = { key, id }
+      throw new Error('could not store the capture in this browser')
+    }
+    unstored = null
+    return id
+  }
+
   return {
     // Capture
-    /** Save here first (always works, offline included), then try to sync. */
-    sendCapture(text: string, opts: { answersQuestionId?: string } = {}): string {
-      return rt.run(() =>
+    /**
+     * Save here first (always works, offline included): the capture is written, the local copy is
+     * saved to IndexedDB, and only then does this resolve (and "Saved" show). If storing it fails
+     * this rejects, and sending the same text again does not write it twice.
+     */
+    sendCapture: (text: string, opts: { answersQuestionId?: string } = {}) =>
+      durable(`q:${opts.answersQuestionId ?? ''}|${text}`, () =>
         captureBullet(rt.db(), { text, answersQuestionId: opts.answersQuestionId }, rt.deps),
-      )
-    },
+      ),
     retryCaptures(ids: readonly string[]): void {
       if (ids.length === 0) return
       rt.run(() => {
@@ -74,9 +89,10 @@ export function createActions(rt: Runtime) {
     resolveLoop: (thoughtId: string) => rt.run(() => resolveThought(rt.db(), thoughtId, rt.deps)),
     reopenLoop: (thoughtId: string) => rt.run(() => unresolveThought(rt.db(), thoughtId, rt.deps)),
     /** "Close with a note": the note is an ordinary capture that resolves the thought. */
-    sendLoopNote(text: string, thoughtId: string): string {
-      return rt.run(() => captureBullet(rt.db(), { text, resolvesThoughtId: thoughtId }, rt.deps))
-    },
+    sendLoopNote: (text: string, thoughtId: string) =>
+      durable(`t:${thoughtId}|${text}`, () =>
+        captureBullet(rt.db(), { text, resolvesThoughtId: thoughtId }, rt.deps),
+      ),
     changeKind: (thoughtId: string, kind: ThoughtKind) =>
       rt.run(() => reclassifyThought(rt.db(), thoughtId, kind, rt.deps)),
     editCapture: (bulletId: string, text: string) =>

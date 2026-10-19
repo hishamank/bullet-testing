@@ -11,6 +11,7 @@ import { createIdbBlobStore } from './data/persist'
 import { browserStorage, createSettingsStore } from './data/settings'
 import { loadSqlJs } from './data/sqljs'
 import { acquireMirrorLock } from './data/tab-lock'
+import { Button } from './ui/primitives'
 
 // The lock is taken once per page, even when React runs the effect twice in development.
 let lock: ReturnType<typeof acquireMirrorLock> | null = null
@@ -23,6 +24,7 @@ type State =
 
 export function Boot() {
   const [state, setState] = useState<State>({ kind: 'loading' })
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let stop: (() => void) | null = null
@@ -60,7 +62,7 @@ export function Boot() {
       stop?.()
       runtime?.dispose()
     }
-  }, [])
+  }, [attempt])
 
   switch (state.kind) {
     case 'ready':
@@ -81,8 +83,20 @@ export function Boot() {
           <h1>Bullet couldn't start</h1>
           <p className="secondary">
             This browser couldn't open its local copy ({state.message}). Your journal on the home
-            server is safe. Private windows sometimes block this: try a normal window.
+            server is safe, and nothing stored here was changed. Private windows sometimes block
+            this: try a normal window.
           </p>
+          <div>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setState({ kind: 'loading' })
+                setAttempt((n) => n + 1)
+              }}
+            >
+              Try again
+            </Button>
+          </div>
         </main>
       )
     default:

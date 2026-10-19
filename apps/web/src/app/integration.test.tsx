@@ -4,7 +4,7 @@
  * the keyboard shortcut, syncs, and renders the Stream and the Inbox from the mirror.
  */
 
-import { bullets, type PhoneDb, suggestions } from '@bullet/client'
+import { bullets, outbox, type PhoneDb, suggestions } from '@bullet/client'
 import { FakeServer } from '@bullet/client/testing'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -109,7 +109,8 @@ describe('the web client', () => {
       store,
       settings: createSettingsStore(memoryStorage()),
       fetch: fakeFetch(server, requests),
-      persistDelayMs: 10,
+      // A long debounce: anything stored before it fires was stored on purpose.
+      persistDelayMs: 60_000,
     })
     container = document.createElement('div')
     document.body.append(container)
@@ -289,6 +290,54 @@ describe('the web client', () => {
     const empty = await openMirror(await loadSqlForTests(), store)
     expect(countBullets(empty.db)).toBe(0)
     empty.close()
+  })
+
+  test('"Saved" means stored: an offline capture is in IndexedDB before the debounce, no flush needed', async () => {
+    await pair()
+    await until(() => expect(text()).toContain('Journal'))
+    const { TransportError } = await import('@bullet/client')
+    server.failNext = { count: 1000, error: new TransportError('network', 'down') }
+    const box = $('textarea.capture-input') as HTMLTextAreaElement
+    await act(async () => setValue(box, 'written while the server is away'))
+    await click(button('Send'))
+    await until(() => expect(text()).toContain('Saved'))
+    expect(window.localStorage.getItem('bullet.draft')).toBeNull()
+    expect(server.bullets.size).toBe(0)
+
+    // A reload right now (nothing flushed by hand) still has the capture and its outbox op.
+    const reloaded = await openMirror(await loadSqlForTests(), store)
+    expect(
+      reloaded.db
+        .select()
+        .from(bullets)
+        .all()
+        .map((b) => b.text),
+    ).toEqual(['written while the server is away'])
+    expect(reloaded.db.select().from(outbox).all().length).toBeGreaterThan(0)
+    reloaded.close()
+  })
+
+  test('if the copy cannot be stored, no "Saved": the text and the draft stay, with a calm note', async () => {
+    await pair()
+    await until(() => expect(text()).toContain('Journal'))
+    const saveSpy = vi.spyOn(store, 'save').mockRejectedValue(new Error('disk full'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const box = $('textarea.capture-input') as HTMLTextAreaElement
+    await act(async () => setValue(box, 'cannot be stored yet'))
+    await click(button('Send'))
+    await until(() => expect(text()).toContain("Couldn't save this in your browser yet"))
+    expect(text()).not.toContain('Saved')
+    expect((box as HTMLTextAreaElement).value).toBe('cannot be stored yet')
+    expect(window.localStorage.getItem('bullet.draft')).toBe('cannot be stored yet')
+
+    // Storage works again: sending the same text stores it (once) and then it is Saved.
+    saveSpy.mockRestore()
+    warn.mockRestore()
+    await click(button('Send'))
+    await until(() => expect(text()).toContain('Saved'))
+    const mirror = await openMirror(await loadSqlForTests(), store)
+    expect(mirror.db.select().from(bullets).all()).toHaveLength(1)
+    mirror.close()
   })
 
   test('Reset local copy rebuilds the mirror from a full pull', async () => {

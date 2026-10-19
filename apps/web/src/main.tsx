@@ -2,6 +2,7 @@ import './styles.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Boot } from './Boot'
+import { ErrorBoundary } from './ErrorBoundary'
 import { installTheme } from './ui/theme-css'
 
 installTheme()
@@ -11,6 +12,8 @@ if (!root) throw new Error('missing #root')
 
 createRoot(root).render(
   <StrictMode>
-    <Boot />
+    <ErrorBoundary>
+      <Boot />
+    </ErrorBoundary>
   </StrictMode>,
 )

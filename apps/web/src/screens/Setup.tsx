@@ -33,6 +33,15 @@ export function Setup() {
     return { settings: { baseUrl: u.url, token: k.token } }
   }
 
+  /** Keep the token in this browser and start syncing; storage may be blocked. */
+  function pairNow(settings: { baseUrl: string; token: string }) {
+    try {
+      rt.pair(settings)
+    } catch {
+      setError("This browser won't keep the token (its storage is blocked). Try a normal window.")
+    }
+  }
+
   async function connect() {
     const p = parsed()
     setResult(null)
@@ -51,7 +60,7 @@ export function Setup() {
         }),
       )
       setResult(check)
-      if (check === 'ok') rt.pair(p.settings)
+      if (check === 'ok') pairNow(p.settings)
     } finally {
       setBusy(false)
     }
@@ -119,7 +128,7 @@ export function Setup() {
             <Button
               onClick={() => {
                 const p = parsed()
-                if (p.settings) rt.pair(p.settings)
+                if (p.settings) pairNow(p.settings)
               }}
             >
               Save anyway

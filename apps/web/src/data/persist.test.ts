@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vite-plus/test'
-import { createIdbBlobStore, createMemoryBlobStore, createPersister } from './persist'
+import { createIdbBlobStore, createMemoryBlobStore, createPersister, retryDelay } from './persist'
 
 const bytes = (...n: number[]) => new Uint8Array(n)
 
@@ -18,6 +18,14 @@ describe('memory blob store', () => {
 
 describe('IndexedDB blob store (fake IndexedDB)', () => {
   const name = () => `test-${Math.random().toString(36).slice(2)}`
+
+  test('keeps a backup apart from the live image', async () => {
+    const store = createIdbBlobStore({ dbName: name() })
+    await store.save(bytes(1))
+    await store.backup(bytes(9, 9))
+    await store.clear()
+    expect(await store.load()).toBeNull()
+  })
 
   test('saves, loads and clears the image', async () => {
     const store = createIdbBlobStore({ dbName: name() })
@@ -62,6 +70,7 @@ function setup(opts: { fail?: () => boolean } = {}) {
     store: {
       load: store.load,
       clear: store.clear,
+      backup: store.backup,
       save: async (b) => {
         if (opts.fail?.()) throw new Error('disk full')
         saved.push(Array.from(b))
@@ -85,6 +94,33 @@ function setup(opts: { fail?: () => boolean } = {}) {
 }
 
 describe('persister', () => {
+  test('flush says whether everything is stored', async () => {
+    const ok = setup()
+    ok.persister.markDirty()
+    expect(await ok.persister.flush()).toBe(true)
+    expect(await ok.persister.flush()).toBe(true)
+    const bad = setup({ fail: () => true })
+    bad.persister.markDirty()
+    expect(await bad.persister.flush()).toBe(false)
+  })
+
+  test('a failed save is retried on a timer with growing waits', async () => {
+    let failing = true
+    const { persister, timers, saved } = setup({ fail: () => failing })
+    persister.markDirty()
+    await persister.flush()
+    expect(timers.at(-1)?.ms).toBe(retryDelay(1))
+    timers.at(-1)?.fn()
+    await persister.flush()
+    expect(retryDelay(2)).toBe(retryDelay(1) * 2)
+    expect(retryDelay(20)).toBe(30_000)
+    failing = false
+    timers.at(-1)?.fn()
+    await persister.flush()
+    expect(saved).toHaveLength(1)
+    expect(persister.dirty).toBe(false)
+  })
+
   test('debounces: many writes, one timer, one save', async () => {
     const { persister, saved, timers } = setup()
     persister.markDirty()

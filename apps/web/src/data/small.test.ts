@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vite-plus/test'
 import { uuidv4 } from './ids'
 import { createSettingsStore, type KeyValueStorage } from './settings'
-import { acquireMirrorLock, type LockManagerLike } from './tab-lock'
+import { acquireMirrorLock, type ChannelLike, type LockManagerLike } from './tab-lock'
 
 function memoryStorage(): KeyValueStorage & { data: Map<string, string> } {
   const data = new Map<string, string>()
@@ -83,12 +83,38 @@ describe('the one-tab lock', () => {
   })
 
   test('without the Web Locks API the tab simply proceeds', async () => {
-    expect(await acquireMirrorLock(undefined, 'x')).toBe('owner')
+    expect(await acquireMirrorLock(undefined, 'x', () => null)).toBe('owner')
   })
 
   test('a failing lock manager does not lock the user out', async () => {
     const broken: LockManagerLike = { request: () => Promise.reject(new Error('nope')) }
     expect(await acquireMirrorLock(broken)).toBe('owner')
+  })
+})
+
+describe('the one-tab check on plain http (no Web Locks)', () => {
+  /** A BroadcastChannel bus: every message reaches every other channel on it. */
+  function bus() {
+    const channels: ChannelLike[] = []
+    return () => {
+      const ch: ChannelLike = {
+        onmessage: null,
+        postMessage: (m) => {
+          for (const other of channels) {
+            if (other !== ch) queueMicrotask(() => other.onmessage?.({ data: m }))
+          }
+        },
+        close: () => {},
+      }
+      channels.push(ch)
+      return ch
+    }
+  }
+
+  test('the first tab owns it; a second one hears the owner answer', async () => {
+    const make = bus()
+    expect(await acquireMirrorLock(undefined, 'x', make, 20)).toBe('owner')
+    expect(await acquireMirrorLock(undefined, 'x', make, 200)).toBe('other-tab')
   })
 })
 
