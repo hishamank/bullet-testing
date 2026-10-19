@@ -28,6 +28,8 @@ import type {
   TaskStatus,
   TrackerConfig,
   TrackerEntryValue,
+  QuestionKind,
+  QuestionOrigin,
   QuestionStatus,
   QuestionTopic,
   ThoughtKind,
@@ -228,19 +230,27 @@ export const thoughts = sqliteTable(
     /** Open loops (`to_check` / `question`): when resolved, and the note capture that did it. */
     resolved_at: integer('resolved_at'),
     resolved_by_bullet_id: text('resolved_by_bullet_id'),
+    /** Reads as distress (server-flagged). Never shown; only pulled. */
+    sensitive: integer('sensitive', { mode: 'boolean' }).notNull().default(false),
+    /** "Not this one" on a reflective question about it: never asked about again. */
+    never_ask: integer('never_ask', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [index('thoughts_bullet_idx').on(t.source_bullet_id)],
 )
 
-/** Clarifying questions about a capture. */
+/**
+ * Questions: clarifying ones about a capture ("To clarify") and reflective ones ("To think
+ * about"; an evergreen one has no capture).
+ */
 export const questions = sqliteTable(
   'questions',
   {
     ...rowFields(),
-    source_bullet_id: text('source_bullet_id').notNull(),
+    source_bullet_id: text('source_bullet_id'),
     source_thought_id: text('source_thought_id'),
     suggestion_id: text('suggestion_id'),
-    kind: text('kind').$type<'clarifying'>().notNull(),
+    kind: text('kind').$type<QuestionKind>().notNull().default('clarifying'),
+    origin: text('origin').$type<QuestionOrigin>().notNull().default('capture'),
     topic: text('topic').$type<QuestionTopic>().notNull(),
     text: text('text').notNull(),
     options: text('options', { mode: 'json' }).$type<string[]>().notNull(),
@@ -248,6 +258,11 @@ export const questions = sqliteTable(
     answer_bullet_id: text('answer_bullet_id'),
     answer_option: text('answer_option'),
     resolved_at: integer('resolved_at'),
+    /** Reflective "Later": hidden until then. */
+    snoozed_until: integer('snoozed_until'),
+    snooze_count: integer('snooze_count').notNull().default(0),
+    /** Evergreen questions: which template (`EVERGREEN_QUESTIONS`). */
+    template_id: text('template_id'),
   },
   (t) => [index('questions_bullet_idx').on(t.source_bullet_id)],
 )

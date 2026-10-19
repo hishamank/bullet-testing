@@ -6,6 +6,7 @@
  */
 
 import { isNameFiller } from './naming'
+import { FUNCTION_WORDS } from './stopwords'
 
 export interface Reading {
   value: number
@@ -84,63 +85,6 @@ const COUNT_NOUNS =
 /** Plural nouns that are spans of time or filler, never a count of something done. */
 const NOT_COUNTS =
   /^(fois|seconds|days|weeks|months|years|ages|jours|semaines|mois|ans|années|annees|nights|mornings|evenings|others|things|ones|minutes|hours|heures)$/
-
-/** Words ending in s/x that are not things counted ("7 this morning", "3 was ok", "3 mais"). */
-const FUNCTION_WORDS = new Set([
-  'this',
-  'was',
-  'has',
-  'yes',
-  'thanks',
-  'plus',
-  'as',
-  'us',
-  'is',
-  'its',
-  'his',
-  'hers',
-  'ours',
-  'yours',
-  'theirs',
-  'always',
-  'perhaps',
-  'besides',
-  'afterwards',
-  'towards',
-  'mais',
-  'pas',
-  'puis',
-  'alors',
-  'dans',
-  'sans',
-  'sous',
-  'très',
-  'tres',
-  'après',
-  'apres',
-  'depuis',
-  'jamais',
-  'toujours',
-  'moins',
-  'vers',
-  'bas',
-  'fois',
-  'mes',
-  'tes',
-  'ses',
-  'les',
-  'des',
-  'ces',
-  'nous',
-  'vous',
-  'deux',
-  'trois',
-  'six',
-  'dix',
-  'mieux',
-  'ailleurs',
-  'parfois',
-])
 
 /** A date or part of day right after: "7 this morning" is not "7 this". */
 const DATE_AFTER =

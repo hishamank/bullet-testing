@@ -9,7 +9,9 @@ import {
   type BulletSource,
   type EventManualPatch,
   entryValueFits,
+  evergreenQuestion,
   eventManualPatchSchema,
+  REFLECTIVE_CAPS,
   type PushOp,
   RESOLVABLE_THOUGHT_KINDS,
   type SuggestionPayload,
@@ -19,8 +21,8 @@ import {
   taskManualPatchSchema,
   trackerEntryValueSchema,
 } from '@bullet/core'
-import { dateAnswerFields, yesNoAnswer } from '@bullet/engine'
-import { and, eq, isNull } from 'drizzle-orm'
+import { dateAnswerFields, mayPickEvergreen, yesNoAnswer } from '@bullet/engine'
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { ENTITY_TABLES } from './mirror'
 import {
@@ -78,7 +80,10 @@ export interface CaptureInput extends CaptureLinks {
 
 /** What a capture links to: it answers a question or closes an open loop "with a note". */
 export interface CaptureLinks {
-  /** This capture answers a clarifying question. */
+  /**
+   * This capture answers a question: a clarifying one, or a reflective one ("Journal about it";
+   * several captures may answer the same one, "Add more").
+   */
   answersQuestionId?: string
   /** This capture closes an open-loop thought "with a note" (it is resolved at once, locally). */
   resolvesThoughtId?: string
@@ -94,9 +99,10 @@ function linkFields(links: CaptureLinks) {
 /** Mirror locally what the server does for a linked capture: answer the question, close the loop. */
 function applyLinks(db: PhoneDb, links: CaptureLinks, bulletId: string, now: number) {
   if (links.answersQuestionId) {
+    // Answered already ("Add more"): it stays answered by its first capture, as on the server.
     db.update(questions)
       .set({ status: 'answered', answer_bullet_id: bulletId, resolved_at: now, updated_at: now })
-      .where(eq(questions.id, links.answersQuestionId))
+      .where(and(eq(questions.id, links.answersQuestionId), ne(questions.status, 'answered')))
       .run()
   }
   if (links.resolvesThoughtId) {
@@ -414,21 +420,130 @@ export function reclassifyThought(
   })
 }
 
-/** Dismiss a clarifying question without answering. */
+/**
+ * Dismiss a question without answering. On a reflective question this is "Not this one": its
+ * thought is marked never-ask here at once (the server does the same), so it never produces
+ * another question.
+ */
 export function dismissQuestion(db: PhoneDb, questionId: string, deps: LocalDeps): void {
   const now = deps.now()
   db.transaction((tx) => {
+    const q = tx.select().from(questions).where(eq(questions.id, questionId)).get()
     tx.update(questions)
       .set({ status: 'dismissed', resolved_at: now, updated_at: now })
       .where(eq(questions.id, questionId))
       .run()
+    const thoughtId = q?.kind === 'reflective' ? q.source_thought_id : null
+    if (thoughtId) {
+      tx.update(thoughts)
+        .set({ never_ask: true, updated_at: now })
+        .where(eq(thoughts.id, thoughtId))
+        .run()
+    }
     appendOp(
       tx,
       { op_id: deps.uuid(), type: 'question.dismiss', question_id: questionId },
+      // The thought's local never_ask wins over a pull until the server has the dismissal.
+      { question_id: questionId, ...(thoughtId ? { thought_id: thoughtId } : {}) },
+      now,
+    )
+  })
+}
+
+/**
+ * "Later" on a reflective question: hidden for 7 days. Allowed once; a second "Later" dismisses
+ * it quietly (no never-ask). Throws for a clarifying question.
+ */
+export function snoozeQuestion(db: PhoneDb, questionId: string, deps: LocalDeps): void {
+  const now = deps.now()
+  db.transaction((tx) => {
+    const q = tx.select().from(questions).where(eq(questions.id, questionId)).get()
+    if (!q || q.state !== 'active') throw new Error(`question ${questionId} not found`)
+    if (q.kind !== 'reflective') throw new Error('only a reflective question can wait')
+    if (q.status === 'open' || q.status === 'snoozed') {
+      tx.update(questions)
+        .set(
+          q.snooze_count >= 1
+            ? { status: 'dismissed', snooze_count: 2, resolved_at: now, updated_at: now }
+            : {
+                status: 'snoozed',
+                snooze_count: 1,
+                snoozed_until: now + REFLECTIVE_CAPS.snoozeMs,
+                updated_at: now,
+              },
+        )
+        .where(eq(questions.id, questionId))
+        .run()
+    }
+    appendOp(
+      tx,
+      { op_id: deps.uuid(), type: 'question.snooze', question_id: questionId },
       { question_id: questionId },
       now,
     )
   })
+}
+
+/**
+ * The user picks an evergreen question to journal about: it is created here at once (with its
+ * id, so it can be answered offline right away) and on the server by `question.pick_evergreen`.
+ * Throws for an unknown template, or when 4 reflective questions are already open or snoozed
+ * (a pick may go one over the usual 3). Returns the question id.
+ */
+export function pickEvergreen(db: PhoneDb, templateId: string, deps: LocalDeps): string {
+  const template = evergreenQuestion(templateId)
+  if (!template) throw new Error(`unknown evergreen question ${templateId}`)
+  const now = deps.now()
+  const id = deps.uuid()
+  db.transaction((tx) => {
+    const live =
+      tx
+        .select({ n: sql<number>`count(*)` })
+        .from(questions)
+        .where(
+          and(
+            eq(questions.kind, 'reflective'),
+            eq(questions.state, 'active'),
+            inArray(questions.status, ['open', 'snoozed']),
+          ),
+        )
+        .get()?.n ?? 0
+    if (!mayPickEvergreen(live)) throw new Error('enough questions are open already')
+    tx.insert(questions)
+      .values({
+        id,
+        source_bullet_id: null,
+        source_thought_id: null,
+        suggestion_id: null,
+        kind: 'reflective',
+        origin: 'evergreen',
+        topic: 'other',
+        text: template.text,
+        options: [],
+        status: 'open',
+        answer_bullet_id: null,
+        answer_option: null,
+        resolved_at: null,
+        snoozed_until: null,
+        snooze_count: 0,
+        template_id: template.id,
+        created_at: now,
+        updated_at: now,
+      })
+      .run()
+    appendOp(
+      tx,
+      {
+        op_id: deps.uuid(),
+        type: 'question.pick_evergreen',
+        question_id: id,
+        template_id: template.id,
+      },
+      { question_id: id },
+      now,
+    )
+  })
+  return id
 }
 
 /** Close an open loop (a `to_check` / `question` thought). Throws for any other kind. */
@@ -487,6 +602,7 @@ export function answerQuestion(
   db.transaction((tx) => {
     const q = tx.select().from(questions).where(eq(questions.id, questionId)).get()
     if (!q || q.state !== 'active') throw new Error(`question ${questionId} not found`)
+    if (q.kind === 'reflective') throw new Error('a reflective question is answered with a capture')
     if (!q.options.includes(option)) throw new Error(`"${option}" is not an option`)
     tx.update(questions)
       .set({ status: 'answered', answer_option: option, resolved_at: now, updated_at: now })

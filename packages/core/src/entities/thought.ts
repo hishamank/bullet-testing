@@ -21,8 +21,8 @@ import { nonEmptyString, timestampMs, uuid } from '../primitives'
  *  - task / event / tracker / activity — the thought is mainly one of these things; the actual
  *    Task/Event/TrackerEntry/Activity is extracted from it as a suggestion as before.
  *
- * Reflective questions about thoughts (slice 2) and connections/themes across captures (slice 3)
- * come later.
+ * Reflective questions (slice 2) may ask about a worry, self-question or idea, or about an open
+ * loop left unresolved; connections/themes across captures (slice 3) come later.
  */
 export const thoughtKindSchema = z.enum([
   'worry',
@@ -71,5 +71,17 @@ export const thoughtSelectSchema = z.object({
   resolved_at: timestampMs().nullable().default(null),
   /** The capture that closed it "with a note", if any. */
   resolved_by_bullet_id: uuid().nullable().default(null),
+  /**
+   * The thought reads as self-harm, crisis or acute distress (flagged conservatively by the
+   * server while splitting the capture). Its capture then gets no reflective question, its open
+   * loops never get "Still on your mind?", and evergreen questions pause for a week. Everything
+   * else is unchanged. Never shown: no UI, no copy, no notification.
+   */
+  sensitive: z.boolean().default(false),
+  /**
+   * The user said "Not this one" to a reflective question about this thought: it never produces
+   * another question, even after the capture is processed again.
+   */
+  never_ask: z.boolean().default(false),
 })
 export type Thought = z.infer<typeof thoughtSelectSchema>

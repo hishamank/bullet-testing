@@ -20,6 +20,7 @@ import {
 import { answerQuestionWithOption } from '../apply/answer'
 import { deleteByHand, editByHand } from '../apply/manual'
 import { createBullet, deleteBullet, editBullet, retryBullet } from '../capture/bullets'
+import { pickEvergreen, snoozeQuestion } from '../reflect/actions'
 import {
   dismissQuestion,
   reclassifyThought,
@@ -76,6 +77,11 @@ function executeOp(db: Db, ownerId: string, op: PushOp, now: number): 'applied' 
       return 'applied'
     case 'question.answer':
       return answerQuestionWithOption(db, ownerId, op.question_id, op.option, now)
+    case 'question.snooze':
+      snoozeQuestion(db, ownerId, op.question_id, now)
+      return 'applied'
+    case 'question.pick_evergreen':
+      return pickEvergreen(db, ownerId, op.question_id, op.template_id, now)
     case 'thought.resolve':
       resolveThought(db, ownerId, op.thought_id, now)
       return 'applied'

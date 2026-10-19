@@ -14,7 +14,7 @@ import type { PushOp, PushRejectCode } from '@bullet/core'
 import { eq, like } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { CURSOR_KEY, setState } from './mirror'
-import { syncState } from './schema'
+import { questions, syncState } from './schema'
 
 const PREFIX = 'rejection:'
 
@@ -53,6 +53,13 @@ export function recordRejection(
   at: number,
 ): void {
   if (!tracked(row.type)) return
+  // A refused evergreen pick never reached the server: the phone's copy of the question goes.
+  if (row.type === 'question.pick_evergreen' && row.question_id) {
+    tx.update(questions)
+      .set({ state: 'deleted', updated_at: at })
+      .where(eq(questions.id, row.question_id))
+      .run()
+  }
   // Start the next pull from scratch, so the server's own version of the row comes back.
   tx.delete(syncState).where(eq(syncState.key, CURSOR_KEY)).run()
   if (!EXPLAINED.includes(row.type)) return

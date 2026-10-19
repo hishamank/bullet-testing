@@ -1,5 +1,12 @@
 import { expect, test } from 'vite-plus/test'
-import { MAX_QUESTIONS_PER_CAPTURE, questionSelectSchema } from './question'
+import {
+  EVERGREEN_QUESTIONS,
+  evergreenQuestion,
+  isReflectiveShowing,
+  MAX_QUESTIONS_PER_CAPTURE,
+  questionSelectSchema,
+  staleLoopQuestionText,
+} from './question'
 import { thoughtKindSchema, thoughtSelectSchema } from './thought'
 
 const base = {
@@ -35,24 +42,29 @@ test('thought: valid parses; span optional; bad span rejected', () => {
     kind_source: 'engine' as const,
     resolved_at: null,
     resolved_by_bullet_id: null,
+    sensitive: false,
+    never_ask: false,
   }
   expect(thoughtSelectSchema.parse(t)).toEqual(t)
-  // Rows from before open loops existed are still valid (open).
-  const { resolved_at, resolved_by_bullet_id, ...older } = t
+  // Rows from before open loops / reflective questions existed are still valid.
+  const { resolved_at, resolved_by_bullet_id, sensitive, never_ask, ...older } = t
   void resolved_at
   void resolved_by_bullet_id
+  void sensitive
+  void never_ask
   expect(thoughtSelectSchema.parse(older)).toEqual(t)
   expect(thoughtSelectSchema.safeParse({ ...t, span: null }).success).toBe(true)
   expect(thoughtSelectSchema.safeParse({ ...t, span: { start: 5, end: 2 } }).success).toBe(false)
   expect(thoughtSelectSchema.safeParse({ ...t, kind: 'rant' }).success).toBe(false)
 })
 
-test('question: clarifying only in slice 1, up to 4 quick options', () => {
+test('question: clarifying with up to 4 quick options; older rows read as clarifying', () => {
   const q = {
     ...base,
     source_thought_id: null,
     suggestion_id: null,
     kind: 'clarifying' as const,
+    origin: 'capture' as const,
     topic: 'date' as const,
     text: 'Which Thursday?',
     options: ['Today', 'Next week'],
@@ -60,11 +72,58 @@ test('question: clarifying only in slice 1, up to 4 quick options', () => {
     answer_bullet_id: null,
     answer_option: null,
     resolved_at: null,
+    snoozed_until: null,
+    snooze_count: 0,
+    template_id: null,
   }
   expect(questionSelectSchema.parse(q)).toEqual(q)
-  expect(questionSelectSchema.safeParse({ ...q, kind: 'reflective' }).success).toBe(false)
+  const { kind, origin, snoozed_until, snooze_count, template_id, ...older } = q
+  void [kind, origin, snoozed_until, snooze_count, template_id]
+  expect(questionSelectSchema.parse(older)).toEqual(q)
+  expect(questionSelectSchema.safeParse({ ...q, kind: 'rhetorical' }).success).toBe(false)
   expect(questionSelectSchema.safeParse({ ...q, options: ['a', 'b', 'c', 'd', 'e'] }).success).toBe(
     false,
   )
   expect(MAX_QUESTIONS_PER_CAPTURE).toBeLessThanOrEqual(3)
+})
+
+test('question: reflective, snoozed, evergreen without a source capture', () => {
+  const q = questionSelectSchema.parse({
+    ...base,
+    source_bullet_id: null,
+    source_thought_id: null,
+    suggestion_id: null,
+    kind: 'reflective',
+    origin: 'evergreen',
+    topic: 'other',
+    text: 'What surprised you this week?',
+    options: [],
+    status: 'snoozed',
+    answer_bullet_id: null,
+    resolved_at: null,
+    snoozed_until: 100,
+    snooze_count: 1,
+    template_id: 'surprised',
+  })
+  expect(isReflectiveShowing(q, 99)).toBe(false)
+  expect(isReflectiveShowing(q, 100)).toBe(true)
+  expect(isReflectiveShowing({ ...q, status: 'open' }, 0)).toBe(true)
+  expect(isReflectiveShowing({ ...q, kind: 'clarifying', status: 'open' }, 0)).toBe(false)
+  expect(isReflectiveShowing({ ...q, status: 'dismissed' }, 200)).toBe(false)
+})
+
+test('evergreen questions: about 20, unique ids, calm questions', () => {
+  expect(EVERGREEN_QUESTIONS.length).toBeGreaterThanOrEqual(18)
+  expect(new Set(EVERGREEN_QUESTIONS.map((q) => q.id)).size).toBe(EVERGREEN_QUESTIONS.length)
+  for (const q of EVERGREEN_QUESTIONS) {
+    expect(q.text.endsWith('?'), q.id).toBe(true)
+    expect(q.text, q.id).not.toMatch(
+      /\b(you should|you must|need to|try to|therapy|disorder|symptom)\b/i,
+    )
+  }
+  expect(evergreenQuestion('surprised')?.text).toBe('What surprised you this week?')
+  expect(evergreenQuestion('nope')).toBeUndefined()
+  expect(staleLoopQuestionText(' check the passport ')).toBe(
+    'Still on your mind? «check the passport»',
+  )
 })

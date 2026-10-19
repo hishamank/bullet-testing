@@ -179,7 +179,8 @@ export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {
     id: q.id,
     text: q.text,
     options: q.options.slice(0, MAX_OPTIONS),
-    ...capture(q.source_bullet_id),
+    // Clarifying questions always have their capture.
+    ...capture(q.source_bullet_id ?? ''),
   }))
 
   const done: DoneItem[] = rows.appliedToday
@@ -284,7 +285,7 @@ export function loadInboxRows(
   const bulletIds = [
     ...new Set([
       ...shown.map((s) => s.source_bullet_id),
-      ...openQuestions.map((q) => q.source_bullet_id),
+      ...openQuestions.flatMap((q) => (q.source_bullet_id ? [q.source_bullet_id] : [])),
     ]),
   ]
   const bulletMap = new Map(

@@ -45,7 +45,7 @@ import type { QuestionTopic } from '@bullet/core'
 import { ambiguousWeekday, type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
 import { safeTimezone, zonedParts, zonedToEpoch } from '../time/zoned'
 import { type Match, matchOpenTask, matchTracker, TRACKER_NAME_FIELDS } from './match'
-import { isKnownMeasure, trackerName, trackerNounFrom } from './naming'
+import { isKnownMeasure, trackerAlias, trackerName, trackerNounFrom } from './naming'
 import {
   convertDuration,
   normalizeUnit,
@@ -379,7 +379,8 @@ function resolveHappened(
   // small model "referenced" the only existing tracker for every reading ("Slept 6 hours" →
   // Meditation, logged as 360 min).
   const words = { ...candidate, referenceName: undefined, fields: {} }
-  const wordsNoun = trackerNounFrom(`${candidate.text}`)
+  // "drank 3 glasses" names Drinks, which is the user's Water tracker when they have one.
+  const wordsNoun = trackerAlias(trackerNounFrom(`${candidate.text}`), snapshot.trackers)
   const borneOut = (n: string | null | undefined): n is string =>
     typeof n === 'string' &&
     n.trim() !== '' &&
@@ -395,7 +396,11 @@ function resolveHappened(
     stringFieldOrNull(candidate.fields, ['name', 'title']),
   ]
   // What is measured, as a short noun ("Sleep"): the tracker's name, and one more way to match.
-  const name = trackerName([...modelNames.filter(borneOut), candidate.text, ...modelNames])
+  const name =
+    trackerAlias(
+      trackerName([...modelNames.filter(borneOut), candidate.text, ...modelNames]),
+      snapshot.trackers,
+    ) ?? 'Tracker'
   // A number logged under the wrong measurement is the harm, so a number/scale tracker the words
   // don't name is not a candidate at all (the best match among the others still wins); a
   // select/yes-no value is checked against the tracker's options instead.

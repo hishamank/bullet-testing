@@ -42,7 +42,7 @@ export function llmByText(script: Record<string, Candidate[]>) {
 
 export type SegmentScript = (
   capture: string,
-) => { text: string; quote?: string; kind: ThoughtKind }[]
+) => { text: string; quote?: string; kind: ThoughtKind; sensitive?: boolean }[]
 
 /**
  * Answer the engine's SEGMENTATION calls (capture → thoughts) so tests can keep scripting just

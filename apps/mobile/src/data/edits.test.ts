@@ -72,6 +72,10 @@ const question = (
   status: 'open' as const,
   answer_bullet_id: null,
   answer_option: null,
+  origin: 'capture' as const,
+  snoozed_until: null,
+  snooze_count: 0,
+  template_id: null,
   resolved_at: null,
 })
 
@@ -86,6 +90,8 @@ const thought = (id: string, kind: 'to_check' | 'worry', position: number) => ({
   kind_source: 'engine' as const,
   resolved_at: null,
   resolved_by_bullet_id: null,
+  sensitive: false,
+  never_ask: false,
 })
 
 const page = (over: Partial<PullResponse['changes']> = {}, cursor = '1'): PullResponse => ({

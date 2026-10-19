@@ -1,6 +1,7 @@
 /**
  * The processing worker: the single consumer of the queue. Strictly one job at a time (one GPU,
- * one model slot). Every LLM call runs under a deadline, and every failure is recorded on the job
+ * one model slot). Reflect jobs (a capture's reflective question) run only when no extraction
+ * job is ready, so they never delay a capture's things. Every LLM call runs under a deadline, and every failure is recorded on the job
  * and the bullet — the loop itself never throws.
  */
 
@@ -15,6 +16,7 @@ import type { AudioStore } from '../storage/audio-store'
 import type { Db } from '../db/client'
 import { claimNextJob, DEFAULT_RETRY_POLICY, markJobFailed, type RetryPolicy } from './jobs'
 import { processClaimedJob } from './process'
+import { claimNextReflectJob, markReflectJobFailed, runReflectJob } from '../reflect/capture'
 
 export interface WorkerOptions {
   db: Db
@@ -58,9 +60,26 @@ export function createWorker(opts: WorkerOptions): Worker {
   let timer: ReturnType<typeof setInterval> | undefined
   let busy: Promise<number> | null = null
 
+  /** A reflective question, only when no capture is waiting to be read. */
+  async function runReflect(): Promise<boolean> {
+    const claimed = claimNextReflectJob(opts.db, now())
+    if (!claimed) return false
+    try {
+      await runReflectJob(deps, claimed)
+    } catch (err) {
+      try {
+        markReflectJobFailed(opts.db, claimed, err, now(), opts.retry ?? DEFAULT_RETRY_POLICY)
+      } catch (inner) {
+        opts.onError?.(inner)
+      }
+      opts.onError?.(err)
+    }
+    return true
+  }
+
   async function runOne(): Promise<boolean> {
     const claimed = claimNextJob(opts.db, now(), { canTranscribe })
-    if (!claimed) return false
+    if (!claimed) return runReflect()
     try {
       await processClaimedJob(deps, claimed)
     } catch (err) {

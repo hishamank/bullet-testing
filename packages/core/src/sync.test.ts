@@ -38,6 +38,8 @@ describe('push', () => {
       { op_id: OP, type: 'thought.reclassify', thought_id: BULLET, kind: 'worry' },
       { op_id: OP, type: 'question.dismiss', question_id: BULLET },
       { op_id: OP, type: 'question.answer', question_id: BULLET, option: 'Next Thursday' },
+      { op_id: OP, type: 'question.snooze', question_id: BULLET },
+      { op_id: OP, type: 'question.pick_evergreen', question_id: BULLET, template_id: 'enough' },
       { op_id: OP, type: 'thought.resolve', thought_id: BULLET },
       { op_id: OP, type: 'thought.unresolve', thought_id: BULLET },
       { op_id: OP, type: 'task.update', task_id: BULLET, patch: { status: 'done' } },
@@ -61,6 +63,8 @@ describe('push', () => {
       { op_id: OP, type: 'event.update', event_id: BULLET, patch: { location: 'x' } },
       { op_id: OP, type: 'tracker_entry.update', tracker_entry_id: BULLET, patch: {} },
       { op_id: OP, type: 'question.answer', question_id: BULLET, option: '' },
+      { op_id: OP, type: 'question.pick_evergreen', question_id: BULLET, template_id: '' },
+      { op_id: OP, type: 'question.pick_evergreen', template_id: 'enough' },
     ]
     for (const op of bad) expect(pushOpSchema.safeParse(op).success, JSON.stringify(op)).toBe(false)
   })

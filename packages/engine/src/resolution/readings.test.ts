@@ -8,7 +8,7 @@ import { ENGINE_CONFIG_DEFAULTS } from '../config'
 import type { Candidate } from '../extraction/schema'
 import type { ExtractionSnapshot } from '../extraction/snapshot'
 import { zonedToEpoch } from '../time/zoned'
-import { trackerName, trackerNounFrom } from './naming'
+import { trackerAlias, trackerName, trackerNounFrom } from './naming'
 import { convertDuration, readingFromFields, readingFromText } from './reading'
 import { readingAsActivity, resolveCandidates, type ThoughtContext } from './resolve'
 
@@ -583,5 +583,63 @@ describe('review follow-ups (2026-10-19)', () => {
       source_bullet_id: 'b',
       source_thought_id: null,
     })
+  })
+})
+
+describe('review follow-ups: names', () => {
+  test('a function word never names a tracker ("mood 4 thanks" → Mood)', () => {
+    expect(trackerNounFrom('mood 4 thanks')).toBe('Mood')
+    expect(trackerNounFrom('mood 4 plus')).toBe('Mood')
+    expect(trackerNounFrom('sommeil 7h mais')).toBe('Sommeil')
+    const { suggestions } = resolve(
+      candidate({
+        kind: 'tracker_entry',
+        text: 'mood 4 thanks',
+        fields: { name: 'mood 4 thanks' },
+      }),
+      EMPTY,
+      { kind: 'tracker' },
+    )
+    expect(suggestions[0]).toMatchObject({ target_kind: 'tracker', payload: { name: 'Mood' } })
+  })
+
+  test('French "note" is the day\'s mood', () => {
+    expect(trackerNounFrom('note 4/5')).toBe('Mood')
+    expect(trackerNounFrom('ma note 3 sur 5')).toBe('Mood')
+    const { suggestions } = resolve(
+      candidate({ kind: 'tracker_entry', text: 'note 4 sur 5' }),
+      EMPTY,
+      { kind: 'tracker' },
+    )
+    expect(suggestions[0]).toMatchObject({ target_kind: 'tracker', payload: { name: 'Mood' } })
+  })
+
+  test('"drank" logs to the Water tracker when one exists', () => {
+    const water: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 't-water',
+          name: 'Water',
+          input_type: 'number',
+          config: { input_type: 'number', unit: 'glasses' },
+        },
+      ],
+      openTasks: [],
+    }
+    expect(trackerAlias('Drinks', water.trackers)).toBe('Water')
+    expect(trackerAlias('Drinks', [])).toBe('Drinks')
+    expect(trackerAlias('Sleep', water.trackers)).toBe('Sleep')
+    for (const text of ['drank 3 glasses', 'drinks 4 glasses today']) {
+      const { suggestions } = resolve(candidate({ text }), water, { kind: 'tracker' })
+      expect(suggestions, text).toHaveLength(1)
+      expect(suggestions[0], text).toMatchObject({
+        target_kind: 'tracker_entry',
+        operation: 'append',
+        target_id: 't-water',
+      })
+    }
+    // Without a Water tracker, "drank" still offers its own noun.
+    const fresh = resolve(candidate({ text: 'drank 3 glasses' }), EMPTY, { kind: 'tracker' })
+    expect(fresh.suggestions[0]?.payload.name).toBe('Drinks')
   })
 })

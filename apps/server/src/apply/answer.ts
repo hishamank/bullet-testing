@@ -97,6 +97,9 @@ export function answerQuestionWithOption(
   now: number,
 ): 'applied' | 'duplicate' {
   const q = getQuestion(db, ownerId, questionId)
+  if (q.kind === 'reflective') {
+    throw new ApplyError('invalid', 'a reflective question is answered with a capture')
+  }
   if (q.state !== 'active') throw new ApplyError('invalid', 'question was withdrawn')
   if (q.status === 'answered') {
     if (q.answer_option === option) return 'duplicate'

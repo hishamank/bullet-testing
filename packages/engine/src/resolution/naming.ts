@@ -8,6 +8,8 @@
  * ran → Run, j'ai dormi → Sommeil).
  */
 
+import { FUNCTION_WORDS } from './stopwords'
+
 /** Verbs (and verb-ish words) whose noun names the tracker, when nothing else is left. */
 const VERB_NOUNS: [RegExp, string][] = [
   [/^(slept|sleeping|sleeps)$/, 'Sleep'],
@@ -36,6 +38,14 @@ const VERB_NOUNS: [RegExp, string][] = [
   [/^(nemet|nimet|nmet|nimt|nemt)$/, 'Nom'],
   [/^(rkadet|rkodt|rakadt)$/, 'Rkad'],
 ]
+
+/**
+ * A lone noun that names a different measure: French "note" ("note 4/5", "ma note du jour 3") is
+ * the day's rating, read as Mood.
+ */
+const NOUN_ALIASES: Record<string, string> = {
+  note: 'Mood',
+}
 
 /** Units of a reading: never part of a tracker's name. */
 const UNITS = new Set(
@@ -331,6 +341,8 @@ export function trackerNounFrom(text: string): string | null {
     if (w === '') continue
     if (CLAUSE_BREAK.has(w) && (words.length > 0 || verbs.length > 0)) break
     if (NUMBERISH.test(w) || UNITS.has(w) || FILLER.has(w)) continue
+    // "mood 4 thanks", "sommeil 7h mais": a function word names nothing (reading.ts' stoplist).
+    if (FUNCTION_WORDS.has(w)) continue
     if (VERB_NOUNS.some(([re]) => re.test(w))) {
       verbs.push(w)
       continue
@@ -338,12 +350,43 @@ export function trackerNounFrom(text: string): string | null {
     if (/^\p{N}+$/u.test(w)) continue
     words.push(w)
   }
-  if (words.length > 0) return titleCase(words.slice(0, 2))
+  if (words.length > 0) {
+    const kept = words.slice(0, 2)
+    const alias = kept.length === 1 ? NOUN_ALIASES[kept[0] ?? ''] : undefined
+    return alias ?? titleCase(kept)
+  }
   for (const v of verbs) {
     const hit = VERB_NOUNS.find(([re]) => re.test(v))
     if (hit) return hit[1]
   }
   return null
+}
+
+/**
+ * Names that stand for a tracker the user already has under another name: "drank 3 glasses" names
+ * Drinks, which is the Water tracker when one exists (and Boissons is Eau / Water).
+ */
+const TRACKER_SYNONYMS: Record<string, readonly string[]> = {
+  drinks: ['water', 'eau'],
+  boissons: ['eau', 'water'],
+}
+
+/**
+ * `name` as the user's own existing tracker, when it is a synonym of one ("Drinks" → "Water");
+ * otherwise `name` unchanged.
+ */
+export function trackerAlias(
+  name: string | null,
+  trackers: readonly { name: string }[],
+): string | null {
+  if (name === null) return null
+  const targets = TRACKER_SYNONYMS[name.toLowerCase().trim()]
+  if (!targets) return name
+  for (const target of targets) {
+    const hit = trackers.find((t) => t.name.toLowerCase().trim() === target)
+    if (hit) return hit.name
+  }
+  return name
 }
 
 /**

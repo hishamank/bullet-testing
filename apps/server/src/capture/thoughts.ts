@@ -45,6 +45,8 @@ export function reconcileThoughts(
           ...span,
           // The user's re-classification is sticky.
           ...(e.kind_source === 'user' ? {} : { kind: t.kind }),
+          // Once read as distress, the thought stays so (it only keeps reflective questions away).
+          sensitive: e.sensitive || t.sensitive,
           updated_at: now,
         })
         .where(eq(thoughts.id, e.id))
@@ -63,6 +65,7 @@ export function reconcileThoughts(
           ...span,
           kind: t.kind,
           kind_source: 'engine',
+          sensitive: t.sensitive,
           created_at: now,
           updated_at: now,
         })
@@ -82,8 +85,9 @@ export function reconcileThoughts(
 }
 
 /**
- * Store the capture's clarifying questions. Still-open questions from a previous run are
- * withdrawn; one the user already answered or dismissed is never asked again.
+ * Store the capture's clarifying questions. Still-open clarifying questions from a previous run
+ * are withdrawn; one the user already answered or dismissed is never asked again. Reflective
+ * questions are not touched here (see `reflect/`).
  */
 export function replaceQuestions(
   db: Db,
@@ -94,7 +98,13 @@ export function replaceQuestions(
   const existing = db
     .select()
     .from(questions)
-    .where(and(eq(questions.source_bullet_id, bullet.id), eq(questions.state, 'active')))
+    .where(
+      and(
+        eq(questions.source_bullet_id, bullet.id),
+        eq(questions.state, 'active'),
+        eq(questions.kind, 'clarifying'),
+      ),
+    )
     .all()
   const settled = new Set(existing.filter((q) => q.status !== 'open').map((q) => norm(q.text)))
   for (const q of existing.filter((e) => e.status === 'open')) {
@@ -205,14 +215,33 @@ export function getQuestion(db: Db, ownerId: string, id: string) {
   return q
 }
 
+/**
+ * Dismiss a question. On a reflective one this is "Not this one": the thought it was about is
+ * marked `never_ask`, so it never produces another question (that survives re-processing: the
+ * thought keeps its id while its text matches, and a capture gets one reflective question ever).
+ */
 export function dismissQuestion(db: Db, ownerId: string, id: string, now: number): void {
   const q = getQuestion(db, ownerId, id)
-  if (q.status !== 'open') return
+  if (q.status !== 'open' && q.status !== 'snoozed') return
   db.update(questions)
     .set({ status: 'dismissed', resolved_at: now, updated_at: now })
     .where(eq(questions.id, q.id))
     .run()
   touch(db, ownerId, 'questions', q.id)
+  if (q.kind === 'reflective' && q.source_thought_id !== null) {
+    const t = db
+      .select({ id: thoughts.id, never_ask: thoughts.never_ask })
+      .from(thoughts)
+      .where(and(eq(thoughts.id, q.source_thought_id), eq(thoughts.owner_id, ownerId)))
+      .get()
+    if (t && !t.never_ask) {
+      db.update(thoughts)
+        .set({ never_ask: true, updated_at: now })
+        .where(eq(thoughts.id, t.id))
+        .run()
+      touch(db, ownerId, 'thoughts', t.id)
+    }
+  }
 }
 
 /** A capture answering a question: link it and mark the question answered. */
@@ -224,6 +253,7 @@ export function answerQuestion(
   now: number,
 ) {
   const q = getQuestion(db, ownerId, id)
+  // Answered already (another "Add more" capture): it stays answered by its first capture.
   if (q.state !== 'active' || q.status === 'answered') return
   db.update(questions)
     .set({

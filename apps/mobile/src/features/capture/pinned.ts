@@ -20,7 +20,8 @@ export function findPinned(
   db: PhoneDb,
   target: { question?: string; thought?: string },
 ): Pinned | null {
-  const sourceOf = (bulletId: string) => {
+  const sourceOf = (bulletId: string | null) => {
+    if (bulletId === null) return null
     const b = db
       .select({
         source: bullets.source,
@@ -38,7 +39,10 @@ export function findPinned(
       .from(questions)
       .where(and(eq(questions.id, target.question), eq(questions.state, 'active')))
       .get()
-    if (q?.status !== 'open') return null
+    // A reflective question can be answered again ("Add more") and while it waits ("Later").
+    const answerable =
+      q?.status === 'open' || (q?.kind === 'reflective' && q.status !== 'dismissed')
+    if (!q || !answerable) return null
     return { kind: 'question', id: q.id, text: q.text, source: sourceOf(q.source_bullet_id) }
   }
   if (target.thought) {

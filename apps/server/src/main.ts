@@ -7,6 +7,8 @@ import { recoverStuckJobs } from './queue/jobs'
 import { createWorker } from './queue/worker'
 import { ffmpegAvailable, watchConversionFailures } from './ops/whisper-health'
 import { createFileAudioStore } from './storage/audio-store'
+import { recoverStuckReflectJobs } from './reflect/capture'
+import { scheduleReflectionPass } from './reflect/pass'
 
 const config = loadServerConfig(process.env)
 const { db } = openDb(config.dbPath)
@@ -14,6 +16,7 @@ const audioStore = createFileAudioStore(config.audioDir)
 
 const recovered = recoverStuckJobs(db, Date.now())
 if (recovered > 0) console.log(`recovered ${recovered} job(s) interrupted by the last shutdown`)
+recoverStuckReflectJobs(db, Date.now())
 
 const worker = createWorker({
   db,
@@ -43,6 +46,10 @@ const worker = createWorker({
   onError: (err) => console.error('[worker]', err instanceof Error ? err.message : err),
 })
 worker.start()
+// Snoozed questions coming back, "Still on your mind?" and evergreen questions: once a day.
+scheduleReflectionPass(db, {
+  onError: (err) => console.error('[reflect]', err instanceof Error ? err.message : err),
+})
 
 const app = createApp({
   db,

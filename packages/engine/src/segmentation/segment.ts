@@ -18,6 +18,7 @@ import { requestStructured } from '../extraction/extract'
 import { renderCaptureContext } from '../extraction/prompt'
 import type { LlmClient, LlmMessage } from '../llm/types'
 import type { CaptureContext } from '../time/when'
+import { looksSensitive } from './sensitive'
 
 export const segmentationResponseSchema = z.object({
   thoughts: z.array(
@@ -27,6 +28,8 @@ export const segmentationResponseSchema = z.object({
       /** The thought, lightly cleaned (fillers, false starts removed), same language(s). */
       text: z.string(),
       kind: thoughtKindSchema,
+      /** Reads as self-harm, crisis or acute distress (see the prompt). */
+      sensitive: z.boolean().default(false),
     }),
   ),
 })
@@ -38,7 +41,14 @@ export const segmentationResponseSchema = z.object({
  */
 export const segmentationJsonSchema: Record<string, unknown> = zodToJsonSchema(
   z.object({
-    thoughts: z.array(z.object({ quote: z.string(), text: z.string(), kind: thoughtKindSchema })),
+    thoughts: z.array(
+      z.object({
+        quote: z.string(),
+        text: z.string(),
+        kind: thoughtKindSchema,
+        sensitive: z.boolean(),
+      }),
+    ),
   }),
   { target: 'openApi3', $refStrategy: 'none' },
 ) as Record<string, unknown>
@@ -62,9 +72,10 @@ For each thought give, in this order:
   - "event": something happening at a set time that the user attends (appointment, meeting, dinner).
   - "tracker": a measurement or reading (mood 4, slept 6h, weight 72), or wanting to track something.
   - "activity": something the user did.
+- "sensitive": true when the thought reads as self-harm, suicidal thoughts, wanting to disappear or not wake up, a crisis, or acute distress. If you are unsure whether it is that serious, use true. Ordinary worries, stress, tiredness, sadness or a bad day are false. This never changes the kind or the text.
 
 Example capture: "um bade jib ghaz lal sayyara, w demain j'ai rdv chez le médecin à 11h. Feeling tired"
-Example answer: {"thoughts":[{"quote":"um bade jib ghaz lal sayyara","text":"bade jib ghaz lal sayyara","kind":"task"},{"quote":"w demain j'ai rdv chez le médecin à 11h","text":"demain j'ai rdv chez le médecin à 11h","kind":"event"},{"quote":"Feeling tired","text":"Feeling tired","kind":"note"}]}
+Example answer: {"thoughts":[{"quote":"um bade jib ghaz lal sayyara","text":"bade jib ghaz lal sayyara","kind":"task","sensitive":false},{"quote":"w demain j'ai rdv chez le médecin à 11h","text":"demain j'ai rdv chez le médecin à 11h","kind":"event","sensitive":false},{"quote":"Feeling tired","text":"Feeling tired","kind":"note","sensitive":false}]}
 
 Output ONLY the JSON object matching the schema. No Markdown code fences, no commentary.`
 
@@ -119,6 +130,11 @@ export interface SegmentedThought {
   text: string
   kind: ThoughtKind
   span: TextSpan | null
+  /**
+   * Reads as self-harm, crisis or acute distress: the model's flag, or a plain phrase of it in the
+   * words ({@link looksSensitive}). Never shown; it only keeps reflective questions away.
+   */
+  sensitive: boolean
 }
 
 /** Curly quotes the model may straighten (or the keyboard may curl). */
@@ -238,6 +254,7 @@ export async function segmentCapture(
         text,
         kind: 'note',
         span: { start: chunk.offset + lead, end: chunk.offset + lead + text.length },
+        sensitive: looksSensitive(text),
       })
       continue
     }
@@ -252,7 +269,8 @@ export async function segmentCapture(
       const verbatim = span ? input.text.slice(span.start, span.end).trim() : quote
       let text = t.text.trim()
       if (verbatim !== '' && (text === '' || driftedFrom(text, verbatim))) text = verbatim
-      thoughts.push({ position: thoughts.length, text, kind: t.kind, span })
+      const sensitive = t.sensitive || looksSensitive(text) || looksSensitive(verbatim)
+      thoughts.push({ position: thoughts.length, text, kind: t.kind, span, sensitive })
     }
   }
   return thoughts
