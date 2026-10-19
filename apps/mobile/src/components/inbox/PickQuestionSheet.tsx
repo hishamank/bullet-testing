@@ -27,8 +27,7 @@ export function PickQuestionSheet({
       </Label>
       {canPick ? null : (
         <Label tone="soft" size={type.bodySmall}>
-          A few questions are already waiting. Journal about one of them, or let one go with “Not
-          this one”, then pick another.
+          A few questions are already waiting. Answer one, or let one go, to pick another.
         </Label>
       )}
       <Group>

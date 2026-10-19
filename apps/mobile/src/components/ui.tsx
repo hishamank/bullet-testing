@@ -13,6 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { textDirection } from '@/features/reflect/direction'
 import { kindStyle, radius, readingFont, size, space, type, useTheme } from '@/theme'
 import { Icon, type IconName } from './Icon'
 
@@ -53,18 +54,29 @@ export function Label({
   return <Text {...rest} style={[{ color, fontSize, lineHeight: fontSize * 1.35 }, style]} />
 }
 
-/** A reflective question, in the serif reading face (scales with Dynamic Type like any Label). */
+/**
+ * A reflective question, in the serif reading face (scales with Dynamic Type like any Label). An
+ * Arabic question is laid out right to left and right-aligned, its quote on the correct side.
+ */
 export function QuestionText({
   size: fontSize = type.body,
   style,
+  children,
   ...rest
-}: TextProps & { size?: number }) {
+}: Omit<TextProps, 'children'> & { size?: number; children: string }) {
+  const rtl = textDirection(children) === 'rtl'
   return (
     <Label
       {...rest}
       size={fontSize}
-      style={[{ fontFamily: readingFont, lineHeight: fontSize * 1.4 }, style]}
-    />
+      style={[
+        { fontFamily: readingFont, lineHeight: fontSize * 1.4 },
+        rtl ? { writingDirection: 'rtl', textAlign: 'right' } : null,
+        style,
+      ]}
+    >
+      {children}
+    </Label>
   )
 }
 

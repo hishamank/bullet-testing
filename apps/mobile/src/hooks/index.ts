@@ -123,7 +123,9 @@ export function useInboxCount(): number {
 
 /** The Inbox's "To think about" and "Answered · N" (never part of the badge). */
 export function useThinkView(): ThinkView {
-  return useLocalQuery((db) => loadThinkView(db, Date.now()))
+  // Re-read every minute too, so a question whose "Later" week ends while open shows up.
+  const now = useNow(60_000)
+  return useLocalQuery((db) => loadThinkView(db, now), now)
 }
 
 /** The "Pick a question" list. */

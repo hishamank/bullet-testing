@@ -452,15 +452,22 @@ export function dismissQuestion(db: PhoneDb, questionId: string, deps: LocalDeps
 
 /**
  * "Later" on a reflective question: hidden for 7 days. Allowed once; a second "Later" dismisses
- * it quietly (no never-ask). Throws for a clarifying question.
+ * it quietly (no never-ask). Returns which happened (`snoozed` or `dismissed`; `unchanged` when
+ * it was already answered or dismissed). Throws for a clarifying question.
  */
-export function snoozeQuestion(db: PhoneDb, questionId: string, deps: LocalDeps): void {
+export function snoozeQuestion(
+  db: PhoneDb,
+  questionId: string,
+  deps: LocalDeps,
+): 'snoozed' | 'dismissed' | 'unchanged' {
   const now = deps.now()
-  db.transaction((tx) => {
+  return db.transaction((tx) => {
     const q = tx.select().from(questions).where(eq(questions.id, questionId)).get()
     if (!q || q.state !== 'active') throw new Error(`question ${questionId} not found`)
     if (q.kind !== 'reflective') throw new Error('only a reflective question can wait')
+    let outcome: 'snoozed' | 'dismissed' | 'unchanged' = 'unchanged'
     if (q.status === 'open' || q.status === 'snoozed') {
+      outcome = q.snooze_count >= 1 ? 'dismissed' : 'snoozed'
       tx.update(questions)
         .set(
           q.snooze_count >= 1
@@ -481,6 +488,7 @@ export function snoozeQuestion(db: PhoneDb, questionId: string, deps: LocalDeps)
       { question_id: questionId },
       now,
     )
+    return outcome
   })
 }
 

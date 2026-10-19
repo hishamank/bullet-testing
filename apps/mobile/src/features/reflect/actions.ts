@@ -8,17 +8,18 @@ import { dismissQuestion, pickEvergreen, snoozeQuestion } from '../../data/local
 import { getDb } from '../../data/open'
 import { deviceDeps } from '../../sync/runtime'
 import { notifyLocalChange, syncNow } from '../sync/engine'
+import { evergreenChoices } from './model'
+import { laterAnnouncement } from './wording'
 
-function done(message: string) {
+function done(message: string | null) {
   notifyLocalChange()
   void syncNow()
-  AccessibilityInfo.announceForAccessibility(message)
+  if (message) AccessibilityInfo.announceForAccessibility(message)
 }
 
-/** "Later": hidden for a week (a second Later lets it go quietly). */
+/** "Later": hidden for a week; a second Later lets it go quietly. */
 export function laterQuestion(questionId: string): void {
-  snoozeQuestion(getDb(), questionId, deviceDeps)
-  done('Saved for later.')
+  done(laterAnnouncement(snoozeQuestion(getDb(), questionId, deviceDeps)))
 }
 
 /** "Not this one": dismissed for good, and its thought is never asked about again. */
@@ -29,15 +30,13 @@ export function notThisOne(questionId: string): void {
 
 /**
  * "Pick a question": created on the phone at once (answerable offline). Returns its id, or null
- * when enough questions are open already.
+ * when enough questions are open already (the sheet disables its rows then). Anything else that
+ * goes wrong is a bug and is thrown.
  */
 export function pickQuestion(templateId: string): string | null {
-  try {
-    const id = pickEvergreen(getDb(), templateId, deviceDeps)
-    notifyLocalChange()
-    void syncNow()
-    return id
-  } catch {
-    return null
-  }
+  const db = getDb()
+  if (!evergreenChoices(db).canPick) return null
+  const id = pickEvergreen(db, templateId, deviceDeps)
+  done(null)
+  return id
 }

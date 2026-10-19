@@ -79,7 +79,7 @@ export default function AnswerScreen() {
             />
           </View>
         }
-        placeholder={pinned.reflective ? 'Write about it…' : 'Your answer…'}
+        placeholder={pinned.reflective ? 'Start anywhere…' : 'Your answer…'}
         inputLabel="Your answer"
         micLabel="Answer by voice"
         statusLine={

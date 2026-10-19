@@ -9,6 +9,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import {
   listOpenQuestions,
+  listQuestionsToThinkAbout,
   listPendingSuggestions,
   listReadingsWaitingOnTrackers,
 } from '../../data/queries'
@@ -86,7 +87,7 @@ export interface InboxView {
   questions: QuestionItem[]
   done: DoneItem[]
   notices: InboxNotice[]
-  /** Nothing to decide, answer or show. */
+  /** Nothing to decide, answer, think about or show. */
   empty: boolean
 }
 
@@ -98,6 +99,8 @@ export interface InboxRows {
   /** Accepted/edited suggestions resolved or applied today. */
   appliedToday: SuggestionRow[]
   openQuestions: QuestionRow[]
+  /** Reflective questions showing in "To think about" (never in the badge, but waiting). */
+  thinking?: number
   /** Suggestion ids that a tapped question option accepted. */
   answeredSuggestionIds: ReadonlySet<string>
   bullets: ReadonlyMap<string, { text: string; source: BulletSource }>
@@ -206,7 +209,11 @@ export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {
     questions: questionItems,
     done,
     notices,
-    empty: groups.length === 0 && questionItems.length === 0 && done.length === 0,
+    empty:
+      groups.length === 0 &&
+      questionItems.length === 0 &&
+      done.length === 0 &&
+      (rows.thinking ?? 0) === 0,
   }
 }
 
@@ -322,6 +329,7 @@ export function loadInboxRows(
     waiting: listReadingsWaitingOnTrackers(db),
     appliedToday,
     openQuestions,
+    thinking: listQuestionsToThinkAbout(db, opts.now).length,
     answeredSuggestionIds,
     bullets: bulletMap,
     named,

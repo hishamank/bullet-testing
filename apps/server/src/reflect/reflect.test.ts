@@ -325,7 +325,7 @@ describe('stale open loops', () => {
     await capture('note: still here')
     pass()
     expect(texts()).toEqual([
-      'Toujours en tête ? «vérifier si le passeport expire»',
+      'Toujours en tête\u202F? «vérifier si le passeport expire»',
       'Ba3do 3a balak? «lezem shuf eza l passport ba3do sale7»',
     ])
   })

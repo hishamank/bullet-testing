@@ -112,7 +112,8 @@ export type ReflectiveLanguage = 'en' | 'fr' | 'arabizi' | 'ar'
 /** "Still on your mind?" in the language of the thought it quotes. */
 export const STALE_LOOP_PREFIX: Record<ReflectiveLanguage, string> = {
   en: 'Still on your mind?',
-  fr: 'Toujours en tête ?',
+  // A narrow no-break space (U+202F) before "?", so it never wraps onto its own line.
+  fr: 'Toujours en tête\u202F?',
   arabizi: 'Ba3do 3a balak?',
   ar: 'بعدو عبالك؟',
 }

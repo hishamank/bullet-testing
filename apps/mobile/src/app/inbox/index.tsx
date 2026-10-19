@@ -7,7 +7,7 @@ import { SectionTitle } from '@/components/inbox/parts'
 import { PickQuestionSheet } from '@/components/inbox/PickQuestionSheet'
 import { QuestionCard } from '@/components/inbox/QuestionCard'
 import { AnsweredList, ThinkCard, ThinkEmpty } from '@/components/inbox/ThinkCard'
-import { BackHeader, Label, Note, Screen } from '@/components/ui'
+import { BackHeader, Label, Note, Screen, TextButton } from '@/components/ui'
 import {
   accept,
   acceptAll,
@@ -67,7 +67,7 @@ export default function Inbox() {
         ))}
         {message ? <Note icon="info" text={message} onDismiss={() => setMessage(null)} /> : null}
 
-        {view.empty ? <EmptyState /> : null}
+        {view.empty ? <EmptyState onPick={() => setPicking(true)} /> : null}
 
         {view.groups.length > 0 ? (
           <>
@@ -106,22 +106,27 @@ export default function Inbox() {
           </>
         ) : null}
 
-        <SectionTitle
-          title="To think about"
-          count={think.toThink.length > 0 ? think.toThink.length : undefined}
-        />
-        {think.toThink.length > 0 ? (
-          think.toThink.map((q) => (
-            <ThinkCard
-              key={q.id}
-              question={q}
-              onJournal={() => journal(q.id)}
-              onLater={() => laterQuestion(q.id)}
-              onNotThisOne={() => notThisOne(q.id)}
+        {/* Nothing at all waiting: the one empty state above offers Pick a question. */}
+        {view.empty ? null : (
+          <>
+            <SectionTitle
+              title="To think about"
+              count={think.toThink.length > 0 ? think.toThink.length : undefined}
             />
-          ))
-        ) : (
-          <ThinkEmpty onPick={() => setPicking(true)} />
+            {think.toThink.length > 0 ? (
+              think.toThink.map((q) => (
+                <ThinkCard
+                  key={q.id}
+                  question={q}
+                  onJournal={() => journal(q.id)}
+                  onLater={() => laterQuestion(q.id)}
+                  onNotThisOne={() => notThisOne(q.id)}
+                />
+              ))
+            ) : (
+              <ThinkEmpty onPick={() => setPicking(true)} />
+            )}
+          </>
         )}
         <AnsweredList items={think.answered} onAddMore={(q) => journal(q.id)} />
 
@@ -150,13 +155,22 @@ export default function Inbox() {
   )
 }
 
-function EmptyState() {
+function EmptyState({ onPick }: { onPick: () => void }) {
   return (
-    <View style={styles.empty} accessible accessibilityRole="text">
-      <Label size={type.title} style={{ fontWeight: '600' }}>
-        Nothing waiting.
-      </Label>
-      <Label tone="secondary">Captures you make will show up here when they need you.</Label>
+    <View style={styles.empty}>
+      <View accessible accessibilityRole="text" style={{ gap: space.sm }}>
+        <Label size={type.title} style={{ fontWeight: '600' }}>
+          Nothing waiting.
+        </Label>
+        <Label tone="secondary">Captures you make will show up here when they need you.</Label>
+      </View>
+      <View style={{ alignItems: 'flex-start' }}>
+        <TextButton
+          title="Pick a question"
+          accessibilityHint="Choose a question to write or talk about"
+          onPress={onPick}
+        />
+      </View>
     </View>
   )
 }

@@ -252,8 +252,10 @@ should do. It is optional and never nags.
   withdrawn and the capture may get a new one; a dismissed or answered one still counts.
 - `open_loop`: a `to_check` or `question` thought left unresolved for **7 days** gets
   "Still on your mind? «check if the passport expires»", with the prefix in the thought's
-  language ("Toujours en tête ? «…»", "Ba3do 3a balak? «…»"). At most once per thought, ever. A
-  resolved one never does.
+  language: "Toujours en tête ? «…»" (a narrow no-break space, U+202F, before the "?"),
+  "Ba3do 3a balak? «…»", or "بعدو عبالك؟ «…»" (shown right to left; its "؟" is never replaced by
+  "?"). The language is a deterministic guess that falls back to English when unsure. At most
+  once per thought, ever. A resolved one never does.
 - `evergreen`: a hand-written list of about 20 calm questions ("What took more energy than it
   should have this week?"), with a `template_id`. Offered only when no other reflective question
   is open, at most one every 3 days. The user can also **pick one** to journal about

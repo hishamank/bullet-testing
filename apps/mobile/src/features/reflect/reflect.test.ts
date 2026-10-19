@@ -6,7 +6,7 @@ import { questions } from '../../data/schema'
 import { openTestDb, T0, testDeps } from '../../test/db'
 import { inboxCount } from '../capture/counts'
 import { findPinned } from '../capture/pinned'
-import { loadInboxRows, noticeText, summaryContext } from '../inbox/model'
+import { buildInbox, loadInboxRows, noticeText, summaryContext } from '../inbox/model'
 import { loadCaptureDetail } from '../journal/capture'
 import { listCaptureCards } from '../journal/stream'
 import {
@@ -18,6 +18,8 @@ import {
   questionSourceLine,
   thinkingAboutLabel,
 } from './model'
+import { textDirection } from './direction'
+import { laterAnnouncement } from './wording'
 
 // All sample content is made up. T0 is Thursday 15 Oct 2026, 09:12 in Paris.
 const DAY = 24 * 60 * 60 * 1000
@@ -116,6 +118,38 @@ describe('To think about', () => {
     expect(loadThinkView(db, T0 + 1).toThink.map((q) => q.id)).toEqual(['q-worry'])
     expect(loadThinkView(db, T0 + 7 * DAY).toThink.map((q) => q.id)).toEqual(['q-worry', 'q-loop'])
     expect(inboxCount(db)).toBe(0)
+  })
+
+  test('a second Later lets it go, and says so', () => {
+    const { db, deps } = seeded()
+    const first = snoozeQuestion(db, 'q-loop', deps)
+    const second = snoozeQuestion(db, 'q-loop', deps)
+    expect([first, second]).toEqual(['snoozed', 'dismissed'])
+    expect(snoozeQuestion(db, 'q-loop', deps)).toBe('unchanged')
+    expect(laterAnnouncement(first)).toBe('Saved for later.')
+    expect(laterAnnouncement(second)).toBe('Let go.')
+    expect(laterAnnouncement('unchanged')).toBeNull()
+  })
+
+  test('the Inbox is empty only when nothing at all waits, reflective questions included', () => {
+    const { db, deps } = seeded()
+    const empty = (now: number) =>
+      buildInbox(loadInboxRows(db, { now, timezone: TZ, heldIds: [] }), []).empty
+    expect(empty(T0 + 1)).toBe(false)
+    snoozeQuestion(db, 'q-worry', deps)
+    snoozeQuestion(db, 'q-loop', deps)
+    dismissQuestion(db, 'q-evergreen', deps)
+    expect(empty(T0 + 1)).toBe(true)
+    // Back from Later a week on: waiting again.
+    expect(empty(T0 + 7 * DAY)).toBe(false)
+  })
+
+  test('an Arabic question lays out right to left; others left to right', () => {
+    expect(textDirection('بعدو عبالك؟ «شوف إذا الباسبور بعدو صالح»')).toBe('rtl')
+    expect(textDirection('«خايفة من المقابلة»: شو أكتر شي مقلقك فيها؟')).toBe('rtl')
+    expect(textDirection('Toujours en tête ? «vérifier le passeport»')).toBe('ltr')
+    expect(textDirection('What surprised you this week?')).toBe('ltr')
+    expect(textDirection('«3a balak»?')).toBe('ltr')
   })
 
   test('Answered · N: answered questions with their answer count, and Add more stays open', () => {
