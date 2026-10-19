@@ -68,8 +68,7 @@ describe('createWhisperCppTranscriber', () => {
     // Any other 500 is still the server's problem.
     const busy = createWhisperCppTranscriber({
       baseUrl: 'http://x',
-      fetch: (async () =>
-        jsonResponse({ error: 'failed to process audio' }, 500)) as typeof fetch,
+      fetch: (async () => jsonResponse({ error: 'failed to process audio' }, 500)) as typeof fetch,
     })
     await expect(busy.transcribe(req)).rejects.toMatchObject({ code: 'TRANSCRIBER_HTTP' })
   })

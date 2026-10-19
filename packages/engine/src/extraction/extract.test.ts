@@ -95,7 +95,10 @@ describe('extractCandidates', () => {
 
   test('a reply cut off at the cap (a runaway) gets the repair retry', async () => {
     const llm = createScriptedLlmClient({
-      chatQueue: ['{"candidates":[{"kind":"activity","fields":{"name":"ran","name2":"ran","name3"', JSON.stringify({ candidates: [] })],
+      chatQueue: [
+        '{"candidates":[{"kind":"activity","fields":{"name":"ran","name2":"ran","name3"',
+        JSON.stringify({ candidates: [] }),
+      ],
     })
     expect(await extractCandidates({ llm, config }, input('ran'), EMPTY_SNAPSHOT)).toEqual([])
     expect(llm.chatCalls).toHaveLength(2)
