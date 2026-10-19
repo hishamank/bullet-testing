@@ -3,8 +3,8 @@
 **Status:** stable for slice 1 (2026-10-18; voice-note audio, the `transcribing` state, and
 thoughts + clarifying questions were added the same day; light manual editing, closing open loops
 and tap-to-answer questions were added 2026-10-19; reflective questions (slice 2) were added
-2026-10-19 too, §2e). The code version lives in `@bullet/core`
-(`processing.ts`, `sync.ts`). We may **add** things later (new operations, new kinds of data); we
+2026-10-19 too, §2e; connections, themes and Noticed (slice 3) were added 2026-10-19, §2f). The
+code version lives in `@bullet/core` (`processing.ts`, `sync.ts`). We may **add** things later (new operations, new kinds of data); we
 won't rename or remove anything below without updating this page.
 
 This page is for anyone designing screens. Technical details are at the end.
@@ -188,12 +188,12 @@ Rules the design can rely on:
 - You can **re-classify** a thought. Your choice sticks, even if the capture is processed again.
 - Things (and their suggestions) say which **thought** they came from, as well as which capture.
 - Worries, ideas, notes and self-questions are kept as thoughts and nothing is extracted from
-  them. A worry, self-question or idea may get a **reflective question** (§2e). Links between
-  captures and recurring themes come later.
+  them. A worry, self-question or idea may get a **reflective question** (§2e). Thoughts of
+  different captures are **linked**, and recurring ones make **themes** (§2f).
 - The server may flag a thought `sensitive` (it reads as self-harm, crisis or acute distress).
   The flag is **server-only**: it is never pulled to the phone, never shown (no UI, no copy, no
-  notification), and the capture is never hidden. Its only effect is that no reflective question
-  is asked about that capture (§2e).
+  notification), and the capture is never hidden. Its effects: no reflective question is asked
+  about that capture (§2e), and the thought never surfaces outside its own capture (§2f).
 - Long recordings work: the capture is split in pieces for the AI and the thoughts are put back
   together in order.
 
@@ -256,6 +256,10 @@ should do. It is optional and never nags.
   "Ba3do 3a balak? «…»", or "بعدو عبالك؟ «…»" (shown right to left; its "؟" is never replaced by
   "?"). The language is a deterministic guess that falls back to English when unsure. At most
   once per thought, ever. A resolved one never does.
+- `connection` (slice 3, §2f): "Is this the same thing? «A» / «B»" about a thought of the capture
+  and an earlier one that are close, but not close enough to link, with the options **Same thing**
+  and **Different** (a free answer, a capture, works too). It takes the capture's one question only
+  when the capture's own reflection asked nothing.
 - `evergreen`: a hand-written list of about 20 calm questions ("What took more energy than it
   should have this week?"), with a `template_id`. Offered only when no other reflective question
   is open, at most one every 3 days. The user can also **pick one** to journal about
@@ -279,7 +283,8 @@ question offers:
   question (`never_ask` on the thought), even after the capture is processed again. A dismissed
   evergreen question is not offered again.
 
-Tapping an option (`question.answer`) does not apply: it is refused for reflective questions.
+Tapping an option (`question.answer`) is refused for reflective questions, except a `connection`
+question's Same thing / Different (§2f).
 
 **Pick a question** lists the evergreen questions except those let go with Not this one and those
 already waiting. A pick is created on the phone at once, so it can be answered offline. If the
@@ -297,13 +302,87 @@ That capture then gets no reflective question, its open loops never get "Still o
 and evergreen questions pause for 7 days. Everything else is identical: the capture is kept,
 split and extracted. No UI, no copy, no notification.
 
+## 2f. Connections, themes and Noticed (slice 3)
+
+The app quietly shows the thread when you've said something before, in your own words, and lets you
+say "no, that's not it". Nothing here is in the Inbox badge, and nothing notifies.
+
+**Links between thoughts** of different captures, one of four types:
+
+- `same_entity`: the same person, place or project ("Karim", "the Hamra flat");
+- `same_topic`: about the same thing;
+- `answers`: a later thought answers an earlier open loop (`to_check` / `question`);
+- `revisits`: a later thought asks again, or restates, an earlier question or idea.
+
+A capture's thoughts are linked within moments of it being `processed` (a `link` job right after
+its extraction): each thought is compared with the 10 closest earlier thoughts, and linked when
+they are close enough (closer still when they share no name). At most **5 links per thought**;
+anything not close enough is dropped, never queued. A nightly run checks the least certain links
+with a bigger model: it settles same person vs same topic, and removes one it finds unrelated (it
+never comes back).
+
+**Answered loops.** When a later capture seems to answer an open loop, the live model is asked
+"does it?" and a yes proposes closing it: a **`thought_resolve` suggestion** (§3), tier `suggest`,
+never applied automatically: "Did this close it? «loop» ← «answer»". One per loop and answering
+capture.
+
+- **Accept** closes the loop (`resolved_at`, `resolved_by_bullet_id` = the answering capture).
+  Refused (`conflict`) when the loop was closed meanwhile: show **Already closed**.
+- **Dismiss** remembers the pair: it is never proposed again, even after re-processing.
+- **Undo** opens the loop again.
+- A loop you closed by hand is never touched; nothing is proposed from a sensitive answer.
+- It is about another capture's loop, so it never puts the answering capture in `needs_review`.
+
+**Connection questions** ("Is this the same thing? «A» / «B»", §2e origin `connection`): a pair a
+little under the link threshold, both worries, things to check, self-questions or ideas. It obeys
+every slice 2 limit, lives under **To think about**, and takes the capture's single question only
+when the capture got no other. **Same thing** links them (your link); **Different** remembers they
+are not related.
+
+**Themes.** A theme is at least **4 thoughts over at least 3 different days, from at least 2
+captures, within the last 30 days**, that are linked or close. A nightly run (02:00 on the home
+server; after downtime it catches up once) finds them, names new ones in a few of your own words,
+and keeps at most **8 active**. A theme's `status`: `active`, `dormant` (not recurring now; it may
+come back), or `retired` ("Not a theme", or merged into another: `merged_into_theme_id`).
+
+**Noticed cards** (an Inbox section below Questions): "«quote» · came up N times in M days", up to 3
+quotes (each opens its capture), and the theme as an editable pill. Wording is observational and in
+your words: the app never writes "seem", "tend", "should", "pattern", "stress", "anxious", "always"
+or "never" (only a quote of yours can contain them). At most one card per theme per 14 days, at most
+2 new cards a day; a card you haven't opened is **retired** after 14 days. Status: `new`, `opened`,
+`dismissed`, `retired`.
+
+**Corrections are remembered** (nothing re-creates them: not nightly runs, edits or re-processing):
+
+- **Not related** (`link.veto`, long-press a Related row): the link goes and the pair is remembered,
+  in both directions.
+- **Not a theme** (`theme.retire`): the theme is retired, never re-created from mostly the same
+  thoughts, and its unopened cards are withdrawn. Its links stay.
+- **Rename** (`theme.rename`): your name shows from now on.
+- **Merge with…** (`theme.merge`): its thoughts move to the other theme, it is retired, and later
+  matches of it go to the other theme.
+- **Open** / **dismiss** a card (`noticed.open`, `noticed.dismiss`).
+
+A remembered pair is about two thoughts; an edit that rewords a thought makes it a new thought.
+
+**Sensitive thoughts** are linked on the server but never leave their own capture: links touching
+one are not pulled, Noticed never quotes one, they never take part in a connection question or an
+answered loop. A theme made half or more of them is not pulled at all (no card, no name).
+
+**On the phone** (data layer: `apps/mobile/src/data/connections.ts`): Capture detail **Related · N**
+(each row: date, quote, small word: same person / related / answers / again), the Inbox's
+**Noticed**, the Stream's "again" dot (a thought in an active theme), "Did this close it?" cards,
+and "Closed by «…»" on open loops (`resolved_by_bullet_id`).
+
 ## 3. Suggestions
 
 A bullet can produce several suggestions ("ran 5k, dentist Thursday 3pm" → an activity **and** an
 event). Each suggestion is one proposed change:
 
 - **Kind:** `task`, `event`, `tracker` (a new thing to track), `tracker_entry` (a reading such as
-  mood 4), or `activity` (something you did).
+  mood 4), or `activity` (something you did). Slice 3 adds `thought_resolve` ("Did this close
+  it?", §2f): an `update` whose `target_id` is the open loop and whose payload is `{ thought_id,
+  resolved_by_bullet_id }`; tier `suggest`, never `auto`.
 - **Operation:** `create` (make a new one), `append` (log under an existing tracker), or `update`
   (change something that exists, such as marking a task done). A `tracker_entry` **`create`** is
   a reading of a tracker that is itself only proposed: its `payload.tracker_id` is that `tracker`
@@ -436,7 +515,10 @@ device `draft` transcript, optional `answers_question_id`, and optional `resolve
 `payload`), `suggestion.reject`, `suggestion.undo`, `thought.reclassify` (`thought_id`, `kind`),
 `thought.resolve` / `thought.unresolve` (`thought_id`), `question.dismiss` (`question_id`),
 `question.answer` (`question_id`, `option`), `question.snooze` (`question_id`; reflective only),
-`question.pick_evergreen` (a client-minted `question_id`, `template_id`), and the manual edits: `task.update` (`task_id`,
+`question.pick_evergreen` (a client-minted `question_id`, `template_id`), the slice 3 corrections
+`link.veto` (`link_id`), `theme.rename` (`theme_id`, `name`, 1–60 characters), `theme.retire`
+(`theme_id`), `theme.merge` (`theme_id`, `into_theme_id`), `noticed.open` / `noticed.dismiss`
+(`card_id`), and the manual edits: `task.update` (`task_id`,
 `patch` of `status: todo | done`, `due_at`, `title`), `task.delete` (`task_id`), `event.update`
 (`event_id`, `patch` of `starts_at`, `ends_at`, `title`), `event.delete` (`event_id`),
 `tracker_entry.update` (`tracker_entry_id`, `patch: { value }`) and `tracker_entry.delete`
@@ -453,6 +535,16 @@ Reflective questions (2026-10-19): questions carry `kind` (`clarifying` | `refle
 has no capture). Thoughts carry `sensitive` and `never_ask`. Older rows read as `clarifying`,
 `capture`, null, 0, null, false, false.
 
+Connections (2026-10-19): questions carry `related_thought_id` (a `connection` question's earlier
+thought; null otherwise) and `origin` may be `connection`, whose `options` are `Same thing` and
+`Different`. A `thought_links` row: `a_thought_id`, `a_bullet_id` (the earlier), `b_thought_id`,
+`b_bullet_id`, `type`. A `themes` row: `name` (the user's, else the model's; null until named),
+`named_by_user`, `status`, `merged_into_theme_id`, `thought_count`, `day_count`, `first_seen_at`,
+`last_seen_at`. A `theme_thoughts` row: `theme_id`, `thought_id`, `bullet_id`. A `noticed_cards`
+row: `theme_id`, `headline`, `quotes` (`thought_id`, `bullet_id`, `text`; up to 3), `count`,
+`days`, `status`, `opened_at`, `resolved_at`. Hidden for sensitivity means pulled as
+`state: 'deleted'`. Older rows read as null / `capture`.
+
 Provenance: every thing and suggestion carries `source_bullet_id` (the capture) and
 `source_thought_id` (the thought; null for things made by hand or before thoughts existed).
 
@@ -464,10 +556,13 @@ offer are `invalid` (so is `question.answer` or `question.snooze` on the wrong k
 or picking an unknown evergreen template; a pick over the open limit is `conflict`); answering a
 question whose suggestion is no longer waiting (dismissed, or its
 result edited by you) is `conflict`. Re-sending the same answer, resolve or edit is harmless.
+Accepting a `thought_resolve` whose loop was closed meanwhile is `conflict`; renaming or merging a
+retired theme is `invalid`; vetoing a link, retiring a theme or opening a card twice is a
+`duplicate`.
 
 **`GET /sync/pull?cursor=<opaque>&limit=<1..500>`** returns `{ changes: { bullets, suggestions,
 tasks, events, trackers, tracker_entries, activities, audio_attachments, transcripts,
-thoughts, questions }, cursor,
+thoughts, questions, thought_links, themes, theme_thoughts, noticed_cards }, cursor,
 has_more, server_time }`. Rows
 are full current versions, soft-deleted ones included (`state: 'deleted'`). Omit `cursor` for a
 full sync. Repeat while `has_more`.
