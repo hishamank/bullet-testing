@@ -2,7 +2,7 @@
  * What the screens need to know about sync, derived from sync outcomes: is the home server
  * reachable, should the one-time "Home server unreachable" note show, and when to sync next.
  *
- * Pure: the device edge (engine.ts) feeds it outcomes and the clock.
+ * Pure: the device edge (apps/mobile/src/features/sync/engine.ts) feeds it outcomes and the clock.
  *
  * An outage starts after `OUTAGE_AFTER_FAILURES` failed syncs in a row (one blip is not an
  * outage) and ends with the next successful sync. The note shows once per outage: dismissing it,

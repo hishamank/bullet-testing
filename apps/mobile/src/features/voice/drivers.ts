@@ -15,10 +15,15 @@ import {
   setAudioModeAsync,
 } from 'expo-audio'
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition'
-import { createAttempts, endCause, endedFile } from './attempts'
-import { segmentName } from './save'
-import type { DriverEvent, VoiceDriver } from './session'
-import { VOICE_FORMAT } from './wav'
+import {
+  createAttempts,
+  type DriverEvent,
+  endCause,
+  endedFile,
+  segmentName,
+  VOICE_FORMAT,
+  type VoiceDriver,
+} from '@bullet/client'
 
 type Listener = (e: DriverEvent) => void
 

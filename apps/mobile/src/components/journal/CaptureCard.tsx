@@ -3,18 +3,18 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 import { AgainDot } from '@/components/connections/parts'
 import { Icon } from '@/components/Icon'
-import { openThemeLabel } from '@/features/connections/copy'
-import { KindPill, Label, QuestionText, TextButton } from '@/components/ui'
 import {
   AUDIO_READ_ERROR_TEXT,
   type CaptureCard as Card,
   cardAccessibilityLabel,
   cardState,
-  type StateTone,
+  openThemeLabel,
+  plural,
   sourceLine,
-} from '@/features/journal/stream'
-import { plural } from '@/features/journal/format'
-import { thinkingAboutLabel } from '@/features/reflect/model'
+  type StateTone,
+  thinkingAboutLabel,
+} from '@bullet/client'
+import { KindPill, Label, QuestionText, TextButton } from '@/components/ui'
 import { kindStyle, radius, size, space, type, useTheme } from '@/theme'
 
 export function CaptureCard({

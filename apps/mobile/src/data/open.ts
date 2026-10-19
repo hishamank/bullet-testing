@@ -2,8 +2,7 @@
 
 import { drizzle } from 'drizzle-orm/expo-sqlite'
 import { addDatabaseChangeListener, openDatabaseSync } from 'expo-sqlite'
-import { migrate, type PhoneDb } from './db'
-import { schema } from './schema'
+import { migrate, type PhoneDb, schema } from '@bullet/client'
 
 let instance: PhoneDb | null = null
 

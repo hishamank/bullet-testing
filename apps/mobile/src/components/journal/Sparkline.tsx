@@ -4,7 +4,7 @@
  */
 
 import { StyleSheet, View } from 'react-native'
-import type { Spark } from '@/features/journal/trackers'
+import type { Spark } from '@bullet/client'
 import { useTheme } from '@/theme'
 
 const W = 110

@@ -5,7 +5,8 @@ is kept forever on the phone and on the home server, where Whisper transcribes i
 English, Lebanese Arabic and French). While you talk, the phone shows a **live English draft**
 from Apple's on-device recognizer. The draft is only a preview. Saving never waits on its quality.
 
-Code: `apps/mobile/src/features/voice` (logic), `components/voice` (layout), `app/record.tsx`
+Code: `packages/client/src/features/voice` (logic), `apps/mobile/src/features/voice` (device
+drivers, recorder hook), `components/voice` (layout), `app/record.tsx`
 (route). Contract: `docs/contract.md` §2b.
 
 ## Which speech module, and why
@@ -44,7 +45,7 @@ until the home transcript replaces it.
   `PUT /sync/audio/:id`.
 - **Paths are stored relative to Documents.** `local_path` is `recordings/<id>.wav`, because
   iOS changes the app container's absolute path on every update or reinstall. Resolve it with
-  `recordingUri()` (`src/sync/runtime.ts`) before reading or playing it. Older rows that hold an
+  `recordingUri()` (`apps/mobile/src/sync/runtime.ts`) before reading or playing it. Older rows that hold an
   absolute path still resolve: by the path while it exists, else by file name. A recording that
   can't be read is skipped in the upload pass (the reason is noted under the sync-state key
   `audio_read_error:<id>`), so it never holds back later recordings.

@@ -18,6 +18,7 @@ apps/
 packages/
   core/       # domain types + Zod schemas (pure TS)
   engine/     # extraction → resolution pipeline, LLM client interface (pure TS)
+  client/     # shared client logic: local mirror + migrations, sync client, feature models
 ```
 
 ## Getting started

@@ -271,7 +271,7 @@ export function audioSource(
     server: { baseUrl: string; token: string } | null
     /**
      * `local_path` is stored relative to Documents (`recordings/<id>.wav`): turn it into today's
-     * file uri (`recordingUri` in sync/runtime.ts). Defaults to using it as is.
+     * file uri (`recordingUri` in apps/mobile/src/sync/runtime.ts). Defaults to using it as is.
      */
     resolveLocal?: (path: string) => string
   },

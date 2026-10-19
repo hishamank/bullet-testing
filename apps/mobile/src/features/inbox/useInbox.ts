@@ -4,8 +4,7 @@ import { useMemo } from 'react'
 import { useLocalQuery, useNow, useStore } from '@/hooks'
 import { deviceDeps } from '../../sync/runtime'
 import { undoStore } from './actions'
-import { buildInbox, type InboxView } from './model'
-import { loadInboxRows } from './model'
+import { buildInbox, type InboxView, loadInboxRows } from '@bullet/client'
 
 export function useInbox(): InboxView {
   const undo = useStore(undoStore)

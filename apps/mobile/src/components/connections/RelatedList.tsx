@@ -7,8 +7,7 @@
 import { Alert, Pressable, StyleSheet, View } from 'react-native'
 import { Divider, Group, SectionTitle } from '@/components/journal/parts'
 import { Label, TextButton } from '@/components/ui'
-import { COPY, relatedHeading } from '@/features/connections/copy'
-import type { RelatedItem } from '@/features/connections/model'
+import { COPY, relatedHeading, type RelatedItem } from '@bullet/client'
 import { space, type } from '@/theme'
 import { Quoted } from './parts'
 

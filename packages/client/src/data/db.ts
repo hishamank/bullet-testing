@@ -1,6 +1,6 @@
 /**
  * The phone database type and its migration runner — driver-agnostic, so the SAME code runs on
- * expo-sqlite (device) and better-sqlite3 (Vitest).
+ * expo-sqlite (device), better-sqlite3 (Vitest) and, later, a browser SQLite (web).
  */
 
 import { sql } from 'drizzle-orm'

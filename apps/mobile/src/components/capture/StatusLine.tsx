@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router'
 import { Pressable, StyleSheet, View } from 'react-native'
-import type { CaptureCounts } from '@/features/capture/counts'
 import {
+  type CaptureCounts,
   captureNotice,
   failedText,
   foundText,
@@ -10,9 +10,9 @@ import {
   STILL_SORTING_TEXT,
   UNAUTHORIZED_TEXT,
   unpairedText,
-  untranscribableText,
   UNREACHABLE_TEXT,
-} from '@/features/capture/notice'
+  untranscribableText,
+} from '@bullet/client'
 import { useNow, usePairing, useSyncStatus } from '@/hooks'
 import { type, useTheme } from '@/theme'
 import { Icon } from '../Icon'

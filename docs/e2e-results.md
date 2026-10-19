@@ -28,7 +28,7 @@ pnpm --filter server device:add "E2E harness"
 ```
 
 ```bash
-BULLET_E2E_URL=http://127.0.0.1:3001 BULLET_E2E_TOKEN=<token> pnpm --filter mobile exec vp test run src/test/e2e
+BULLET_E2E_URL=http://127.0.0.1:3001 BULLET_E2E_TOKEN=<token> pnpm --filter @bullet/client exec vp test run src/test/e2e
 ```
 
 Optional variables:

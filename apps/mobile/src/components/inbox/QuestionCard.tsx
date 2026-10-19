@@ -2,7 +2,7 @@
 
 import { Link } from 'expo-router'
 import { Pressable, StyleSheet, View } from 'react-native'
-import type { QuestionItem } from '@/features/inbox/model'
+import type { QuestionItem } from '@bullet/client'
 import { space, type, useTheme } from '@/theme'
 import { Label, TextButton, touch } from '../ui'
 import { CaptureLink, card, OptionButton } from './parts'

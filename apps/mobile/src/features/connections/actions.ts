@@ -1,5 +1,5 @@
 /**
- * Device edge: what the slice 3 buttons do. Each write lives in `src/data` (change + outbox op in
+ * Device edge: what the slice 3 buttons do. Each write lives in `@bullet/client` (change + outbox op in
  * one transaction); here we run it, refresh live queries, sync and announce. Nothing notifies.
  * "Close it" / "Keep open" go through the Inbox's held Undo window (`decideLoopAnswer`).
  */
@@ -7,6 +7,9 @@
 import { AccessibilityInfo } from 'react-native'
 import {
   answerConnection,
+  cardIsNew,
+  cleanThemeName,
+  COPY,
   dismissNoticed,
   mergeTheme,
   openNoticed,
@@ -14,13 +17,11 @@ import {
   renameTheme,
   retireTheme,
   vetoLink,
-} from '../../data/local'
+} from '@bullet/client'
 import { getDb } from '../../data/open'
 import { deviceDeps } from '../../sync/runtime'
 import { decideLoopAnswer } from '../inbox/actions'
 import { notifyLocalChange, syncNow } from '../sync/engine'
-import { COPY } from './copy'
-import { cardIsNew, cleanThemeName } from './model'
 
 function run(write: () => void, message: string | null): void {
   write()

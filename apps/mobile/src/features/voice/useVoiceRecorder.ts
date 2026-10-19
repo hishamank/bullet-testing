@@ -8,9 +8,23 @@ import { useAudioRecorder } from 'expo-audio'
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { AppState } from 'react-native'
-import type { CaptureLinks } from '../../data/local'
+import {
+  bytesPerSecond,
+  cancelNeedsConfirm,
+  type CaptureLinks,
+  createVoiceSession,
+  draftText,
+  foregroundChange,
+  initialVoiceState,
+  sessionDir,
+  VOICE_FORMAT,
+  voiceAccess,
+  type VoiceAccess,
+  type VoiceSession,
+  type VoiceState,
+  writeSessionMeta,
+} from '@bullet/client'
 import { deviceDeps } from '../../sync/runtime'
-import { type VoiceAccess, voiceAccess } from './access'
 import {
   discardRecording,
   markSessionLive,
@@ -25,17 +39,6 @@ import {
   voiceStoreDeps,
 } from './device'
 import { AUDIO_RECORDING_OPTIONS, createAudioDriver, createSpeechDriver } from './drivers'
-import { sessionDir, writeSessionMeta } from './save'
-import {
-  cancelNeedsConfirm,
-  createVoiceSession,
-  draftText,
-  foregroundChange,
-  initialVoiceState,
-  type VoiceSession,
-  type VoiceState,
-} from './session'
-import { bytesPerSecond, VOICE_FORMAT } from './wav'
 
 /** The longest voice note: what fits the server's 200 MB upload limit as 16 kHz WAV (~1h45). */
 const MAX_RECORDING_MS = Math.floor(

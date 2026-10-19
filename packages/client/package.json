@@ -1,0 +1,25 @@
+{
+  "name": "@bullet/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test",
+    "db:generate": "drizzle-kit generate && node scripts/bundle-migrations.mjs"
+  },
+  "dependencies": {
+    "@bullet/core": "workspace:*",
+    "@bullet/engine": "workspace:*",
+    "drizzle-orm": "catalog:"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
+    "better-sqlite3": "catalog:",
+    "drizzle-kit": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

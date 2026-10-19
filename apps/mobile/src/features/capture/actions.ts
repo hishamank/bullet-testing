@@ -1,7 +1,7 @@
-/** Device edge: what the capture page's buttons do. The writes themselves live in `src/data`. */
+/** Device edge: what the capture page's buttons do. The writes themselves live in `@bullet/client`. */
 
 import * as Haptics from 'expo-haptics'
-import { captureBullet, retryBullet } from '../../data/local'
+import { captureBullet, retryBullet } from '@bullet/client'
 import { getDb } from '../../data/open'
 import { deviceDeps } from '../../sync/runtime'
 import { notifyLocalChange, syncNow } from '../sync/engine'

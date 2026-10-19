@@ -4,13 +4,13 @@ import { useState } from 'react'
 import { StyleSheet, TextInput, View } from 'react-native'
 import {
   CHECK_MESSAGES,
-  type ConnectionCheck,
   checkConnection,
+  type ConnectionCheck,
+  createHttpTransport,
   normalizeServerUrl,
   normalizeToken,
-} from '@/features/setup/pairing'
+} from '@bullet/client'
 import { pairDevice } from '@/features/sync/engine'
-import { createHttpTransport } from '@/sync/transport'
 import { radius, space, type, useTheme } from '@/theme'
 import { Label, PrimaryButton, TextButton } from '../ui'
 

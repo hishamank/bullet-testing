@@ -1,6 +1,6 @@
 /**
  * Device edge for voice: files (expo-file-system) and the two iOS
- * permissions. Thin adapters over the injected interfaces in save.ts / access.ts.
+ * permissions. Thin adapters over the injected interfaces in @bullet/client (voice/save.ts, voice/access.ts).
  */
 
 import { getRecordingPermissionsAsync, requestRecordingPermissionsAsync } from 'expo-audio'
@@ -8,8 +8,12 @@ import { Directory, File, Paths } from 'expo-file-system'
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition'
 import { getDb } from '../../data/open'
 import { deviceDeps } from '../../sync/runtime'
-import type { PermissionState, VoicePermissions } from './access'
-import type { VoiceStoreDeps, VoiceStoreIo } from './save'
+import type {
+  PermissionState,
+  VoicePermissions,
+  VoiceStoreDeps,
+  VoiceStoreIo,
+} from '@bullet/client'
 
 const withSlash = (uri: string) => (uri.endsWith('/') ? uri : `${uri}/`)
 

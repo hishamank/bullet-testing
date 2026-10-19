@@ -47,12 +47,18 @@ apps/
 packages/
   core/       # @bullet/core — domain types + Zod schemas. Pure TS.
   engine/     # @bullet/engine — extraction → resolution, LlmClient interface. Pure TS.
+  client/     # @bullet/client — a client's local mirror (schema, migrations, local writes,
+              #   outbox, pull merge, queries), the sync client, pure feature models and copy.
 ```
 
-Dependency direction: `engine → core`; `server → core + engine`; `mobile` / `web` → `core`
-(+ `engine` where useful) and the server's API contract. **`core` and `engine` must stay pure:**
+Dependency direction: `engine → core`; `server → core + engine`; `mobile` / `web` → `client`
+→ `core` + `engine`, plus the server's API contract. **`core` and `engine` must stay pure:**
 no DB drivers, no `node:*` imports, no React Native APIs — they run on the server, the phone and
-the web.
+the web. **`client` must stay runtime-free:** no React, React Native, Expo or browser-only APIs
+and no DB driver. The app injects the database (any synchronous Drizzle SQLite handle over its
+`schema`, typed `PhoneDb`), `fetch` (`createHttpTransport`), the recording reader
+(`createSyncClient({ readAudioChunk })`) and clock/ids/time zone (`LocalDeps`). Apps keep only
+their edges: the driver opener, device/runtime glue, hooks, components and routes.
 
 ### The one non-negotiable architectural rule
 
@@ -154,18 +160,23 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
   Audio upload is `PUT /sync/audio/:id` with an `upload-offset` header: resumable, idempotent by
   attachment id, sha256-verified. Recordings live under `AUDIO_DIR` on the server. Until a
   transcriber is wired, voice bullets are processed on their device draft.
-- **Voice capture on the phone** (`apps/mobile/src/features/voice`, `docs/voice-capture.md`):
+- **Voice capture on the phone** (logic `packages/client/src/features/voice`, device drivers and
+  recorder hook `apps/mobile/src/features/voice`, `docs/voice-capture.md`):
   expo-speech-recognition writes 16 kHz WAV segments (one per stretch; Pause ends one) while the
   same mic tap feeds the on-device recognizer; Send joins them (`wav.ts`). expo-audio (m4a, no
   draft) when speech recognition is denied or can't start. Recording pauses (never stops) on a
   call, Siri or backgrounding; a killed recording is saved on the next one (`recoverRecordings`).
   Session logic is pure (`session.ts`, driver injected); needs a dev build, not Expo Go.
-- **Phone data layer** (`apps/mobile/src/data`, `src/sync`): expo-sqlite + Drizzle. Every local
-  action writes its change **and** its outbox op in one transaction. Migrations are drizzle-kit
-  SQL inlined into `migrations.gen.ts` (`pnpm --filter mobile db:generate`) and applied by a
-  driver-agnostic runner, so the same code runs on device and in Vitest (better-sqlite3).
-  React Native / Expo APIs live only in `open.ts`, `settings.ts` and `runtime.ts` (which also
-  reads recording chunks with expo-file-system); everything else is testable logic. A refused
+- **Phone data layer** (`packages/client/src/data`, `src/sync`, exported by `@bullet/client`):
+  Drizzle over an injected sync SQLite driver (expo-sqlite on the phone, better-sqlite3 in Vitest,
+  a browser SQLite later). Every local action writes its change **and** its outbox op in one
+  transaction. Migrations are drizzle-kit SQL (`packages/client/drizzle`) inlined into
+  `migrations.gen.ts` (`pnpm --filter @bullet/client db:generate`) and applied by the
+  driver-agnostic `migrate(db)`, so the same code runs on device and in Vitest. On the phone,
+  React Native / Expo APIs live only in the app's edges: `apps/mobile/src/data/open.ts`,
+  `src/sync/settings.ts`, `src/sync/runtime.ts` (which also reads recording chunks with
+  expo-file-system), the `features/*/actions.ts` handlers, `features/sync/engine.ts`, hooks and
+  components; everything else is testable logic in `@bullet/client`. A refused
   suggestion/question op forces the next pull to be a full one (an unchanged server row would
   otherwise never come back); refused accepts, undos and answers are also logged in `sync_state`
   (`data/rejections.ts`) for calm UI notices. `outbox.hold_until` holds an op back (the Inbox's

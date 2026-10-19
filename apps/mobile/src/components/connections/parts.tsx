@@ -6,8 +6,7 @@
 import type { ReactNode } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Label } from '@/components/ui'
-import { COPY, pillLabel, pillText, quote } from '@/features/connections/copy'
-import type { QuoteRow } from '@/features/connections/model'
+import { COPY, pillLabel, pillText, quote, type QuoteRow } from '@bullet/client'
 import { radius, readingFont, size, space, type, useTheme } from '@/theme'
 
 const rtlStyle = { writingDirection: 'rtl', textAlign: 'right' } as const

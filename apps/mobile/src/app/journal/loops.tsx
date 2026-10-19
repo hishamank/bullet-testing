@@ -11,7 +11,7 @@ import {
   SectionTitle,
 } from '@/components/journal/parts'
 import { IconButton, Label, TextButton } from '@/components/ui'
-import { listLoops, type LoopItem, loopSourceLine } from '@/features/journal/loops'
+import { listLoops, type LoopItem, loopSourceLine } from '@bullet/client'
 import { reopenLoop, resolveLoop } from '@/features/journal/actions'
 import { useLocalQuery } from '@/hooks'
 import { kindStyle, type, useTheme } from '@/theme'

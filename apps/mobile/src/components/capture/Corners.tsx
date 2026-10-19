@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router'
 import { Pressable, StyleSheet, View } from 'react-native'
-import { inboxCornerLabel, journalCornerLabel } from '@/features/capture/notice'
+import { inboxCornerLabel, journalCornerLabel } from '@bullet/client'
 import { useTheme, type } from '@/theme'
 import { Icon } from '../Icon'
 import { IconButton, Label, touch } from '../ui'

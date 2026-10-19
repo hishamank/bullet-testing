@@ -34,8 +34,7 @@ import {
   openCard,
   renameThemeTo,
 } from '@/features/connections/actions'
-import { COPY } from '@/features/connections/copy'
-import { inboxSections, toDecideCount } from '@/features/connections/model'
+import { COPY, inboxSections, toDecideCount } from '@bullet/client'
 import { useInbox } from '@/features/inbox/useInbox'
 import { laterQuestion, notThisOne, pickQuestion } from '@/features/reflect/actions'
 import { useEvergreenChoices, useLoopAnswers, useNoticed, useThinkView } from '@/hooks'
