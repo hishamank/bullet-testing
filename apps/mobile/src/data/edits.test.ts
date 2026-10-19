@@ -76,6 +76,7 @@ const question = (
   snoozed_until: null,
   snooze_count: 0,
   template_id: null,
+  related_thought_id: null,
   resolved_at: null,
 })
 
@@ -172,6 +173,10 @@ const page = (over: Partial<PullResponse['changes']> = {}, cursor = '1'): PullRe
     activities: [],
     audio_attachments: [],
     transcripts: [],
+    thought_links: [],
+    themes: [],
+    theme_thoughts: [],
+    noticed_cards: [],
     thoughts: [thought(LOOP, 'to_check', 0), thought(WORRY, 'worry', 1)],
     questions: [
       question(Q_DATE, 'date', S_EVENT, ['Today', 'Next Thursday']),

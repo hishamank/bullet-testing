@@ -432,6 +432,10 @@ describe('a refused decision', () => {
       transcripts: [],
       thoughts: [],
       questions: [],
+      thought_links: [],
+      themes: [],
+      theme_thoughts: [],
+      noticed_cards: [],
     }
     return {
       pulls,
@@ -565,6 +569,10 @@ describe('held decisions (the Undo window is real)', () => {
     transcripts: [],
     thoughts: [],
     questions: [],
+    thought_links: [],
+    themes: [],
+    theme_thoughts: [],
+    noticed_cards: [],
   }
   function recordingTransport(opts: { onPush?: () => void } = {}) {
     const pushed: string[][] = []
@@ -695,6 +703,10 @@ describe('refusal scope and notices', () => {
           transcripts: [],
           thoughts: [],
           questions: [],
+          thought_links: [],
+          themes: [],
+          theme_thoughts: [],
+          noticed_cards: [],
         },
         cursor: '9',
         has_more: false,

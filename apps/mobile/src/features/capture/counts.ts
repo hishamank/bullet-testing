@@ -57,6 +57,8 @@ export function latestCapture(
         eq(suggestions.source_bullet_id, b.id),
         eq(suggestions.state, 'active'),
         ne(suggestions.status, 'rejected'),
+        // "Did this close it?" is about another capture's loop, not a thing found here.
+        ne(suggestions.target_kind, 'thought_resolve'),
       ),
     )
     .all()

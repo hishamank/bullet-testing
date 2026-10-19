@@ -7,6 +7,7 @@
 import {
   type BulletDeleteMode,
   type BulletSource,
+  CONNECTION_OPTIONS,
   type EventManualPatch,
   entryValueFits,
   evergreenQuestion,
@@ -22,17 +23,21 @@ import {
   trackerEntryValueSchema,
 } from '@bullet/core'
 import { dateAnswerFields, mayPickEvergreen, yesNoAnswer } from '@bullet/engine'
-import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { ENTITY_TABLES } from './mirror'
 import {
   audioAttachments,
   bullets,
   events,
+  noticedCards,
   outbox,
   questions,
   suggestions,
   tasks,
+  themes,
+  themeThoughts,
+  thoughtLinks,
   thoughts,
   trackerEntries,
   trackers,
@@ -286,6 +291,15 @@ export function deleteBullet(
         .where(eq(table.source_bullet_id, bulletId))
         .run()
     }
+    // Its thoughts' links and theme memberships go with them (the server does the same).
+    tx.update(thoughtLinks)
+      .set({ state: 'deleted', updated_at: now })
+      .where(or(eq(thoughtLinks.a_bullet_id, bulletId), eq(thoughtLinks.b_bullet_id, bulletId)))
+      .run()
+    tx.update(themeThoughts)
+      .set({ state: 'deleted', updated_at: now })
+      .where(eq(themeThoughts.bullet_id, bulletId))
+      .run()
     const own = eq(suggestions.source_bullet_id, bulletId)
     tx.update(suggestions)
       .set({ state: 'deleted', updated_at: now })
@@ -328,6 +342,7 @@ export function acceptSuggestion(
 ): void {
   const now = deps.now()
   db.transaction((tx) => {
+    const s = tx.select().from(suggestions).where(eq(suggestions.id, suggestionId)).get()
     tx.update(suggestions)
       .set({
         status: payload ? 'edited' : 'accepted',
@@ -337,6 +352,18 @@ export function acceptSuggestion(
       })
       .where(eq(suggestions.id, suggestionId))
       .run()
+    // "Did this close it?" — yes: the loop shows closed by that capture at once.
+    const loopId = s?.target_kind === 'thought_resolve' ? s.target_id : null
+    if (s && loopId) {
+      tx.update(suggestions)
+        .set({ applied_entity_id: loopId, applied_at: now })
+        .where(eq(suggestions.id, suggestionId))
+        .run()
+      tx.update(thoughts)
+        .set({ resolved_at: now, resolved_by_bullet_id: s.source_bullet_id, updated_at: now })
+        .where(and(eq(thoughts.id, loopId), isNull(thoughts.resolved_at)))
+        .run()
+    }
     appendOp(
       tx,
       {
@@ -345,7 +372,7 @@ export function acceptSuggestion(
         suggestion_id: suggestionId,
         ...(payload ? { payload } : {}),
       },
-      { suggestion_id: suggestionId },
+      { suggestion_id: suggestionId, ...(loopId ? { thought_id: loopId } : {}) },
       now,
     )
   })
@@ -372,11 +399,19 @@ export function undoSuggestion(db: PhoneDb, suggestionId: string, deps: LocalDep
   const now = deps.now()
   db.transaction((tx) => {
     const s = tx.select().from(suggestions).where(eq(suggestions.id, suggestionId)).get()
-    if (s?.applied_entity_id && s.operation !== 'update') {
+    if (s?.applied_entity_id && s.operation !== 'update' && s.target_kind !== 'thought_resolve') {
       const table = ENTITY_TABLES[s.target_kind]
       tx.update(table)
         .set({ state: 'deleted', updated_at: now })
         .where(eq(table.id, s.applied_entity_id))
+        .run()
+    }
+    // Undo "Did this close it?": the loop is open again (if this capture is what closed it).
+    const loopId = s?.target_kind === 'thought_resolve' ? s.target_id : null
+    if (s && loopId) {
+      tx.update(thoughts)
+        .set({ resolved_at: null, resolved_by_bullet_id: null, updated_at: now })
+        .where(and(eq(thoughts.id, loopId), eq(thoughts.resolved_by_bullet_id, s.source_bullet_id)))
         .run()
     }
     tx.update(suggestions)
@@ -392,7 +427,7 @@ export function undoSuggestion(db: PhoneDb, suggestionId: string, deps: LocalDep
     appendOp(
       tx,
       { op_id: deps.uuid(), type: 'suggestion.undo', suggestion_id: suggestionId },
-      { suggestion_id: suggestionId },
+      { suggestion_id: suggestionId, ...(loopId ? { thought_id: loopId } : {}) },
       now,
     )
   })
@@ -610,7 +645,9 @@ export function answerQuestion(
   db.transaction((tx) => {
     const q = tx.select().from(questions).where(eq(questions.id, questionId)).get()
     if (!q || q.state !== 'active') throw new Error(`question ${questionId} not found`)
-    if (q.kind === 'reflective') throw new Error('a reflective question is answered with a capture')
+    if (q.kind === 'reflective' && q.origin !== 'connection') {
+      throw new Error('a reflective question is answered with a capture')
+    }
     if (!q.options.includes(option)) throw new Error(`"${option}" is not an option`)
     tx.update(questions)
       .set({ status: 'answered', answer_option: option, resolved_at: now, updated_at: now })
@@ -771,4 +808,159 @@ export function updateTrackerEntry(
 export function deleteTrackerEntry(db: PhoneDb, entryId: string, deps: LocalDeps): void {
   const op: PushOp = { op_id: deps.uuid(), type: 'tracker_entry.delete', tracker_entry_id: entryId }
   editByHand(db, trackerEntries, entryId, { state: 'deleted' }, noCheck, op, deps)
+}
+
+// --- connections, themes, Noticed (slice 3) ---
+
+/** One local change to a connection row plus its op (the row id rides as `entity_id`). */
+function connectionOp(
+  db: PhoneDb,
+  op: PushOp,
+  entityId: string,
+  write: (tx: PhoneDb, now: number) => void,
+  deps: LocalDeps,
+): void {
+  const now = deps.now()
+  db.transaction((tx) => {
+    write(tx, now)
+    appendOp(tx, op, { entity_id: entityId }, now)
+  })
+}
+
+/**
+ * "Not related" (long-press on a Related row): the link is hidden at once; the server deletes it
+ * and remembers the pair, so it never comes back.
+ */
+export function vetoLink(db: PhoneDb, linkId: string, deps: LocalDeps): void {
+  connectionOp(
+    db,
+    { op_id: deps.uuid(), type: 'link.veto', link_id: linkId },
+    linkId,
+    (tx, now) => {
+      tx.update(thoughtLinks)
+        .set({ state: 'deleted', updated_at: now })
+        .where(eq(thoughtLinks.id, linkId))
+        .run()
+    },
+    deps,
+  )
+}
+
+/** Rename a theme (the editable pill). */
+export function renameTheme(db: PhoneDb, themeId: string, name: string, deps: LocalDeps): void {
+  const clean = name.trim().replace(/\s+/g, ' ')
+  if (clean === '' || clean.length > 60) throw new Error('a theme name is 1 to 60 characters')
+  connectionOp(
+    db,
+    { op_id: deps.uuid(), type: 'theme.rename', theme_id: themeId, name: clean },
+    themeId,
+    (tx, now) => {
+      tx.update(themes)
+        .set({ name: clean, named_by_user: true, updated_at: now })
+        .where(eq(themes.id, themeId))
+        .run()
+    },
+    deps,
+  )
+}
+
+/** Hide a theme's cards that were not opened yet (it was retired or merged away). */
+function retireNewCards(tx: PhoneDb, themeId: string, now: number): void {
+  tx.update(noticedCards)
+    .set({ status: 'retired', resolved_at: now, updated_at: now })
+    .where(and(eq(noticedCards.theme_id, themeId), eq(noticedCards.status, 'new')))
+    .run()
+}
+
+/** "Not a theme": retired for good; its unopened cards go; its links stay. */
+export function retireTheme(db: PhoneDb, themeId: string, deps: LocalDeps): void {
+  connectionOp(
+    db,
+    { op_id: deps.uuid(), type: 'theme.retire', theme_id: themeId },
+    themeId,
+    (tx, now) => {
+      tx.update(themes)
+        .set({ status: 'retired', updated_at: now })
+        .where(eq(themes.id, themeId))
+        .run()
+      tx.update(themeThoughts)
+        .set({ state: 'deleted', updated_at: now })
+        .where(eq(themeThoughts.theme_id, themeId))
+        .run()
+      retireNewCards(tx, themeId, now)
+    },
+    deps,
+  )
+}
+
+/**
+ * "Merge with…": `themeId` folds into `intoThemeId`. Locally the merged theme is retired and its
+ * memberships hidden; the survivor's new memberships arrive with the next pull.
+ */
+export function mergeTheme(
+  db: PhoneDb,
+  themeId: string,
+  intoThemeId: string,
+  deps: LocalDeps,
+): void {
+  if (themeId === intoThemeId) throw new Error('a theme cannot merge into itself')
+  connectionOp(
+    db,
+    { op_id: deps.uuid(), type: 'theme.merge', theme_id: themeId, into_theme_id: intoThemeId },
+    themeId,
+    (tx, now) => {
+      tx.update(themes)
+        .set({ status: 'retired', merged_into_theme_id: intoThemeId, updated_at: now })
+        .where(eq(themes.id, themeId))
+        .run()
+      tx.update(themeThoughts)
+        .set({ state: 'deleted', updated_at: now })
+        .where(eq(themeThoughts.theme_id, themeId))
+        .run()
+      retireNewCards(tx, themeId, now)
+    },
+    deps,
+  )
+}
+
+/** The user opened a Noticed card. */
+export function openNoticed(db: PhoneDb, cardId: string, deps: LocalDeps): void {
+  connectionOp(
+    db,
+    { op_id: deps.uuid(), type: 'noticed.open', card_id: cardId },
+    cardId,
+    (tx, now) => {
+      tx.update(noticedCards)
+        .set({ status: 'opened', opened_at: now, updated_at: now })
+        .where(and(eq(noticedCards.id, cardId), eq(noticedCards.status, 'new')))
+        .run()
+    },
+    deps,
+  )
+}
+
+/** The user dismissed a Noticed card. */
+export function dismissNoticed(db: PhoneDb, cardId: string, deps: LocalDeps): void {
+  connectionOp(
+    db,
+    { op_id: deps.uuid(), type: 'noticed.dismiss', card_id: cardId },
+    cardId,
+    (tx, now) => {
+      tx.update(noticedCards)
+        .set({ status: 'dismissed', resolved_at: now, updated_at: now })
+        .where(eq(noticedCards.id, cardId))
+        .run()
+    },
+    deps,
+  )
+}
+
+/** "Same thing" / "Different" on a connection question (the server links or vetoes the pair). */
+export function answerConnection(
+  db: PhoneDb,
+  questionId: string,
+  same: boolean,
+  deps: LocalDeps,
+): void {
+  answerQuestion(db, questionId, same ? CONNECTION_OPTIONS[0] : CONNECTION_OPTIONS[1], deps)
 }

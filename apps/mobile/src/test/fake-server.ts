@@ -162,6 +162,10 @@ export class FakeServer implements SyncTransport {
       transcripts: [],
       thoughts: [],
       questions: [],
+      thought_links: [],
+      themes: [],
+      theme_thoughts: [],
+      noticed_cards: [],
     }
     const last = page.at(-1)
     return {

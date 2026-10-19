@@ -7,7 +7,7 @@ import {
   type ProcessingError,
   RESOLVABLE_THOUGHT_KINDS,
 } from '@bullet/core'
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { bulletsWithPendingChanges } from './mirror'
 import { bullets, questions, suggestions, thoughts } from './schema'
@@ -84,12 +84,21 @@ export function waitsOnProposedTracker(s: SuggestionRow, proposed: ReadonlySet<s
   )
 }
 
-/** Pending suggestions, oldest first (readings waiting on a proposed tracker included). */
+/**
+ * Pending suggestions about things, oldest first (readings waiting on a proposed tracker
+ * included). "Did this close it?" (`thought_resolve`) has its own list: `listLoopAnswers`.
+ */
 function allPending(db: PhoneDb): SuggestionRow[] {
   return db
     .select()
     .from(suggestions)
-    .where(and(eq(suggestions.state, 'active'), eq(suggestions.status, 'pending')))
+    .where(
+      and(
+        eq(suggestions.state, 'active'),
+        eq(suggestions.status, 'pending'),
+        ne(suggestions.target_kind, 'thought_resolve'),
+      ),
+    )
     .orderBy(suggestions.created_at)
     .all()
 }

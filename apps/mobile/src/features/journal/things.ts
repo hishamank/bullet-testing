@@ -51,6 +51,7 @@ const KIND_WORDS: Record<TargetKind, string> = {
   tracker: 'New tracker',
   tracker_entry: 'Reading',
   activity: 'Activity',
+  thought_resolve: 'Closed a loop',
 }
 
 export const THING_STATE_LABELS: Record<ThingState, string> = {
