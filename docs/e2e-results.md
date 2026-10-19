@@ -33,15 +33,14 @@ BULLET_E2E_URL=http://127.0.0.1:3001 BULLET_E2E_TOKEN=<token> pnpm --filter mobi
 
 Optional variables:
 
-| Variable                                       | Effect                                                                                 |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `BULLET_E2E_SPEECH_WAV`                        | A WAV of synthetic speech; the two voice-transcript tests are skipped without it       |
-| `BULLET_E2E_SPEECH_WORDS`                      | Comma-separated words its transcript must contain (default `olive`)                    |
-| `BULLET_E2E_LLM_STOP` / `BULLET_E2E_LLM_START` | Shell commands that stop / start llama-server; enables the outage test                 |
-| `BULLET_E2E_LLM_URL`                           | llama-server root for the health check after the restart (default `127.0.0.1:8080`)    |
-| `BULLET_E2E_SLOW=1`                            | Wait out the whole retry policy (~23 min) for a damaged recording, then `bullet.retry` |
-| `BULLET_E2E_REPORT`                            | JSON-lines file: latencies, transitions, every extraction, quality notes               |
-| `BULLET_E2E_TZ`                                | Phone time zone (default `Asia/Beirut`)                                                |
+| Variable                                       | Effect                                                                              |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `BULLET_E2E_SPEECH_WAV`                        | A WAV of synthetic speech; the two voice-transcript tests are skipped without it    |
+| `BULLET_E2E_SPEECH_WORDS`                      | Comma-separated words its transcript must contain (default `olive`)                 |
+| `BULLET_E2E_LLM_STOP` / `BULLET_E2E_LLM_START` | Shell commands that stop / start llama-server; enables the outage test              |
+| `BULLET_E2E_LLM_URL`                           | llama-server root for the health check after the restart (default `127.0.0.1:8080`) |
+| `BULLET_E2E_REPORT`                            | JSON-lines file: latencies, transitions, every extraction, quality notes            |
+| `BULLET_E2E_TZ`                                | Phone time zone (default `Asia/Beirut`)                                             |
 
 Contract rules (states, tiers, never-auto trackers, idempotency, user edits winning) are
 assertions. The model's judgement (kinds, dates, names) is recorded as quality notes, so a small
@@ -127,9 +126,85 @@ audio** for a short clip (mostly fixed cost: ffmpeg conversion and model warm-up
 `curl` took 9.7 s). The whole voice capture (upload, transcribe, extract) took 38 s, 52 s and 55 s.
 `home-server.md` measured ~1× real time on an 11 s clip, so the per-second cost falls with length.
 
+## Pass 2: the extraction-quality decisions (2026-10-19)
+
+The open questions below were answered by the product designer (Notion brief §7d) and
+implemented on `claude/extraction-quality`. Same machine, models and flags as above; a fresh
+throwaway database per run; the harness gained cases for each decision. `BULLET_E2E_SLOW` is
+gone: a damaged recording now fails on its first attempt.
+
+- **Run 7** (the six decisions): 14 of 14 tests passed; two quality notes failed and exposed a
+  real bug, fixed before run 8 (below).
+- **Run 8** (with that fix, fresh database): 14 of 14; every quality note passed except one
+  that was a harness mistake (the voice clip also says "I slept seven hours", so a Sleep offer
+  is right; the check now only refuses an olive-oil tracker).
+
+### Before / after, per decision
+
+| Decision                       | Before (runs 1–6)                                                                          | After (runs 7–8)                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Permanent failures fail now | Tone / damaged audio: `transcription_failed`, retried 5 times, `failed` after ~23 min      | Tone: `transcription_no_speech`, `failed` on attempt 1 in 15 s. Damaged: `transcription_failed`, `failed` in 1 s. `bullet.retry` runs it once more (attempt 2)                                                                                                                                                                     |
+| 2. Phone draft fallback        | A tone with a real draft failed; 3 s of silence became the text "Thank you."               | Tone + "Remind me to water the garden tomorrow, it's been dry." → `text_from_draft`, processed in 33–37 s → task "Water the garden, it's been dry" due tomorrow. Retry transcription: Whisper again (15 s), still no speech, left as it was. Silence, no draft → `transcription_no_speech` ("only "Thank you.", a silence phrase") |
+| 3. Readings keep their value   | "Slept 6 hours.", "Meditated 20 minutes." auto-applied as activities with `quantity: null` | Every reading is a tracker entry with its value: Sleep 6 h, Run 5 km, Mood 2 (scale 1–5), Meditation 20 min, Water 3 glasses, Energy 3/5. No auto activity carries a number. Yes logged the waiting reading                                                                                                                        |
+| 4. Tracker names               | 'Start tracking "mood 2 sur 5"?', "energy level 3 out of 5 today"                          | "Start tracking Mood?", "Sleep", "Run", "Meditation", "Water", "Energy". Later readings ("Water 4 today", "Energy 4 today") append to them                                                                                                                                                                                         |
+| 5. Titles                      | "Dentist Thursday at 3pm.", "Pay the electricity bill.", "Need to check whether …"         | "Dentist" (Thu 15:00), "Pay the electricity bill", "Check whether the car insurance covers windscreen damage", "Eb3at el report la Nadine" (due tomorrow), "RDV chez le coiffeur" (Thu 15:00), "Buy olive oil" (voice)                                                                                                             |
+| 6. Processing feedback         | (none)                                                                                     | The phone's line for each finished capture read "4 things found", "3 things found", "6 things found" (a reading counts with its tracker offer)                                                                                                                                                                                     |
+| Kinds on re-processing         | "Need to check whether …" `to_check` → `task` after an edit                                | Kept `to_check` across the edit (runs 7 and 8)                                                                                                                                                                                                                                                                                     |
+| Invented records               | "Pay the electricity bill." also gave an `ask` activity "Paid the electricity bill."       | None (plan thoughts yield no "happened" record)                                                                                                                                                                                                                                                                                    |
+| Reminder as tracker            | "Remind me to buy olive oil tomorrow." → tracker definition "buy olive oil"                | A task "Buy olive oil" due tomorrow                                                                                                                                                                                                                                                                                                |
+
+### Bug found live (run 7) and fixed
+
+**Readings were logged under the wrong tracker.** Once one tracker existed (Meditation, minutes),
+the model "referenced" it for unrelated readings: "Slept 6 hours." (in an edited capture) and
+the voice note's "I slept seven hours" were appended to Meditation as **360 and 420 minutes**
+(the new hour-to-minute conversion made it worse), and "energy level 3 out of 5" became a
+Meditation entry of 3. The model's `referenceName` / `tracker` field alone matched it exactly.
+Now a number or scale tracker is linked, and a model-given tracker name used, only when the
+reading's own words name it; otherwise the reading offers its own tracker. Run 8: Sleep 7 h
+offered separately, Energy offered, Water/Energy readings appended to their own trackers.
+
+Also from run 7: "sleep duration" (the model's tracker field) named a tracker "Sleep Duration"
+(measure words are now stripped: "Sleep"), and "Meditation 4 today" was segmented as a `note`,
+so nothing was extracted (a note that names an existing tracker and carries a number is now
+read as a reading; run 8 segmented "Water 4 today" as a reading anyway).
+
+### Latencies (runs 7 and 8)
+
+| Capture                    | Thoughts (actionable) | Run 7 | Run 8       | Runs 1–3 |
+| -------------------------- | --------------------- | ----- | ----------- | -------- |
+| Ramble (224 chars)         | 6 (4)                 | 92 s  | 69 s        | 72–76 s  |
+| Mixed language (135 chars) | 5 (3)                 | 62 s  | 65 s        | 63–68 s  |
+| Inbox capture (199 chars)  | 6 (6)                 | 94 s  | 89 s        | 86–96 s  |
+| Loop note (72 chars)       | 1 (0)                 | 9 s   | 9 s         | 9–17 s   |
+| Edited ramble (reprocess)  | 5 (4)                 | 71 s  | 67 s        | 71–75 s  |
+| Tracker offer / reading    | 1 (1)                 | 19 s  | 19 s / 17 s | —        |
+
+The decisions add no model calls (all the new work is deterministic), so capture latency is
+unchanged within run-to-run noise. Voice (5.25 s clip): transcription 15.0 s, whole capture
+49–50 s. Failures are now fast: no speech 15 s (one Whisper pass), damaged audio 1 s, instead
+of ~23 minutes of retries. llama-server outage: `llm_unavailable` in 1 s, recovered on attempt
+2, 87–89 s after the outage (unchanged; transient errors keep the backoff).
+
+### Still open
+
+- **Tracker offers per capture.** Two captures that both say "slept 6 hours" before either offer
+  is accepted each offer "Start tracking Sleep?"; accepting the second one is refused
+  (`conflict`, a tracker of that name exists) and its reading stays waiting. Remapping it to the
+  existing tracker is not done.
+- **"Not now" drops the reading.** Dismissing a new tracker dismisses the reading that waited on
+  it (the words stay in the capture's thought); it is not kept as an activity.
+- **"this weekend"** still has no date, so it stays in the title ("Buy running shoes this
+  weekend"), as designed.
+- **Whisper's silence phrases** are matched against a short list (English, French, Arabic);
+  whisper-server's `--vad` is still untested.
+- The phone UI (Inbox tracker card, capture detail, status line) is unit-tested on its read
+  models only; it was not run on a device in this pass.
+
 ## Extraction-quality problems (Qwen3.5-4B)
 
-Not bugs in the code; what the model does with the current prompts.
+Not bugs in the code; what the model does with the current prompts. (Runs 1–6; see pass 2 above
+for what changed.)
 
 - **Readings become plain activities, the value lost.** Run 1: "Slept 6 hours.", "mood 2 sur 5",
   "Meditated 20 minutes.", "Drank 3 glasses of water." were all auto-applied activities named after
@@ -155,7 +230,7 @@ Not bugs in the code; what the model does with the current prompts.
   "Thank you." (English, no-speech probability ~0). Fix 2 catches tones and markers, not this.
   whisper-server's `--vad` (Silero) would; untested here.
 
-## Open product questions
+## Open product questions (answered 2026-10-19, see pass 2)
 
 - **Should a deterministic transcription failure fail at once?** Damaged audio and "no speech"
   are retried on the normal policy (10 s, 1 min, 6 min, 15 min): the user waits ~23 min to see

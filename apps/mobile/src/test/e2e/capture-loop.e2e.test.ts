@@ -885,7 +885,10 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         quality(
           'voice: "Remind me to buy olive oil tomorrow" → a task, not a tracker',
           things.some((s) => s.target_kind === 'task') &&
-            !things.some((s) => s.target_kind === 'tracker'),
+            // The clip also says "I slept seven hours": a Sleep offer is right, an olive one not.
+            !things.some(
+              (s) => s.target_kind === 'tracker' && /olive|oil|buy/i.test(label(s.payload)),
+            ),
           things.map((s) => [s.target_kind, s.payload]),
         )
         const task = things.find((s) => s.target_kind === 'task')
