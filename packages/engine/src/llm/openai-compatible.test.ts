@@ -23,6 +23,7 @@ describe('createOpenAiCompatibleClient', () => {
       model: 'm',
       messages: [{ role: 'user', content: 'hi' }],
       jsonSchema: schema,
+      maxTokens: 512,
     })
 
     expect(res.message.content).toBe('{"ok":true}')
@@ -30,6 +31,7 @@ describe('createOpenAiCompatibleClient', () => {
     expect(url).toBe('http://home.local:8080/v1/chat/completions')
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer test-key')
     const sent = JSON.parse(init.body as string)
+    expect(sent.max_tokens).toBe(512)
     expect(sent.response_format).toEqual({
       type: 'json_schema',
       json_schema: { name: 'response', strict: true, schema },

@@ -17,6 +17,12 @@ import { buildExtractionPrompt } from './prompt'
 import { type Candidate, extractionJsonSchema, extractionResponseSchema } from './schema'
 import type { ExtractionSnapshot } from './snapshot'
 
+/**
+ * Generation cap for one extraction answer. A thought's candidates measured 36–176 tokens live; a
+ * runaway (the model looping inside the JSON grammar) stops here instead of at the deadline.
+ */
+export const EXTRACTION_MAX_TOKENS = 1024
+
 /** How many TOTAL attempts (1 initial + 1 repair retry). */
 const MAX_ATTEMPTS = 2
 
@@ -155,6 +161,7 @@ export async function requestStructured<T>(
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   jsonSchema: Record<string, unknown>,
   label: string,
+  maxTokens: number = EXTRACTION_MAX_TOKENS,
 ): Promise<T> {
   let lastError: EngineError | undefined
   let previousContent: string | undefined
@@ -168,7 +175,7 @@ export async function requestStructured<T>(
         : [...baseMessages, ...buildRepairMessages(previousContent, lastError)]
 
     // Structured output: constrain decoding to the schema (on every attempt).
-    const res = await deps.llm.chat({ model: deps.config.model, messages, jsonSchema })
+    const res = await deps.llm.chat({ model: deps.config.model, messages, jsonSchema, maxTokens })
     previousContent = res.message.content
 
     // (1) Tolerantly extract the JSON object, then parse it.

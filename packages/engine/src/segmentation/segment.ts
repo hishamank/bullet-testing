@@ -68,6 +68,14 @@ Example answer: {"thoughts":[{"quote":"um bade jib ghaz lal sayyara","text":"bad
 
 Output ONLY the JSON object matching the schema. No Markdown code fences, no commentary.`
 
+/**
+ * Generation cap for segmenting one chunk: the answer quotes the chunk and repeats it cleaned
+ * (about two copies of it, and Arabizi tokenizes at ~3 characters a token), plus JSON per thought.
+ */
+export function segmentationMaxTokens(chunk: string): number {
+  return Math.max(1024, Math.ceil(chunk.length * 1.5))
+}
+
 /** Thoughts per chunk: about a minute of speech. */
 export const DEFAULT_CHUNK_CHARS = 1500
 
@@ -217,6 +225,7 @@ export async function segmentCapture(
       segmentationResponseSchema,
       segmentationJsonSchema,
       'Segmentation',
+      segmentationMaxTokens(chunk.text),
     )
     const found = res.thoughts.filter((t) => t.text.trim() !== '' || t.quote.trim() !== '')
     if (found.length === 0) {

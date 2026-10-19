@@ -34,6 +34,7 @@ export function createOpenAiCompatibleClient(opts: OpenAiCompatibleOptions): Llm
       const body: Record<string, unknown> = { model: req.model, messages: req.messages }
       if (req.temperature !== undefined) body.temperature = req.temperature
       if (req.seed !== undefined) body.seed = req.seed
+      if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens
       if (req.jsonSchema) {
         body.response_format = {
           type: 'json_schema',
