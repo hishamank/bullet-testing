@@ -4,6 +4,7 @@ import { displayStatus, isPermanentTranscriptionError } from '@bullet/core'
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
+import { listLoopAnswers } from '../../data/connections'
 import { listOpenQuestions, listPendingSuggestions } from '../../data/queries'
 import { bullets, outbox, suggestions } from '../../data/schema'
 import { keptAsAudio } from '../journal/audio-only'
@@ -120,7 +121,13 @@ export function captureCounts(db: PhoneDb): CaptureCounts {
   }
 }
 
-/** The Inbox corner count: suggestions waiting for a decision plus open questions. */
+/**
+ * The Inbox corner count: suggestions waiting for a decision (a "Did this close it?" included,
+ * like any suggestion to decide) plus open clarifying questions. Never Noticed cards or
+ * questions to think about.
+ */
 export function inboxCount(db: PhoneDb): number {
-  return listPendingSuggestions(db).length + listOpenQuestions(db).length
+  return (
+    listPendingSuggestions(db).length + listLoopAnswers(db).length + listOpenQuestions(db).length
+  )
 }

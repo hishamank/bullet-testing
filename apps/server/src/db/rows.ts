@@ -4,6 +4,9 @@ import {
   type AudioAttachment,
   CONNECTION_RULES,
   type NoticedCard,
+  type NoticedQuote,
+  noticedHeadline,
+  shortQuote,
   type Suggestion,
   type SyncedBullet,
   type SyncedThought,
@@ -81,13 +84,22 @@ export function toThought(row: typeof thoughts.$inferSelect): SyncedThought {
   }
 }
 
-/** Sensitive thoughts never leave their own capture: a link touching one is sent as deleted. */
+/**
+ * Sensitive thoughts never appear outside their own capture: a link shows only from the capture
+ * whose OTHER end is not sensitive (`visible_from`), and a link between two sensitive thoughts is
+ * sent as deleted. The field never names the reason.
+ */
 export function toThoughtLink(
   row: typeof thoughtLinks.$inferSelect,
   sensitive: ReadonlySet<string>,
 ): ThoughtLink {
-  const hidden = sensitive.has(row.a_thought_id) || sensitive.has(row.b_thought_id)
+  const aHidden = sensitive.has(row.a_thought_id)
+  const bHidden = sensitive.has(row.b_thought_id)
+  const hidden = aHidden && bHidden
+  // `a` sensitive: only `a`'s own capture may show the link (its other end, b, is fine).
+  const visible_from = aHidden ? 'a' : bHidden ? 'b' : 'both'
   return {
+    visible_from,
     id: row.id,
     owner_id: row.owner_id,
     created_at: row.created_at,
@@ -146,8 +158,20 @@ export function toNoticedCard(
   sensitive: ReadonlySet<string>,
   themeHidden: boolean,
 ): NoticedCard {
-  const quotes = row.quotes.filter((q) => !sensitive.has(q.thought_id))
-  const hidden = themeHidden || quotes.length === 0
+  const kept = row.quotes.filter((q) => !sensitive.has(q.thought_id))
+  const hidden = themeHidden || kept.length === 0
+  const quotes = hidden ? [] : kept
+  // The headline quotes one thought (always one of the quotes). If that thought is sensitive now,
+  // the headline is rebuilt from the first quote still shown; a hidden card sends no words at all.
+  const headlineHidden =
+    row.headline_thought_id === null
+      ? row.quotes.some((q) => sensitive.has(q.thought_id))
+      : sensitive.has(row.headline_thought_id)
+  const headline = hidden
+    ? noticedHeadline('…', row.count, row.days)
+    : headlineHidden
+      ? noticedHeadline(shortQuote((quotes[0] as NoticedQuote).text, 60), row.count, row.days)
+      : row.headline
   return {
     id: row.id,
     owner_id: row.owner_id,
@@ -155,7 +179,7 @@ export function toNoticedCard(
     updated_at: row.updated_at,
     state: hidden ? 'deleted' : row.state,
     theme_id: row.theme_id,
-    headline: row.headline,
+    headline,
     quotes,
     count: row.count,
     days: row.days,

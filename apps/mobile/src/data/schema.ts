@@ -36,6 +36,7 @@ import type {
   TrackerInputType,
   TranscriptKind,
   LinkType,
+  LinkVisibility,
   NoticedQuote,
   NoticedStatus,
   ThemeStatus,
@@ -286,6 +287,8 @@ export const thoughtLinks = sqliteTable(
     b_thought_id: text('b_thought_id').notNull(),
     b_bullet_id: text('b_bullet_id').notNull(),
     type: text('type').$type<LinkType>().notNull(),
+    /** Which capture(s) show it: `both`, or only `a`'s / `b`'s. */
+    visible_from: text('visible_from').$type<LinkVisibility>().notNull().default('both'),
   },
   (t) => [
     index('thought_links_a_bullet_idx').on(t.a_bullet_id),

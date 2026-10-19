@@ -52,6 +52,7 @@ CREATE TABLE `noticed_cards` (
 	`state` text DEFAULT 'active' NOT NULL,
 	`theme_id` text NOT NULL,
 	`headline` text NOT NULL,
+	`headline_thought_id` text,
 	`quotes` text NOT NULL,
 	`count` integer NOT NULL,
 	`days` integer NOT NULL,

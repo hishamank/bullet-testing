@@ -58,6 +58,32 @@ export function combineMeans(a: VectorMean | null, b: VectorMean | null): Vector
   return { sum, count: a.count + b.count }
 }
 
+/** The journal's largest share of the centring mean (see {@link blendMeans}). */
+export const MAX_JOURNAL_WEIGHT = 0.5
+
+/**
+ * The mean to centre on: the background lines' mean blended with the journal's own, the journal
+ * weighing by its size but never more than `maxJournalWeight`. A fixed ceiling keeps the
+ * calibrated thresholds meaning the same thing as the journal grows from 10 to 10 000 thoughts.
+ * Returned as a mean of weight 1 (`count: 1`).
+ */
+export function blendMeans(
+  background: VectorMean | null,
+  journal: VectorMean | null,
+  maxJournalWeight = MAX_JOURNAL_WEIGHT,
+): VectorMean | null {
+  if (!background) return journal
+  if (!journal || journal.sum.length !== background.sum.length) return background
+  const w = Math.min(maxJournalWeight, journal.count / (journal.count + background.count))
+  const sum = new Float32Array(background.sum.length)
+  for (let i = 0; i < sum.length; i++) {
+    sum[i] =
+      (1 - w) * ((background.sum[i] as number) / background.count) +
+      w * ((journal.sum[i] as number) / journal.count)
+  }
+  return { sum, count: 1 }
+}
+
 /**
  * Subtract the mean and re-normalise. A general LLM's embeddings all point roughly the same way
  * (unrelated notes score 0.7–0.9); removing the common direction leaves what tells them apart.

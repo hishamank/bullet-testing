@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ccfc6ab8-7d76-4f26-87a0-c7f489af9efd",
+  "id": "44c5ae14-91ac-446c-87aa-74579eceda83",
   "prevId": "38a38061-da49-4791-a713-9111326d5892",
   "tables": {
     "activities": {
@@ -1330,6 +1330,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "visible_from": {
+          "name": "visible_from",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'both'"
         }
       },
       "indexes": {

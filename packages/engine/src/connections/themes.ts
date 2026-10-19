@@ -219,9 +219,11 @@ export function similarityEdges(
   thresholds: { link: number; linkSharedEntity: number },
   vetoed: (a: string, b: string) => boolean,
   extra: readonly (readonly [string, string])[] = [],
+  /** Only rows `from` ≤ i < `to` (to split the O(n²) work into chunks); the extra edges come with row 0. */
+  rows: readonly [number, number] = [0, thoughts.length],
 ): [string, string][] {
-  const edges: [string, string][] = extra.map(([a, b]) => [a, b])
-  for (let i = 0; i < thoughts.length; i++) {
+  const edges: [string, string][] = rows[0] === 0 ? extra.map(([a, b]) => [a, b]) : []
+  for (let i = rows[0]; i < Math.min(rows[1], thoughts.length); i++) {
     const x = thoughts[i] as (typeof thoughts)[number]
     if (!x.vector) continue
     for (let j = i + 1; j < thoughts.length; j++) {
@@ -237,14 +239,20 @@ export function similarityEdges(
   return edges
 }
 
-/** The assignments that make the active themes: at most `max`, biggest then most recent. */
+/**
+ * The assignments that make the active themes: at most `max` that can be shown, biggest then most
+ * recent. A mostly-sensitive theme is never shown, so it never takes one of those slots (it stays
+ * tracked on the server).
+ */
 export function pickActive<T extends { stats: ClusterStats }>(
   assignments: readonly T[],
   max: number = CONNECTION_RULES.maxActiveThemes,
 ): T[] {
-  return [...assignments]
-    .sort((a, b) => b.stats.count - a.stats.count || b.stats.lastAt - a.stats.lastAt)
-    .slice(0, max)
+  const sorted = [...assignments].sort(
+    (a, b) => b.stats.count - a.stats.count || b.stats.lastAt - a.stats.lastAt,
+  )
+  const hidden = (a: T) => isSensitiveTheme(a.stats.sensitiveShare)
+  return [...sorted.filter((a) => !hidden(a)).slice(0, max), ...sorted.filter(hidden)]
 }
 
 export interface QuotableThought {
@@ -259,7 +267,7 @@ export interface QuotableThought {
 /**
  * A Noticed card's quotes: up to `max` non-sensitive thoughts, one per capture where possible,
  * newest first; and the headline quote, the thought closest to all the others (the most typical
- * way the user said it).
+ * way the user said it), which is always one of the quotes.
  */
 export function pickQuotes(
   members: readonly QuotableThought[],
@@ -288,5 +296,7 @@ export function pickQuotes(
     if (quotes.length >= max) break
     if (!quotes.includes(m)) quotes.push(m)
   }
+  // The headline always quotes one of the quotes (what hides a quote must hide the headline too).
+  if (!quotes.includes(headline)) quotes[Math.min(quotes.length, max) - 1] = headline
   return { headline, quotes }
 }

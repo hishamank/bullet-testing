@@ -7,8 +7,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { LinkType } from '@bullet/core'
 import {
+  blendMeans,
   centre,
-  combineMeans,
   decodeVector,
   EMBED_BACKGROUND_SENTENCES,
   type Embedder,
@@ -46,12 +46,24 @@ const pairKey = (x: string, y: string) => pairOf(x, y).join('|')
 export const textHash = (text: string) =>
   createHash('sha256').update(text.normalize('NFC').trim()).digest('hex').slice(0, 32)
 
-/** Every stored vector of the owner under this embedder key, by thought id. */
+/**
+ * The stored vectors of the owner's live thoughts (active, in an active capture) under this
+ * embedder key, by thought id. Deleted thoughts never count, not even toward the mean.
+ */
 export function loadEmbeddings(db: Db, ownerId: string, key: string): Map<string, Vector> {
   const rows = db
     .select({ id: thoughtEmbeddings.thought_id, vector: thoughtEmbeddings.vector })
     .from(thoughtEmbeddings)
-    .where(and(eq(thoughtEmbeddings.owner_id, ownerId), eq(thoughtEmbeddings.model, key)))
+    .innerJoin(thoughts, eq(thoughts.id, thoughtEmbeddings.thought_id))
+    .innerJoin(bullets, eq(bullets.id, thoughts.source_bullet_id))
+    .where(
+      and(
+        eq(thoughtEmbeddings.owner_id, ownerId),
+        eq(thoughtEmbeddings.model, key),
+        eq(thoughts.state, 'active'),
+        eq(bullets.state, 'active'),
+      ),
+    )
     .all()
   return new Map(rows.map((r) => [r.id, decodeVector(r.vector)]))
 }
@@ -141,12 +153,12 @@ export async function ensureBaseline(db: Db, embedder: Embedder, now: number): P
   return mean
 }
 
-/** The mean to centre on: the background plus the user's own thoughts. */
+/** The mean to centre on: the background blended with the user's own thoughts (capped share). */
 export function corpusMean(
   baseline: VectorMean | null,
   vectors: Iterable<Vector>,
 ): VectorMean | null {
-  return combineMeans(baseline, meanOf([...vectors]))
+  return blendMeans(baseline, meanOf([...vectors]))
 }
 
 /**
@@ -367,11 +379,18 @@ export function touchLinksOf(db: Db, ownerId: string, thoughtIds: readonly strin
   }
   const ids = new Set(thoughtIds)
   for (const c of db
-    .select({ id: noticedCards.id, quotes: noticedCards.quotes })
+    .select({
+      id: noticedCards.id,
+      quotes: noticedCards.quotes,
+      headline: noticedCards.headline_thought_id,
+    })
     .from(noticedCards)
     .where(eq(noticedCards.owner_id, ownerId))
     .all()) {
-    if (c.quotes.some((q) => ids.has(q.thought_id))) touch(db, ownerId, 'noticed_cards', c.id)
+    const quoted = c.quotes.some((q) => ids.has(q.thought_id))
+    if (quoted || (c.headline !== null && ids.has(c.headline))) {
+      touch(db, ownerId, 'noticed_cards', c.id)
+    }
   }
   for (const l of db
     .select({ id: thoughtLinks.id })
@@ -419,6 +438,20 @@ export function retireConnectionsOfThought(
       .run()
     touch(db, ownerId, 'theme_thoughts', m.id)
   }
+  withdrawProposalsAbout(db, ownerId, thoughtId, now)
+}
+
+/**
+ * Withdraw what would show a thought elsewhere: a pending "Did this close it?" about it (as the
+ * loop or the answer) and a live connection question naming it. Called when it is deleted, and
+ * when it turns sensitive.
+ */
+export function withdrawProposalsAbout(
+  db: Db,
+  ownerId: string,
+  thoughtId: string,
+  now: number,
+): void {
   for (const s of db
     .select({ id: suggestions.id })
     .from(suggestions)

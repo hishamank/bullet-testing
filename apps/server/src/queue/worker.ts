@@ -18,7 +18,9 @@ import {
   withTranscriberTimeout,
 } from '@bullet/engine'
 import type { AudioStore } from '../storage/audio-store'
+import { and, eq, lte } from 'drizzle-orm'
 import type { Db } from '../db/client'
+import { jobs, linkJobs, reflectJobs } from '../db/schema'
 import { claimNextJob, DEFAULT_RETRY_POLICY, markJobFailed, type RetryPolicy } from './jobs'
 import { processClaimedJob } from './process'
 import { claimNextReflectJob, markReflectJobFailed, runReflectJob } from '../reflect/capture'
@@ -61,6 +63,17 @@ export interface Worker {
   drain(): Promise<number>
 }
 
+/** Is a capture waiting: an extraction, link (when linking runs) or reflect job ready now? */
+export function hasReadyWork(db: Db, now: number, links: boolean): boolean {
+  const ready = (t: typeof jobs | typeof linkJobs | typeof reflectJobs) =>
+    db
+      .select({ id: t.bullet_id })
+      .from(t)
+      .where(and(eq(t.status, 'queued'), lte(t.run_after, now)))
+      .get() !== undefined
+  return ready(jobs) || (links && ready(linkJobs)) || ready(reflectJobs)
+}
+
 export function createWorker(opts: WorkerOptions): Worker {
   const now = opts.now ?? Date.now
   const deps = {
@@ -96,6 +109,8 @@ export function createWorker(opts: WorkerOptions): Worker {
           embedder,
           profile: opts.embedProfile ?? DEDICATED_PROFILE,
           now,
+          // A capture never waits on the nightly run: it stops at its next yield point.
+          shouldYield: () => hasReadyWork(opts.db, now(), embedder !== undefined),
         },
         slot,
       )

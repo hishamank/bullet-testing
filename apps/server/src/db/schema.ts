@@ -434,6 +434,8 @@ export const noticedCards = sqliteTable(
       .notNull()
       .references(() => themes.id),
     headline: text('headline').notNull(),
+    /** The thought the headline quotes (always one of `quotes`). Server-only. */
+    headline_thought_id: text('headline_thought_id'),
     quotes: text('quotes', { mode: 'json' }).$type<NoticedQuote[]>().notNull(),
     count: integer('count').notNull(),
     days: integer('days').notNull(),
@@ -451,7 +453,7 @@ export const nightlyRuns = sqliteTable('nightly_runs', {
   slot_at: integer('slot_at').notNull(),
   started_at: integer('started_at').notNull(),
   finished_at: integer('finished_at'),
-  status: text('status').$type<'running' | 'done' | 'failed'>().notNull(),
+  status: text('status').$type<'running' | 'done' | 'failed' | 'yielded'>().notNull(),
   stats: text('stats', { mode: 'json' }).$type<Record<string, unknown>>(),
   error: text('error'),
 })

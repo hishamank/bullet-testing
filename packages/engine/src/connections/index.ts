@@ -13,8 +13,10 @@ export {
   withEmbedTimeout,
 } from './embedder'
 export {
+  blendMeans,
   centre,
   combineMeans,
+  MAX_JOURNAL_WEIGHT,
   cosine,
   decodeVector,
   dot,

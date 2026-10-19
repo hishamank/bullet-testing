@@ -5,14 +5,16 @@ import type { ThoughtKind } from './thought'
 
 /**
  * Connections (slice 3): links between thoughts of different captures, recurring themes, and the
- * Noticed cards that point a theme out. Everything here is quiet: never in the Inbox badge, never
- * notified, always in the user's own words, and every link, theme and card can be corrected
- * ("Not related", "Not a theme", rename, merge). Corrections are remembered: nothing re-creates
- * what the user took back, not nightly runs, edits or re-processing.
+ * Noticed cards that point a theme out. Everything here is quiet: never notified, Noticed never in
+ * the Inbox badge (a waiting "Did this close it?" is, like any suggestion to decide), always in
+ * the user's own words, and every link, theme and card can be corrected ("Not related", "Not a
+ * theme", rename, merge). Corrections are remembered: nothing re-creates what the user took back,
+ * not nightly runs, edits or re-processing.
  *
- * Sensitive thoughts (server-only flag) are embedded and linked on the server, but never leave
- * their own capture: links touching one are not pulled, Noticed never quotes one, and a theme
- * made half or more of them is not pulled at all (no card, no name).
+ * Sensitive thoughts (server-only flag) are embedded and linked on the server, but never appear
+ * outside their own capture: a link is shown only from the capture whose OTHER end is not
+ * sensitive (`visible_from`), Noticed never quotes one, and a theme made half or more of them is
+ * not pulled at all (no card, no name).
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -28,9 +30,15 @@ export const linkTypeSchema = z.enum(['same_entity', 'same_topic', 'answers', 'r
 export type LinkType = z.infer<typeof linkTypeSchema>
 
 /**
+ * Which capture(s) show a link under "Related": `both`, or only `a`'s or only `b`'s capture.
+ */
+export const linkVisibilitySchema = z.enum(['both', 'a', 'b'])
+export type LinkVisibility = z.infer<typeof linkVisibilitySchema>
+
+/**
  * A link as the phone sees it: undirected, between two thoughts of different captures (`a` is
- * the earlier capture). Show it under "Related" on either capture. Deleted by "Not related"
- * (`link.veto`), which also stops it from ever coming back.
+ * the earlier capture). Show it under "Related" on the capture(s) `visible_from` names. Deleted by
+ * "Not related" (`link.veto`), which also stops it from ever coming back.
  */
 export const thoughtLinkSelectSchema = z.object({
   ...ownedTimestampedStateFields,
@@ -39,6 +47,7 @@ export const thoughtLinkSelectSchema = z.object({
   b_thought_id: uuid(),
   b_bullet_id: uuid(),
   type: linkTypeSchema,
+  visible_from: linkVisibilitySchema.default('both'),
 })
 export type ThoughtLink = z.infer<typeof thoughtLinkSelectSchema>
 

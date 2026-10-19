@@ -48,7 +48,8 @@ CREATE TABLE `thought_links` (
 	`a_bullet_id` text NOT NULL,
 	`b_thought_id` text NOT NULL,
 	`b_bullet_id` text NOT NULL,
-	`type` text NOT NULL
+	`type` text NOT NULL,
+	`visible_from` text DEFAULT 'both' NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX `thought_links_a_bullet_idx` ON `thought_links` (`a_bullet_id`);--> statement-breakpoint

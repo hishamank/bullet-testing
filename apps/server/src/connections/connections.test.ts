@@ -14,6 +14,7 @@ import { describe, expect, test } from 'vite-plus/test'
 import {
   bullets,
   linkJobs,
+  nightlyRuns,
   noticedCards,
   questions,
   suggestions,
@@ -344,6 +345,8 @@ describe('a later capture answering an open loop', () => {
     expect(thoughtOf(a)).toMatchObject({ resolved_at: h.clock.now, resolved_by_bullet_id: b })
     expect((await op({ type: 'suggestion.undo', suggestion_id: s?.id }))?.status).toBe('applied')
     expect(thoughtOf(a)).toMatchObject({ resolved_at: null, resolved_by_bullet_id: null })
+    // The link stays, no longer called an answer.
+    expect(links().map((l) => l.type)).toEqual(['same_topic'])
     // Undone stays undone: reprocessing does not propose it again.
     h.clock.now += MIN
     await edit(b, 'note: passport valid until 2029 | note: good news indeed')
@@ -714,10 +717,23 @@ describe('sensitive thoughts never surface outside their own capture', () => {
 
     const pull = pullResponseSchema.parse(await s.h.pull())
     const shown = pull.changes.thought_links.filter((l) => l.state === 'active')
-    expect(
-      shown.some((l) => sensitiveIds.has(l.a_thought_id) || sensitiveIds.has(l.b_thought_id)),
-    ).toBe(false)
     expect(shown.length).toBeGreaterThan(0)
+    // A link is shown only from the capture whose OTHER end isn't sensitive: a sensitive thought
+    // never appears on another capture. Two sensitive ends: not shown at all.
+    for (const l of shown) {
+      const aS = sensitiveIds.has(l.a_thought_id)
+      const bS = sensitiveIds.has(l.b_thought_id)
+      expect(aS && bS).toBe(false)
+      expect(l.visible_from).toBe(aS ? 'a' : bS ? 'b' : 'both')
+    }
+    expect(shown.some((l) => l.visible_from !== 'both')).toBe(true)
+    const bothSensitive = s
+      .links()
+      .filter((l) => sensitiveIds.has(l.a_thought_id) && sensitiveIds.has(l.b_thought_id))
+    expect(bothSensitive.length).toBeGreaterThan(0)
+    for (const l of bothSensitive) {
+      expect(pull.changes.thought_links.find((x) => x.id === l.id)?.state).toBe('deleted')
+    }
     expect(pull.changes.themes.find((t) => t.id === dark?.id)?.state).toBe('deleted')
     expect(
       pull.changes.theme_thoughts.filter(
@@ -730,5 +746,135 @@ describe('sensitive thoughts never surface outside their own capture', () => {
       await s.h.request('/sync/pull', { headers: { authorization: `Bearer ${s.h.token}` } })
     ).json()) as { changes: { thoughts: Record<string, unknown>[] } }
     expect(raw.changes.thoughts.every((t) => !('sensitive' in t) && !('entities' in t))).toBe(true)
+  })
+})
+
+// --- review follow-ups ---
+
+describe('a thought turning sensitive later', () => {
+  test('its words leave the Noticed headline, even when it was the headline', async () => {
+    const table: Record<string, [string, number]> = {}
+    const s = setup(table)
+    await captureDays(s, table, 'rent', 4)
+    await s.nightly()
+    const card = s.h.db.select().from(noticedCards).get()
+    expect(card?.headline_thought_id).toBeTruthy()
+    // The headline is always one of the quotes.
+    expect(card?.quotes.map((q) => q.thought_id)).toContain(card?.headline_thought_id)
+    const headline = s.h.db
+      .select()
+      .from(thoughts)
+      .where(eq(thoughts.id, card?.headline_thought_id as string))
+      .get()
+    const before = await s.h.pull()
+    expect(JSON.stringify(before.changes.noticed_cards)).toContain(headline?.text)
+
+    // Reprocessing reads it as distress now.
+    s.h.clock.now += MIN
+    await s.edit(headline?.source_bullet_id as string, `sensitive note: ${headline?.text}`)
+    await s.h.worker.drain()
+    expect(
+      s.h.db
+        .select()
+        .from(thoughts)
+        .where(eq(thoughts.id, headline?.id as string))
+        .get()?.sensitive,
+    ).toBe(true)
+    for (const pull of [await s.h.pull(before.cursor), await s.h.pull()]) {
+      const cards = pull.changes.noticed_cards
+      expect(cards).toHaveLength(1)
+      expect(JSON.stringify(cards)).not.toContain(headline?.text)
+      expect(cards[0]?.headline).toMatch(/^«.+» · came up 4 times in 4 days$/)
+    }
+  })
+
+  test('a waiting "Did this close it?" and connection question about it are withdrawn', async () => {
+    const table: Record<string, [string, number]> = {
+      'check if the passport expires': ['passport', 1],
+      'passport valid until 2029': ['passport', 0.74],
+      'should I switch banks': ['bank', 1],
+      'thinking about moving my account': ['bank', 0.7],
+    }
+    const s = setup(table, { answers: () => 'yes' })
+    const loop = await s.capture('to_check: check if the passport expires')
+    const bank = await s.capture('question: should I switch banks')
+    s.h.clock.now += DAY
+    await s.capture('note: passport valid until 2029')
+    await s.capture('idea: thinking about moving my account')
+    expect(s.resolves().filter((r) => r.status === 'pending')).toHaveLength(1)
+    expect(s.reflective().filter((q) => q.origin === 'connection')).toHaveLength(1)
+    s.h.clock.now += MIN
+    await s.edit(loop, 'sensitive to_check: check if the passport expires')
+    await s.edit(bank, 'sensitive question: should I switch banks')
+    await s.h.worker.drain()
+    expect(s.resolves()).toHaveLength(0)
+    expect(s.reflective().filter((q) => q.origin === 'connection')).toHaveLength(0)
+  })
+})
+
+describe('the nightly run never holds a capture back', () => {
+  test('a capture arriving mid-review is processed before the review finishes', async () => {
+    const table: Record<string, [string, number]> = {}
+    for (const d of [0, 1, 2, 3]) table[`rent again, day ${d}`] = ['rent', 0.95]
+    const events: string[] = []
+    const ref: { h?: ReturnType<typeof createHarness>; armed: boolean; late?: string } = {
+      armed: false,
+    }
+    const live = model()
+    const nightlyLlm = createScriptedLlmClient({
+      chat: async (req) => {
+        if (sys(req) === LINK_REVIEW_SYSTEM_PROMPT) {
+          const h = ref.h as ReturnType<typeof createHarness>
+          const late = ref.late
+            ? h.db.select().from(bullets).where(eq(bullets.id, ref.late)).get()?.proc_status
+            : 'none'
+          events.push(`review (late capture: ${late})`)
+          if (ref.armed) {
+            ref.armed = false
+            ref.late = await h.capture('note: rent again, day 3', { captured_at: h.clock.now })
+          }
+          return JSON.stringify({ relation: 'same_topic' })
+        }
+        return JSON.stringify({ name: 'rent' })
+      },
+    })
+    const h = createHarness(
+      live,
+      {
+        embedder: topicEmbedder(table),
+        embedProfile: DEDICATED_PROFILE,
+        nightly: { llm: nightlyLlm, timezone: 'UTC' },
+      },
+      segment,
+    )
+    ref.h = h
+    for (const d of [0, 1, 2]) {
+      await h.capture(`note: rent again, day ${d}`, { captured_at: h.clock.now })
+      await h.worker.drain()
+      h.clock.now += 60 * MIN
+    }
+    h.clock.now += DAY
+    // A new night: three unreviewed links wait; the first review lets a capture in.
+    events.length = 0
+    ref.armed = true
+    await h.worker.drain()
+    // One review, then the capture is read, then the review carries on.
+    expect(events[0]).toBe('review (late capture: none)')
+    expect(events.slice(1).length).toBeGreaterThan(0)
+    expect(events.slice(1).every((e) => e === 'review (late capture: processed)')).toBe(true)
+    expect(
+      h.db
+        .select()
+        .from(bullets)
+        .all()
+        .every((b) => b.proc_status === 'processed'),
+    ).toBe(true)
+    const runs = h.db
+      .select()
+      .from(nightlyRuns)
+      .all()
+      .map((r) => r.status)
+    expect(runs).toContain('yielded')
+    expect(runs.at(-1)).toBe('done')
   })
 })

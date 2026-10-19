@@ -62,7 +62,9 @@ const num = (v: string | undefined): number | undefined => {
 }
 
 /**
- * The embedding profile: `EMBED_PROFILE` (`dedicated` | `llm`), else guessed from the model name;
+ * The embedding profile: `EMBED_PROFILE` (`dedicated` | `llm`); else `llm` when no
+ * `EMBED_BASE_URL` is set (embeddings then come from the chat model's own server, a chat model);
+ * else guessed from the model name;
  * each threshold can be overridden (`LINK_THRESHOLD`, `LINK_ENTITY_THRESHOLD`,
  * `ANSWER_CHECK_THRESHOLD`, `CONNECTION_QUESTION_THRESHOLD`, `LINK_REVIEW_BELOW`).
  */
@@ -76,7 +78,9 @@ export function embedProfile(
       ? LLM_PROFILE
       : named === 'dedicated'
         ? DEDICATED_PROFILE
-        : profileForModel(model)
+        : !env.EMBED_BASE_URL?.trim()
+          ? LLM_PROFILE
+          : profileForModel(model)
   const t: LinkThresholds = {
     link: num(env.LINK_THRESHOLD) ?? base.thresholds.link,
     linkSharedEntity: num(env.LINK_ENTITY_THRESHOLD) ?? base.thresholds.linkSharedEntity,

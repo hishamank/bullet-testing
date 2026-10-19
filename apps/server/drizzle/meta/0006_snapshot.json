@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "843a9697-dd5c-4bac-82a2-ae8c3a39cfdf",
+  "id": "07dbb309-dc87-4c3d-bf2b-8389515e4f70",
   "prevId": "119c3887-3e5e-4aa8-b593-e477a4025973",
   "tables": {
     "activities": {
@@ -1174,6 +1174,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "headline_thought_id": {
+          "name": "headline_thought_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "quotes": {

@@ -163,6 +163,7 @@ const page = (cursor = '1'): PullResponse => ({
         b_thought_id: ANSWER,
         b_bullet_id: B2,
         type: 'answers',
+        visible_from: 'both',
       },
       {
         ...base,
@@ -172,6 +173,7 @@ const page = (cursor = '1'): PullResponse => ({
         b_thought_id: OTHER,
         b_bullet_id: B3,
         type: 'revisits',
+        visible_from: 'both',
       },
     ],
     themes: [
@@ -238,6 +240,18 @@ function setup() {
 }
 
 describe('Related', () => {
+  test('a link shown from one capture only is listed there only', () => {
+    const { db } = setup()
+    // LINK2 joins B1 (a) and B3 (b); shown from B3's capture only.
+    db.update(thoughtLinks).set({ visible_from: 'b' }).where(eq(thoughtLinks.id, LINK2)).run()
+    expect(listRelated(db, B1).map((r) => r.linkId)).toEqual([LINK])
+    expect(listRelated(db, B3).map((r) => r.linkId)).toEqual([LINK2])
+    // And the other way round.
+    db.update(thoughtLinks).set({ visible_from: 'a' }).where(eq(thoughtLinks.id, LINK2)).run()
+    expect(listRelated(db, B1).map((r) => r.linkId)).toEqual([LINK2, LINK])
+    expect(listRelated(db, B3)).toEqual([])
+  })
+
   test('a capture lists the thoughts linked to it, newest capture first, with a small word', () => {
     const { db } = setup()
     expect(listRelated(db, B1)).toEqual([
@@ -275,7 +289,7 @@ describe('Related', () => {
 })
 
 describe('Noticed', () => {
-  test('cards with their theme pill; never in the badge', () => {
+  test('cards with their theme pill; Noticed never in the badge', () => {
     const { db } = setup()
     const [card] = listNoticed(db)
     expect(card).toMatchObject({
@@ -285,7 +299,9 @@ describe('Noticed', () => {
       theme: { id: THEME, name: 'passport', namedByUser: false },
     })
     expect(card?.quotes.map((q) => q.bullet_id)).toEqual([B2, B1])
-    // The badge counts things and clarifying questions only (no thought_resolve, no Noticed).
+    // The badge counts what waits for a decision: here the one "Did this close it?". Never Noticed.
+    expect(inboxCount(db)).toBe(1)
+    rejectSuggestion(db, RESOLVE, testDeps())
     expect(inboxCount(db)).toBe(0)
   })
 

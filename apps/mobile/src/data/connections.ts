@@ -79,6 +79,8 @@ export function listRelated(db: PhoneDb, bulletId: string): RelatedRow[] {
   const rows: RelatedRow[] = []
   for (const l of links) {
     const mineIsA = l.a_bullet_id === bulletId
+    // Some links show from one of their two captures only.
+    if (l.visible_from !== 'both' && (l.visible_from === 'a') !== mineIsA) continue
     const mine = ts.get(mineIsA ? l.a_thought_id : l.b_thought_id)
     const other = ts.get(mineIsA ? l.b_thought_id : l.a_thought_id)
     const at = other ? captured.get(other.source_bullet_id) : undefined

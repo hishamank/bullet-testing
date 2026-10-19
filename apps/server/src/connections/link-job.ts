@@ -63,6 +63,7 @@ import {
   thoughtInfo,
   touchLinksOf,
   upsertLink,
+  withdrawProposalsAbout,
   vetoedPairs,
 } from './store'
 
@@ -307,12 +308,16 @@ export async function runLinkJob(deps: LinkDeps, claimed: ClaimedLinkJob): Promi
       }
     }
 
-    // The capture's thoughts may have become sensitive: their links are sent again.
+    // The capture's thoughts may have become sensitive: their links are sent again, and nothing
+    // waiting may show a sensitive one elsewhere.
     touchLinksOf(
       tx,
       bullet.owner_id,
       fresh.map((t) => t.id),
     )
+    for (const t of fresh.filter((x) => x.sensitive)) {
+      withdrawProposalsAbout(tx, bullet.owner_id, t.id, now)
+    }
 
     // 5. "Is this the same thing?" — only if the capture gets no other question.
     const candidate = plan.questions.find(

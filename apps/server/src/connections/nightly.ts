@@ -41,15 +41,7 @@ import {
 } from '@bullet/engine'
 import { and, asc, desc, eq, gt, isNull, lte, max, ne, sql } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import {
-  nightlyRuns,
-  noticedCards,
-  themeAliases,
-  themes,
-  themeThoughts,
-  thoughtLinks,
-  users,
-} from '../db/schema'
+import { nightlyRuns, noticedCards, themes, themeThoughts, thoughtLinks, users } from '../db/schema'
 import { touch } from '../sync/changes'
 import {
   activeThoughtInfo,
@@ -75,6 +67,30 @@ export const NIGHTLY_REVIEW_LIMIT = 40
 export const NIGHTLY_EMBED_LIMIT = 512
 /** A failed run is tried again after this long. */
 const RETRY_FAILED_AFTER_MS = HOUR_MS
+/** Thoughts embedded per request in the nightly pass (a yield point between batches). */
+const EMBED_BATCH = 32
+/** Rows of the similarity matrix per chunk (a yield point between chunks). */
+const SIMILARITY_ROWS = 200
+
+/**
+ * Thrown at a yield point when a capture is waiting: the run stops where it is. Every step is
+ * idempotent and every cap is re-checked against the database, so the next run (offered again at
+ * once) simply carries on.
+ */
+export class NightlyYield extends Error {
+  constructor() {
+    super('the nightly run yielded to waiting captures')
+    this.name = 'NightlyYield'
+  }
+}
+
+/** A yield point: stop if a capture (extraction, link or reflect job) is waiting. */
+function checkpoint(deps: NightlyDeps): void {
+  if (deps.shouldYield?.()) throw new NightlyYield()
+}
+
+/** Let other tasks run (an HTTP push, a timer) during a long synchronous stretch. */
+const breathe = () => new Promise<void>((resolve) => setImmediate(resolve))
 
 export interface NightlyDeps {
   db: Db
@@ -85,6 +101,11 @@ export interface NightlyDeps {
   profile?: EmbeddingProfile
   now: () => number
   reviewLimit?: number
+  /**
+   * True when a capture is waiting (an extraction, link or reflect job is ready). Checked between
+   * model calls, embedding batches and similarity chunks: the run yields to it.
+   */
+  shouldYield?: () => boolean
 }
 
 export interface NightlyStats {
@@ -112,7 +133,8 @@ export function nightlySlot(now: number, timezone: string): number {
 
 /**
  * The slot a run is due for, or null: due when no run finished for the latest 02:00 slot (one
- * run catches up any number of missed nights) and none started within the last hour.
+ * run catches up any number of missed nights) and none is running or failed within the last hour.
+ * A run that yielded to captures is offered again at once.
  */
 export function nightlyDue(db: Db, now: number, timezone: string): number | null {
   const slot = nightlySlot(now, timezone)
@@ -125,14 +147,19 @@ export function nightlyDue(db: Db, now: number, timezone: string): number | null
   const recent = db
     .select({ at: max(nightlyRuns.started_at) })
     .from(nightlyRuns)
-    .where(sql`${nightlyRuns.slot_at} >= ${slot}`)
+    .where(and(sql`${nightlyRuns.slot_at} >= ${slot}`, ne(nightlyRuns.status, 'yielded')))
     .get()?.at
   if (recent !== null && recent !== undefined && now - recent < RETRY_FAILED_AFTER_MS) return null
   return slot
 }
 
-/** Run the nightly work for every user, recording the run. */
-export async function runNightly(deps: NightlyDeps, slot: number): Promise<NightlyStats> {
+export type NightlyResult = NightlyStats & { yielded: boolean }
+
+/**
+ * Run the nightly work for every user, recording the run (`done`, `failed`, or `yielded` when it
+ * stopped for a waiting capture; the worker offers it again as soon as it is idle).
+ */
+export async function runNightly(deps: NightlyDeps, slot: number): Promise<NightlyResult> {
   const id = randomUUID()
   deps.db
     .insert(nightlyRuns)
@@ -158,8 +185,16 @@ export async function runNightly(deps: NightlyDeps, slot: number): Promise<Night
       .set({ status: 'done', finished_at: deps.now(), stats: { ...total } })
       .where(eq(nightlyRuns.id, id))
       .run()
-    return total
+    return { ...total, yielded: false }
   } catch (err) {
+    if (err instanceof NightlyYield) {
+      deps.db
+        .update(nightlyRuns)
+        .set({ status: 'yielded', finished_at: deps.now(), stats: { ...total } })
+        .where(eq(nightlyRuns.id, id))
+        .run()
+      return { ...total, yielded: true }
+    }
     deps.db
       .update(nightlyRuns)
       .set({
@@ -195,7 +230,11 @@ export async function nightlyFor(deps: NightlyDeps, ownerId: string): Promise<Ni
       .filter((t) => !have.has(t.id))
       .sort((a, b) => b.capturedAt - a.capturedAt)
       .slice(0, NIGHTLY_EMBED_LIMIT)
-    stats.embedded = await ensureEmbedded(db, deps.embedder, ownerId, todo, deps.now())
+    for (let i = 0; i < todo.length; i += EMBED_BATCH) {
+      checkpoint(deps)
+      const batch = todo.slice(i, i + EMBED_BATCH)
+      stats.embedded += await ensureEmbedded(db, deps.embedder, ownerId, batch, deps.now())
+    }
     if (deps.profile?.centre) await ensureBaseline(db, deps.embedder, deps.now())
   }
 
@@ -204,8 +243,11 @@ export async function nightlyFor(deps: NightlyDeps, ownerId: string): Promise<Ni
   stats.reviewed = reviewed.reviewed
   stats.unlinked = reviewed.unlinked
 
-  // 3. Themes.
-  const themed = updateThemes(deps, ownerId, windowStart, deps.now())
+  // 3. Themes: the similarity graph is built in chunks outside any transaction, then written.
+  checkpoint(deps)
+  const now = deps.now()
+  const graph = await themeGraph(deps, ownerId, windowStart, now)
+  const themed = updateThemes(deps, ownerId, windowStart, now, graph)
   stats.activeThemes = themed.active
   stats.newThemes = themed.created
 
@@ -245,7 +287,12 @@ async function reviewLinks(
     .slice(0, deps.reviewLimit ?? NIGHTLY_REVIEW_LIMIT)
   const reviewBelow = deps.profile?.thresholds.reviewBelow ?? Number.POSITIVE_INFINITY
   const results: { id: string; relation: LinkReview }[] = []
+  let yielded = false
   for (const l of todo) {
+    if (deps.shouldYield?.()) {
+      yielded = true
+      break
+    }
     const relation = await reviewLink(
       { llm: deps.llm, config: deps.engine },
       texts.get(l.a_thought_id) as string,
@@ -279,6 +326,8 @@ async function reviewLinks(
       if (type !== l.type) touch(tx, ownerId, 'thought_links', l.id)
     }
   })
+  // What was reviewed is kept; the rest waits for the run to be offered again.
+  if (yielded) throw new NightlyYield()
   return { reviewed: results.length, unlinked }
 }
 
@@ -417,48 +466,81 @@ export function refreshThemeStats(
   }
 }
 
+interface ThemeGraph {
+  /** The window's thoughts, as read when the graph was built. */
+  recent: ThoughtInfo[]
+  edges: (readonly [string, string])[]
+  /** Every active link, both ways (a topic back after the window continues its theme). */
+  neighbours: Map<string, string[]>
+}
+
+/**
+ * The edges themes are found on, over the 30-day window: uncapped similarity (O(n²), computed in
+ * chunks of rows with a yield point between them, outside any transaction), the links themselves,
+ * minus vetoed pairs.
+ */
+async function themeGraph(
+  deps: NightlyDeps,
+  ownerId: string,
+  windowStart: number,
+  now: number,
+): Promise<ThemeGraph> {
+  const { db } = deps
+  const recent = activeThoughtInfo(db, ownerId).filter(
+    (t) => t.capturedAt >= windowStart && t.capturedAt <= now,
+  )
+  const ids = new Set(recent.map((t) => t.id))
+  const links = db
+    .select({ a: thoughtLinks.a_thought_id, b: thoughtLinks.b_thought_id })
+    .from(thoughtLinks)
+    .where(and(eq(thoughtLinks.owner_id, ownerId), eq(thoughtLinks.state, 'active')))
+    .all()
+  const neighbours = new Map<string, string[]>()
+  for (const l of links) {
+    neighbours.set(l.a, [...(neighbours.get(l.a) ?? []), l.b])
+    neighbours.set(l.b, [...(neighbours.get(l.b) ?? []), l.a])
+  }
+  const inWindow = links.filter((e) => ids.has(e.a) && ids.has(e.b)).map((e) => [e.a, e.b] as const)
+  if (!deps.profile || !deps.embedder) return { recent, edges: inWindow, neighbours }
+  const vectors = comparableVectors(db, ownerId, deps.embedder.key, deps.profile.centre)
+  const vetoed = vetoedPairs(db, ownerId, 'link')
+  const items = recent.map((t) => ({
+    id: t.id,
+    vector: vectors.get(t.id) ?? null,
+    entities: t.entities,
+  }))
+  const edges: (readonly [string, string])[] = []
+  for (let from = 0; from === 0 || from < items.length; from += SIMILARITY_ROWS) {
+    if (from > 0) {
+      await breathe()
+      checkpoint(deps)
+    }
+    edges.push(
+      ...similarityEdges(
+        items,
+        deps.profile.thresholds,
+        (a, b) => hasPair(vetoed, a, b),
+        inWindow,
+        [from, from + SIMILARITY_ROWS],
+      ),
+    )
+  }
+  return { recent, edges, neighbours }
+}
+
 function updateThemes(
   deps: NightlyDeps,
   ownerId: string,
   windowStart: number,
   now: number,
+  graph: ThemeGraph,
 ): { active: number; created: number } {
   return deps.db.transaction((tx) => {
-    const recent = activeThoughtInfo(tx, ownerId).filter(
-      (t) => t.capturedAt >= windowStart && t.capturedAt <= now,
-    )
-    const ids = new Set(recent.map((t) => t.id))
-    const links = tx
-      .select({ a: thoughtLinks.a_thought_id, b: thoughtLinks.b_thought_id })
-      .from(thoughtLinks)
-      .where(and(eq(thoughtLinks.owner_id, ownerId), eq(thoughtLinks.state, 'active')))
-      .all()
-    const neighbourMap = new Map<string, string[]>()
-    for (const l of links) {
-      neighbourMap.set(l.a, [...(neighbourMap.get(l.a) ?? []), l.b])
-      neighbourMap.set(l.b, [...(neighbourMap.get(l.b) ?? []), l.a])
-    }
-    const inWindow = links
-      .filter((e) => ids.has(e.a) && ids.has(e.b))
-      .map((e) => [e.a, e.b] as const)
-    // Similarity over the window (uncapped), the links themselves, minus vetoed pairs.
-    const vectors =
-      deps.embedder && deps.profile
-        ? comparableVectors(tx, ownerId, deps.embedder.key, deps.profile.centre)
-        : new Map<string, Float32Array>()
-    const vetoed = vetoedPairs(tx, ownerId, 'link')
-    const edges = deps.profile
-      ? similarityEdges(
-          recent.map((t) => ({
-            id: t.id,
-            vector: vectors.get(t.id) ?? null,
-            entities: t.entities,
-          })),
-          deps.profile.thresholds,
-          (a, b) => hasPair(vetoed, a, b),
-          inWindow,
-        )
-      : inWindow
+    // Thoughts deleted since the graph was built are left out.
+    const live = new Set(activeThoughtInfo(tx, ownerId).map((t) => t.id))
+    const recent = graph.recent.filter((t) => live.has(t.id))
+    const edges = graph.edges.filter(([a, b]) => live.has(a) && live.has(b))
+    const neighbourMap = graph.neighbours
     const clusters = clusterThoughts(recent.map(asCandidate), edges)
     const active = pickActive(
       matchClusters(clusters, knownThemes(tx, ownerId), (id) => neighbourMap.get(id) ?? []),
@@ -515,6 +597,7 @@ async function nameThemes(
     .filter((t) => !isSensitiveTheme(t.sensitive_share))
   let named = 0
   for (const t of unnamed) {
+    checkpoint(deps)
     const notes = themeMembers(db, ownerId, t.id, windowStart)
       .filter((m) => !m.sensitive)
       .sort((a, b) => b.capturedAt - a.capturedAt)
@@ -644,6 +727,7 @@ function writeNoticed(
           id,
           owner_id: ownerId,
           theme_id: t.id,
+          headline_thought_id: picked.headline.id,
           headline: noticedHeadline(
             shortQuote(picked.headline.text, HEADLINE_QUOTE_CHARS),
             count,
@@ -664,19 +748,4 @@ function writeNoticed(
     }
     return { created, retired }
   })
-}
-
-/** Follow a theme's merge aliases to the theme it lives in now. */
-export function survivorOf(db: Db, themeId: string): string {
-  let id = themeId
-  for (let hops = 0; hops < 20; hops++) {
-    const alias = db
-      .select({ to: themeAliases.survivor_theme_id })
-      .from(themeAliases)
-      .where(eq(themeAliases.alias_theme_id, id))
-      .get()
-    if (!alias) return id
-    id = alias.to
-  }
-  return id
 }

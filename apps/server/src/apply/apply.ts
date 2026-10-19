@@ -520,6 +520,9 @@ function undoThoughtResolve(db: Db, s: SuggestionRow, now: number): SuggestionRo
       .run()
     touch(db, s.owner_id, 'thoughts', loop.id)
   }
+  // "It didn't close it after all": the link stays, no longer called an answer (like dismiss,
+  // without remembering the pair: the user may still accept it from a later capture).
+  unanswerLink(db, s, now)
   return updateSuggestionRow(
     db,
     s,
@@ -542,6 +545,12 @@ function undoThoughtResolve(db: Db, s: SuggestionRow, now: number): SuggestionRo
 function dismissThoughtResolve(db: Db, s: SuggestionRow, now: number): void {
   if (s.target_id === null || s.source_thought_id === null) return
   vetoPair(db, s.owner_id, s.target_id, s.source_thought_id, 'resolve', 'user', now)
+  unanswerLink(db, s, now)
+}
+
+/** The link between the loop and the answer is no longer called an answer. */
+function unanswerLink(db: Db, s: SuggestionRow, now: number): void {
+  if (s.target_id === null || s.source_thought_id === null) return
   const link = linkBetween(db, s.owner_id, s.target_id, s.source_thought_id)
   if (link?.state === 'active' && link.type === 'answers') setLinkType(db, link, 'same_topic', now)
 }

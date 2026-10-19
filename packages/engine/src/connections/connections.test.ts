@@ -27,7 +27,17 @@ import {
   similarityEdges,
   type ThemeCandidateThought,
 } from './themes'
-import { centre, cosine, decodeVector, dot, encodeVector, meanOf, normalize, topK } from './vector'
+import {
+  blendMeans,
+  centre,
+  cosine,
+  decodeVector,
+  dot,
+  encodeVector,
+  meanOf,
+  normalize,
+  topK,
+} from './vector'
 
 const DAY = 86_400_000
 const T0 = Date.UTC(2026, 9, 1, 9, 0)
@@ -504,5 +514,55 @@ describe('Noticed copy denylist', () => {
     const q = shortQuote(long, 30)
     expect(q.length).toBeLessThanOrEqual(30)
     expect(q.endsWith('word…')).toBe(true)
+  })
+})
+
+describe('review follow-ups', () => {
+  test('the journal never weighs more than half of the centring mean', () => {
+    const bg = { sum: Float32Array.from([10, 0]), count: 10 }
+    const few = { sum: Float32Array.from([0, 2]), count: 2 }
+    const many = { sum: Float32Array.from([0, 10_000]), count: 10_000 }
+    expect([...(blendMeans(bg, few)?.sum ?? [])]).toEqual([
+      expect.closeTo(10 / 12),
+      expect.closeTo(2 / 12),
+    ])
+    expect([...(blendMeans(bg, many)?.sum ?? [])]).toEqual([
+      expect.closeTo(0.5),
+      expect.closeTo(0.5),
+    ])
+    expect(blendMeans(null, few)).toBe(few)
+  })
+
+  test('a mostly-sensitive theme never takes one of the 8 slots', () => {
+    const sized = (prefix: string, sensitive: boolean) =>
+      [0, 1, 2, 3].map((d) => ct(`${prefix}${d}`, d, `b-${prefix}${d}`, sensitive))
+    const clusters = [
+      ...Array.from({ length: 8 }, (_, i) => sized(`v${i}-`, false)),
+      [...sized('s-', true), ...[4, 5].map((d) => ct(`s-${d}`, d, `b-s${d}`, true))],
+    ]
+    const active = pickActive(matchClusters(clusters, []))
+    expect(active).toHaveLength(9)
+    expect(active.filter((a) => a.stats.sensitiveShare < 0.5)).toHaveLength(8)
+  })
+
+  test('the headline is always one of the quotes', () => {
+    const v = (s: number) => normalize([s, Math.sqrt(1 - s * s)])
+    const t = (id: string, bulletId: string, at: number, s: number) => ({
+      id,
+      bulletId,
+      text: id,
+      capturedAt: at,
+      sensitive: false,
+      vector: v(s),
+    })
+    // The most typical thought ('old') is the oldest: it would not make the 3 newest.
+    const q = pickQuotes([
+      t('old', 'b0', 0, 0.5),
+      t('n1', 'b1', 1, 0.95),
+      t('n2', 'b2', 2, 0.05),
+      t('n3', 'b3', 3, 0.9),
+    ])
+    expect(q?.headline.id).toBe('old')
+    expect(q?.quotes.map((x) => x.id)).toEqual(['n3', 'n2', 'old'])
   })
 })
