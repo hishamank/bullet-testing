@@ -205,7 +205,7 @@ The iPhone must be able to reach the computer running the bundler (the same netw
 with `npx expo start --tunnel` from `apps/mobile`.
 
 The build can also be made with the `preview` profile (`eas build --platform ios --profile
-preview`), an internal release build that carries its own JavaScript and needs no bundler; use it
+preview`, run from `apps/mobile`), an internal release build that carries its own JavaScript and needs no bundler; use it
 once you stop changing the code.
 
 ### 4.3 First run and pairing
