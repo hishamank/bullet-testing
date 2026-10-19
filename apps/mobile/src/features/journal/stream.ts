@@ -17,6 +17,7 @@ import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
 import { audioAttachments, bullets, suggestions, syncState, thoughts } from '../../data/schema'
 import { audioReadErrorKey } from '../../sync/client'
+import { thinkingAboutFor, thinkingAboutLabel } from '../reflect/model'
 import { keptAsAudio } from './audio-only'
 import { clock, dayKey, dayTitle, duration, spokenDuration } from './format'
 
@@ -47,6 +48,8 @@ export interface CaptureCard {
   autoApplied: number
   /** Suggestions waiting for a decision. */
   pending: number
+  /** The reflective question this capture answers ("Thinking about: «…»"), if any. */
+  thinkingAbout: { text: string; sourceBulletId: string | null } | null
 }
 
 export interface StreamPage {
@@ -56,7 +59,7 @@ export interface StreamPage {
 }
 
 /** The newest `limit` captures (deleted ones excluded). */
-export function listCaptureCards(db: PhoneDb, limit: number): StreamPage {
+export function listCaptureCards(db: PhoneDb, limit: number, now = Date.now()): StreamPage {
   const rows = db
     .select()
     .from(bullets)
@@ -113,6 +116,8 @@ export function listCaptureCards(db: PhoneDb, limit: number): StreamPage {
     counts.set(s.bullet, c)
   }
 
+  const about = thinkingAboutFor(db, ids, now)
+
   const cards = page.map((b) => ({
     id: b.id,
     text: b.text,
@@ -129,6 +134,10 @@ export function listCaptureCards(db: PhoneDb, limit: number): StreamPage {
     thoughts: thoughtsBy.get(b.id) ?? [],
     autoApplied: counts.get(b.id)?.auto ?? 0,
     pending: counts.get(b.id)?.pending ?? 0,
+    thinkingAbout: (() => {
+      const a = about.get(b.id)
+      return a ? { text: a.text, sourceBulletId: a.sourceBulletId } : null
+    })(),
   }))
   return { cards, hasMore: rows.length > limit }
 }
@@ -330,6 +339,7 @@ export function cardAccessibilityLabel(c: CaptureCard): string {
       ? c.thoughts.map((t) => `${t.kind.replace('_', ' ')}: ${t.text}`).join('. ')
       : c.text
   return [
+    c.thinkingAbout ? thinkingAboutLabel(c.thinkingAbout.text) : null,
     what,
     clock(c.capturedAt, c.timezone),
     state.label.replace(/…$/, ''),

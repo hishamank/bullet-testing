@@ -1,9 +1,9 @@
 /**
  * The daily reflection pass (no model): for each user, in one transaction,
  *  1. snoozed questions whose week is over open again;
- *  2. at most ONE new question: "Still on your mind? «…»" for the oldest open loop (a `to_check`
- *     or `question` thought) unresolved for 7 days, else an evergreen question, if the limits
- *     allow (`reflectiveRefusal`).
+ *  2. at most ONE new question: "Still on your mind? «…»" (prefix in the thought's language) for
+ *     the oldest open loop (a `to_check` or `question` thought) unresolved for 7 days, else an
+ *     evergreen question (English for now), if the limits allow (`reflectiveRefusal`).
  *
  * An open loop gets a question at most once, ever, and never when its thought or capture reads as
  * distress, or the user said "Not this one" about it. Evergreen questions rotate through the list
@@ -18,6 +18,7 @@ import {
   RESOLVABLE_THOUGHT_KINDS,
   staleLoopQuestionText,
 } from '@bullet/core'
+import { quoteLanguage } from '@bullet/engine'
 import { and, asc, eq, inArray, isNull, lte } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { bullets, questions, thoughts, users } from '../db/schema'
@@ -148,7 +149,7 @@ export function reflectionPassFor(db: Db, ownerId: string, now: number): PassRes
           {
             ownerId,
             origin: 'open_loop',
-            text: staleLoopQuestionText(loop.text),
+            text: staleLoopQuestionText(loop.text, quoteLanguage(loop.text)),
             sourceBulletId: loop.bulletId,
             sourceThoughtId: loop.id,
           },

@@ -34,6 +34,7 @@ export const EXPLAINED: readonly PushOp['type'][] = [
   'suggestion.accept',
   'suggestion.undo',
   'question.answer',
+  'question.pick_evergreen',
 ]
 
 const tracked = (type: PushOp['type']) =>

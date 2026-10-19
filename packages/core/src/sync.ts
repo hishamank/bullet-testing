@@ -392,6 +392,14 @@ export const syncedBulletSchema = bulletSelectSchema.extend({
 export type SyncedBullet = z.infer<typeof syncedBulletSchema>
 
 /**
+ * A thought as the server sends it: without `sensitive`, which is server-only (it only keeps
+ * reflective questions away and is never shown, so it never leaves the home server). An older
+ * server's extra `sensitive` key is stripped when the phone parses the pull.
+ */
+export const syncedThoughtSchema = thoughtSelectSchema.omit({ sensitive: true })
+export type SyncedThought = z.infer<typeof syncedThoughtSchema>
+
+/**
  * Everything that changed since the cursor: full current rows (not diffs), including rows that
  * were soft-deleted (`state: 'deleted'`) so the phone can hide them. A row appears at most once per
  * response, in its latest version.
@@ -406,7 +414,7 @@ export const pullChangesSchema = z.object({
   activities: z.array(activitySelectSchema),
   audio_attachments: z.array(audioAttachmentSelectSchema),
   transcripts: z.array(transcriptSelectSchema),
-  thoughts: z.array(thoughtSelectSchema),
+  thoughts: z.array(syncedThoughtSchema),
   questions: z.array(questionSelectSchema),
 })
 export type PullChanges = z.infer<typeof pullChangesSchema>

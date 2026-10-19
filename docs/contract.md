@@ -190,9 +190,10 @@ Rules the design can rely on:
 - Worries, ideas, notes and self-questions are kept as thoughts and nothing is extracted from
   them. A worry, self-question or idea may get a **reflective question** (§2e). Links between
   captures and recurring themes come later.
-- A thought may carry `sensitive: true` (it reads as self-harm, crisis or acute distress). This is
-  **never shown**: no UI, no copy, no notification, and the capture is never hidden. Its only
-  effect is that no reflective question is asked about that capture (§2e).
+- The server may flag a thought `sensitive` (it reads as self-harm, crisis or acute distress).
+  The flag is **server-only**: it is never pulled to the phone, never shown (no UI, no copy, no
+  notification), and the capture is never hidden. Its only effect is that no reflective question
+  is asked about that capture (§2e).
 - Long recordings work: the capture is split in pieces for the AI and the thoughts are put back
   together in order.
 
@@ -245,10 +246,16 @@ should do. It is optional and never nags.
 - `capture`: after a capture's things are done, the server may ask **one** question about one of
   its worries, self-questions or ideas, quoting your words, in your language, with a curious tone
   ("You wrote «I'm dreading Monday's meeting». What about it feels heavy?"). It never delays the
-  capture's things. A capture that answers a reflective question gets none of its own.
+  capture's things. A capture that answers a reflective question gets none of its own. A reflect
+  job the limits refuse is **finished, not deferred**: a question arriving days after the capture
+  would feel odd. If an edit rewords the thought a live question was about, that question is
+  withdrawn and the capture may get a new one; a dismissed or answered one still counts.
 - `open_loop`: a `to_check` or `question` thought left unresolved for **7 days** gets
-  "Still on your mind? «check if the passport expires»". At most once per thought, ever. A
-  resolved one never does.
+  "Still on your mind? «check if the passport expires»", with the prefix in the thought's
+  language: "Toujours en tête ? «…»" (a narrow no-break space, U+202F, before the "?"),
+  "Ba3do 3a balak? «…»", or "بعدو عبالك؟ «…»" (shown right to left; its "؟" is never replaced by
+  "?"). The language is a deterministic guess that falls back to English when unsure. At most
+  once per thought, ever. A resolved one never does.
 - `evergreen`: a hand-written list of about 20 calm questions ("What took more energy than it
   should have this week?"), with a `template_id`. Offered only when no other reflective question
   is open, at most one every 3 days. The user can also **pick one** to journal about
@@ -274,11 +281,21 @@ question offers:
 
 Tapping an option (`question.answer`) does not apply: it is refused for reflective questions.
 
+**Pick a question** lists the evergreen questions except those let go with Not this one and those
+already waiting. A pick is created on the phone at once, so it can be answered offline. If the
+server later refuses it, the phone drops its copy and the Inbox says "That question couldn't be
+added. Your answer is still saved." (the answer stays an ordinary capture).
+
+**Answers and their source** link both ways: an answer's Stream card is headed "Thinking about"
+with the question (tapping it opens the capture it is about; nothing for evergreen questions),
+its Capture detail pins the question above the text, and the capture asked about lists
+"You thought about this · N" with each answer.
+
 **Sensitive thoughts.** When a thought reads as self-harm, crisis or acute distress, the server
-marks it `sensitive` (conservatively, while splitting the capture). That capture then gets no
-reflective question, its open loops never get "Still on your mind?", and evergreen questions
-pause for 7 days. Everything else is identical: the capture is kept, split and extracted. No UI,
-no copy, no notification.
+marks it `sensitive` (conservatively, while splitting the capture; server-only, never pulled).
+That capture then gets no reflective question, its open loops never get "Still on your mind?",
+and evergreen questions pause for 7 days. Everything else is identical: the capture is kept,
+split and extracted. No UI, no copy, no notification.
 
 ## 3. Suggestions
 

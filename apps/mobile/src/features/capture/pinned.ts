@@ -1,9 +1,10 @@
 /**
- * Answer: the capture page with a clarifying question, or an open loop (a to-check or
+ * Answer: the capture page with a question (clarifying, or reflective: "Journal about it" and
+ * "Add more"), or an open loop (a to-check or
  * self-question thought), pinned on top. Pure query + formatting.
  */
 
-import type { BulletSource } from '@bullet/core'
+import type { BulletSource, QuestionOrigin } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { bullets, questions, thoughts } from '../../data/schema'
@@ -12,6 +13,10 @@ export interface Pinned {
   kind: 'question' | 'loop'
   id: string
   text: string
+  /** A reflective question ("Thinking about"), rather than a clarifying one or a loop. */
+  reflective: boolean
+  /** Where the question came from (null for a loop). */
+  origin: QuestionOrigin | null
   /** The capture it came from. */
   source: { source: BulletSource; capturedAt: number; timezone: string } | null
 }
@@ -43,7 +48,14 @@ export function findPinned(
     const answerable =
       q?.status === 'open' || (q?.kind === 'reflective' && q.status !== 'dismissed')
     if (!q || !answerable) return null
-    return { kind: 'question', id: q.id, text: q.text, source: sourceOf(q.source_bullet_id) }
+    return {
+      kind: 'question',
+      id: q.id,
+      text: q.text,
+      reflective: q.kind === 'reflective',
+      origin: q.origin,
+      source: sourceOf(q.source_bullet_id),
+    }
   }
   if (target.thought) {
     const th = db
@@ -52,7 +64,14 @@ export function findPinned(
       .where(and(eq(thoughts.id, target.thought), eq(thoughts.state, 'active')))
       .get()
     if (!th) return null
-    return { kind: 'loop', id: th.id, text: th.text, source: sourceOf(th.source_bullet_id) }
+    return {
+      kind: 'loop',
+      id: th.id,
+      text: th.text,
+      reflective: false,
+      origin: null,
+      source: sourceOf(th.source_bullet_id),
+    }
   }
   return null
 }

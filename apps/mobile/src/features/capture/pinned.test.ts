@@ -36,6 +36,8 @@ describe('pinned question or loop', () => {
       kind: 'question',
       id: 'q1',
       text: 'Which Thursday?',
+      reflective: false,
+      origin: 'capture',
       source: { source: 'voice', capturedAt: T0, timezone: 'Europe/Paris' },
     })
     expect(findPinned(db, { thought: 't1' })).toMatchObject({

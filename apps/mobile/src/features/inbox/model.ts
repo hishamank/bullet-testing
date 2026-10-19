@@ -9,11 +9,13 @@ import { and, eq, inArray } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import {
   listOpenQuestions,
+  listQuestionsToThinkAbout,
   listPendingSuggestions,
   listReadingsWaitingOnTrackers,
 } from '../../data/queries'
 import { listRejections, type SyncRejection } from '../../data/rejections'
 import { bullets, events, questions, suggestions, tasks, trackers } from '../../data/schema'
+import { PICK_REFUSED_TEXT } from '../reflect/model'
 import { formatValue, type Summary, type SummaryContext, snippet, summarize } from './summary'
 import type { Decision, UndoState } from './undo'
 
@@ -85,7 +87,7 @@ export interface InboxView {
   questions: QuestionItem[]
   done: DoneItem[]
   notices: InboxNotice[]
-  /** Nothing to decide, answer or show. */
+  /** Nothing to decide, answer, think about or show. */
   empty: boolean
 }
 
@@ -97,6 +99,8 @@ export interface InboxRows {
   /** Accepted/edited suggestions resolved or applied today. */
   appliedToday: SuggestionRow[]
   openQuestions: QuestionRow[]
+  /** Reflective questions showing in "To think about" (never in the badge, but waiting). */
+  thinking?: number
   /** Suggestion ids that a tapped question option accepted. */
   answeredSuggestionIds: ReadonlySet<string>
   bullets: ReadonlyMap<string, { text: string; source: BulletSource }>
@@ -205,7 +209,11 @@ export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {
     questions: questionItems,
     done,
     notices,
-    empty: groups.length === 0 && questionItems.length === 0 && done.length === 0,
+    empty:
+      groups.length === 0 &&
+      questionItems.length === 0 &&
+      done.length === 0 &&
+      (rows.thinking ?? 0) === 0,
   }
 }
 
@@ -226,6 +234,8 @@ export function noticeText(
         : `${name ? `Couldn't undo ${name}` : "Couldn't undo that"}; it's still there, unchanged.`
     case 'question.answer':
       return 'Your answer arrived after that was already decided, so nothing changed.'
+    case 'question.pick_evergreen':
+      return PICK_REFUSED_TEXT
     default:
       return null
   }
@@ -237,7 +247,12 @@ export function startOfDay(now: number, timezone: string): number {
   return zonedToEpoch({ year: p.year, month: p.month, day: p.day }, timezone)
 }
 
-const NOTICE_TYPES = new Set(['suggestion.accept', 'suggestion.undo', 'question.answer'])
+const NOTICE_TYPES = new Set([
+  'suggestion.accept',
+  'suggestion.undo',
+  'question.answer',
+  'question.pick_evergreen',
+])
 
 /** Fetch what `buildInbox` needs from the local mirror. */
 export function loadInboxRows(
@@ -314,6 +329,7 @@ export function loadInboxRows(
     waiting: listReadingsWaitingOnTrackers(db),
     appliedToday,
     openQuestions,
+    thinking: listQuestionsToThinkAbout(db, opts.now).length,
     answeredSuggestionIds,
     bullets: bulletMap,
     named,

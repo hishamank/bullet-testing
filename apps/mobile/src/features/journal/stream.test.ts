@@ -202,6 +202,7 @@ describe('grouping and wording', () => {
       thoughts: [{ id: 't', kind: 'to_check' as const, text: 'passport expiry' }],
       autoApplied: 0,
       pending: 0,
+      thinkingAbout: null,
     }
     expect(sourceLine(card)).toBe('Voice · 3:12 · 08:40')
     expect(sourceLine({ ...card, source: 'text' })).toBe('Typed · 08:40')
@@ -211,5 +212,11 @@ describe('grouping and wording', () => {
     expect(cardAccessibilityLabel({ ...card, audioReadError: true })).toContain(
       AUDIO_READ_ERROR_TEXT,
     )
+    expect(
+      cardAccessibilityLabel({
+        ...card,
+        thinkingAbout: { text: 'What surprised you this week?', sourceBulletId: null },
+      }),
+    ).toMatch(/^Thinking about: «What surprised you this week\?»\. Voice note/)
   })
 })

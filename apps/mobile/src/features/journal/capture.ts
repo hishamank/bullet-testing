@@ -27,6 +27,12 @@ import {
   transcripts,
 } from '../../data/schema'
 import { type InboxNotice, noticeText, summaryContext } from '../inbox/model'
+import {
+  answersAbout,
+  type ThinkingAbout,
+  type ThoughtAboutAnswer,
+  thinkingAboutFor,
+} from '../reflect/model'
 import { keptAsAudio } from './audio-only'
 import {
   errorReason,
@@ -75,6 +81,10 @@ export interface CaptureDetail {
   things: LinkedThing[]
   /** Calm notes for an Undo of one of its things the server refused (e.g. edited since). */
   notices: InboxNotice[]
+  /** This capture answers a reflective question: pinned above the text, linking to its source. */
+  thinkingAbout: ThinkingAbout | null
+  /** Captures that answered a reflective question about this one ("You thought about this"). */
+  thoughtAbout: ThoughtAboutAnswer[]
 }
 
 export function loadCaptureDetail(
@@ -168,6 +178,8 @@ export function loadCaptureDetail(
     thoughts: th.map((t) => ({ id: t.id, kind: t.kind, kindSource: t.kind_source, text: t.text })),
     things: ss.map((s) => linkedThing(s as SuggestionRow, look, now, tz)),
     notices: undoNotices(db, ss, now, tz),
+    thinkingAbout: thinkingAboutFor(db, [b.id], now).get(b.id) ?? null,
+    thoughtAbout: answersAbout(db, b.id),
   }
 }
 

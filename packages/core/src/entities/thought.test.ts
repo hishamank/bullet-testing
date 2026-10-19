@@ -126,4 +126,17 @@ test('evergreen questions: about 20, unique ids, calm questions', () => {
   expect(staleLoopQuestionText(' check the passport ')).toBe(
     'Still on your mind? «check the passport»',
   )
+  expect(staleLoopQuestionText('vérifier le passeport', 'fr')).toBe(
+    'Toujours en tête\u202F? «vérifier le passeport»',
+  )
+  expect(staleLoopQuestionText('shuf l passport', 'arabizi')).toBe(
+    'Ba3do 3a balak? «shuf l passport»',
+  )
+  // Arabic: the Arabic question mark is kept, and the text starts with an Arabic letter so it
+  // lays out right to left, the quoted thought after (to the left of) the prefix.
+  const ar = staleLoopQuestionText('شوف إذا الباسبور بعدو صالح', 'ar')
+  expect(ar).toBe('بعدو عبالك؟ «شوف إذا الباسبور بعدو صالح»')
+  expect(ar).not.toContain('?')
+  expect(ar.charCodeAt(0)).toBeGreaterThanOrEqual(0x0600)
+  expect(ar.charCodeAt(0)).toBeLessThanOrEqual(0x06ff)
 })

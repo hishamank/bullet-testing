@@ -7,8 +7,9 @@
  * capture in one transaction, and stores at most one question.
  *
  * A capture may get one when: it is active; it does not itself answer a reflective question; it
- * never had a reflective question before (one per capture, ever, so "Not this one" and a
- * dismissal survive re-processing); none of its thoughts is sensitive; and it has a worry,
+ * has no reflective question already (one per capture: "Not this one", Later and answers all
+ * keep theirs active, so they survive re-processing; only a question withdrawn because an edit
+ * reworded its thought frees the capture for a new one); none of its thoughts is sensitive; and it has a worry,
  * self-question or idea not marked `never_ask`.
  *
  * A failed model call is retried a few times, then dropped quietly: the capture is unaffected.
@@ -55,6 +56,9 @@ export function reflectableThoughts(db: Db, bullet: BulletRow): ReflectableThoug
         eq(questions.source_bullet_id, bullet.id),
         eq(questions.kind, 'reflective'),
         eq(questions.origin, 'capture'),
+        // A question withdrawn because an edit reworded its thought (`deleted`) doesn't count:
+        // the new wording may get one. Dismissed and answered ones stay active, so they do.
+        eq(questions.state, 'active'),
       ),
     )
     .get()

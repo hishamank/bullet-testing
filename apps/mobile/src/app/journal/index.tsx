@@ -55,6 +55,7 @@ export default function JournalStream() {
         <CaptureCard
           card={item}
           onOpen={() => router.push({ pathname: '/capture/[id]', params: { id: item.id } })}
+          onOpenSource={(id) => router.push({ pathname: '/capture/[id]', params: { id } })}
           onRetry={() => retryCaptures([item.id])}
           onWriteDown={() =>
             router.push({ pathname: '/capture/[id]', params: { id: item.id, write: '1' } })
