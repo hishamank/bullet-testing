@@ -109,6 +109,14 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
 - **Queue:** one durable job per bullet (`jobs` table); retries with backoff, an LLM deadline
   (`withLlmTimeout`), `running` jobs recovered at startup, results discarded if the bullet was
   edited/deleted meanwhile (`text_version`). One job at a time (one model slot).
+- **Reflective questions** (slice 2, `apps/server/src/reflect`, contract §2e): a `reflect_jobs`
+  row per capture, queued in the transaction that stores its extraction and claimed only when no
+  extraction job is ready (never delays things); a few retries, then dropped quietly. The model
+  sees only worry/question/idea thoughts (`reflectOnThoughts`; bad output = no question). A
+  daily pass (`runReflectionPass`, scheduled in `main.ts`) reopens snoozed questions and adds
+  "Still on your mind?" for 7-day-old open loops or an evergreen question. Every source goes
+  through `reflectiveRefusal` (3 open, 2 a day, 14 days quiet; evergreen alone, every 3 days,
+  paused 7 days after a `sensitive` thought). One reflective question per capture, ever.
 - **Apply engine** (`apps/server/src/apply`): revalidates against current state at apply time;
   a created entity's id **is** the suggestion id (idempotent); `update` payloads are field-level
   patches validated by `targetKindUpdateSchemas` (never a snapshot); undo restores `before`
@@ -169,8 +177,10 @@ detection). Mood/weight/sleep are Tracker Entries, not activities. This axis is 
   later. Distinct from Task (you do it) vs Event (it happens).
 - **Thought** — a segment of a capture: text, span, position, kind, kind_source; provenance
   `source_bullet_id`. Things/suggestions carry `source_thought_id` too.
-- **Question** — clarifying (slice 1): topic date | new_tracker | other, options, status
-  open | answered | dismissed.
+- **Question** — `kind: clarifying` (slice 1): topic date | new_tracker | other, options;
+  `kind: reflective` (slice 2): origin capture | open_loop | evergreen (`template_id`), no
+  options, answered only by captures, `snoozed` once ("Later"). Status open | answered |
+  dismissed | snoozed. Thoughts carry `sensitive` (never shown) and `never_ask`.
 
 ### 4.3 Suggestion (persisted)
 
@@ -207,7 +217,9 @@ The old rule "the agent never asks free-text questions" is reversed, deliberatel
 - **Clarifying questions** (slice 1): short and concrete, about one ambiguous extraction, at most
   3 per capture, optional, never blocking a suggestion. Answering is a capture
   (`answers_question_id`).
-- **Reflective questions** (slice 2): optional and never nagging.
+- **Reflective questions** (slice 2): optional and never nagging. About what the user said,
+  never what they should do; never in the Inbox badge, never notified; nothing for a capture
+  that reads as distress.
 
 ## 5. Known issues in ported code
 

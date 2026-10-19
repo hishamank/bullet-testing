@@ -14,6 +14,7 @@ import { ENTITY_KINDS, listActiveBySource, softDeleteEntity } from '../apply/ent
 import { retireSuggestion } from '../apply/reconcile'
 import { touch } from '../sync/changes'
 import { type BulletRow, cancelJob, enqueue } from '../queue/jobs'
+import { cancelReflectJob } from '../reflect/capture'
 
 type CreateOp = Extract<PushOp, { type: 'bullet.create' }>
 
@@ -146,6 +147,7 @@ export function deleteBullet(
   const b = getBullet(db, ownerId, bulletId)
   if (b.state === 'deleted') return
   cancelJob(db, b.id, now)
+  cancelReflectJob(db, b.id, now)
   const own = db
     .select()
     .from(suggestions)

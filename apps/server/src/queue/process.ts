@@ -28,6 +28,7 @@ import { bullets, tasks, thoughts, trackers, transcripts } from '../db/schema'
 import type { AudioStore } from '../storage/audio-store'
 import { hasPendingSuggestions, reconcileSuggestions } from '../apply/reconcile'
 import { reconcileThoughts, replaceQuestions } from '../capture/thoughts'
+import { afterCaptureProcessed } from '../reflect/capture'
 import { touch } from '../sync/changes'
 import { type BulletRow, type ClaimedJob, isJobCurrent, markJobDone, setBulletProc } from './jobs'
 
@@ -315,6 +316,8 @@ export async function processClaimedJob(
       })),
       now,
     )
+    // Its things are done: a reflective question may follow, at a lower priority.
+    afterCaptureProcessed(tx, current, now)
     const status = hasPendingSuggestions(tx, current.id) ? 'needs_review' : 'processed'
     tx.update(bullets)
       .set({

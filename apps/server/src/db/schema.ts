@@ -21,6 +21,7 @@ import type {
   TrackerConfig,
   TrackerEntryValue,
   QuestionKind,
+  QuestionOrigin,
   QuestionStatus,
   QuestionTopic,
   ThoughtKind,
@@ -168,21 +169,27 @@ export const thoughts = sqliteTable(
     /** Open loops (`to_check` / `question`): when the user closed it, and the note that did. */
     resolved_at: integer('resolved_at'),
     resolved_by_bullet_id: text('resolved_by_bullet_id'),
+    /** Reads as self-harm, crisis or acute distress: keeps reflective questions away. */
+    sensitive: integer('sensitive', { mode: 'boolean' }).notNull().default(false),
+    /** "Not this one" on a reflective question about it: it is never asked about again. */
+    never_ask: integer('never_ask', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [index('thoughts_bullet_idx').on(t.source_bullet_id)],
 )
 
-/** Clarifying questions the engine asks about a capture (max 3 per capture). */
+/**
+ * Questions: clarifying ones about a capture (max 3 per capture), and reflective ones (from a
+ * capture, a stale open loop, or the evergreen list; the last have no source capture).
+ */
 export const questions = sqliteTable(
   'questions',
   {
     ...ownedFields(),
-    source_bullet_id: text('source_bullet_id')
-      .notNull()
-      .references(() => bullets.id),
+    source_bullet_id: text('source_bullet_id').references(() => bullets.id),
     source_thought_id: text('source_thought_id'),
     suggestion_id: text('suggestion_id'),
-    kind: text('kind').$type<QuestionKind>().notNull(),
+    kind: text('kind').$type<QuestionKind>().notNull().default('clarifying'),
+    origin: text('origin').$type<QuestionOrigin>().notNull().default('capture'),
     topic: text('topic').$type<QuestionTopic>().notNull(),
     text: text('text').notNull(),
     options: text('options', { mode: 'json' }).$type<string[]>().notNull(),
@@ -191,8 +198,42 @@ export const questions = sqliteTable(
     /** The option the user tapped (`question.answer`). */
     answer_option: text('answer_option'),
     resolved_at: integer('resolved_at'),
+    /** Reflective "Later": hidden until then; allowed once. */
+    snoozed_until: integer('snoozed_until'),
+    snooze_count: integer('snooze_count').notNull().default(0),
+    /** Evergreen questions: which template. */
+    template_id: text('template_id'),
   },
-  (t) => [index('questions_bullet_idx').on(t.source_bullet_id)],
+  (t) => [
+    index('questions_bullet_idx').on(t.source_bullet_id),
+    index('questions_kind_idx').on(t.owner_id, t.kind, t.status),
+  ],
+)
+
+/**
+ * Reflective-question jobs: one per capture, run by the same worker AFTER every extraction job
+ * that is ready (lower priority), so a capture's things never wait on it. `text_version` pins the
+ * capture text it read; a newer text discards the result.
+ */
+export const reflectJobs = sqliteTable(
+  'reflect_jobs',
+  {
+    bullet_id: text('bullet_id')
+      .primaryKey()
+      .references(() => bullets.id),
+    owner_id: text('owner_id')
+      .notNull()
+      .references(() => users.id),
+    status: text('status').$type<JobStatus>().notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    text_version: integer('text_version').notNull(),
+    run_after: integer('run_after').notNull(),
+    locked_at: integer('locked_at'),
+    last_error: text('last_error'),
+    created_at: integer('created_at').notNull(),
+    updated_at: integer('updated_at').notNull(),
+  },
+  (t) => [index('reflect_jobs_ready_idx').on(t.status, t.run_after)],
 )
 
 export const tasks = sqliteTable(
@@ -339,6 +380,7 @@ export const schema = {
   devices,
   bullets,
   jobs,
+  reflectJobs,
   suggestions,
   tasks,
   events,
