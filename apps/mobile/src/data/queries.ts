@@ -183,7 +183,7 @@ type BulletRow = typeof bullets.$inferSelect
 /** A reflective question with the capture it is about (null for an evergreen one). */
 export interface ReflectiveQuestionView {
   question: QuestionRow
-  source: Pick<BulletRow, 'id' | 'text' | 'captured_at' | 'source'> | null
+  source: Pick<BulletRow, 'id' | 'text' | 'captured_at' | 'source' | 'timezone'> | null
 }
 
 function withSources(db: PhoneDb, rows: QuestionRow[]): ReflectiveQuestionView[] {
@@ -197,9 +197,10 @@ function withSources(db: PhoneDb, rows: QuestionRow[]): ReflectiveQuestionView[]
             text: bullets.text,
             captured_at: bullets.captured_at,
             source: bullets.source,
+            timezone: bullets.timezone,
           })
           .from(bullets)
-          .where(inArray(bullets.id, ids))
+          .where(and(inArray(bullets.id, ids), eq(bullets.state, 'active')))
           .all()
     ).map((b) => [b.id, b]),
   )

@@ -15,6 +15,12 @@ import {
   serverRowTitle,
   serverStatusLine,
 } from '@/features/setup/settings'
+import {
+  type EvergreenChoices,
+  evergreenChoices,
+  loadThinkView,
+  type ThinkView,
+} from '@/features/reflect/model'
 import type { Store } from '@/features/store'
 import { changeStore, monitorStore, type Pairing, pairingStore } from '@/features/sync/engine'
 import { currentServerSettings } from '@/sync/runtime'
@@ -113,6 +119,16 @@ export function useOutboxCount(): number {
 
 export function useInboxCount(): number {
   return useLocalQuery(inboxCount)
+}
+
+/** The Inbox's "To think about" and "Answered · N" (never part of the badge). */
+export function useThinkView(): ThinkView {
+  return useLocalQuery((db) => loadThinkView(db, Date.now()))
+}
+
+/** The "Pick a question" list. */
+export function useEvergreenChoices(): EvergreenChoices {
+  return useLocalQuery(evergreenChoices)
 }
 
 /** The clock, re-read every `everyMs` (for text that changes with time, never an animation). */

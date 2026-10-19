@@ -4,7 +4,9 @@ import { ScrollView, StyleSheet, View } from 'react-native'
 import { DecideGroup } from '@/components/inbox/DecideGroup'
 import { DoneList } from '@/components/inbox/DoneList'
 import { SectionTitle } from '@/components/inbox/parts'
+import { PickQuestionSheet } from '@/components/inbox/PickQuestionSheet'
 import { QuestionCard } from '@/components/inbox/QuestionCard'
+import { AnsweredList, ThinkCard, ThinkEmpty } from '@/components/inbox/ThinkCard'
 import { BackHeader, Label, Note, Screen } from '@/components/ui'
 import {
   accept,
@@ -20,19 +22,28 @@ import {
   undoDecision,
 } from '@/features/inbox/actions'
 import { useInbox } from '@/features/inbox/useInbox'
+import { laterQuestion, notThisOne, pickQuestion } from '@/features/reflect/actions'
+import { useEvergreenChoices, useThinkView } from '@/hooks'
 import { space, type } from '@/theme'
 
 /** How long a one-off message (e.g. "it stays dismissed") stays before fading out. */
 const MESSAGE_MS = 6_000
 
 /**
- * Inbox: To decide (grouped by capture), Questions, and Done for you today. Everything here is
- * optional and can wait; the screen only wires taps to `features/inbox/actions`.
+ * Inbox: To decide (grouped by capture), To clarify (clarifying questions, in the badge), To
+ * think about (reflective questions, never in the badge), and Done for you today. Everything
+ * here is optional and can wait; the screen only wires taps to `features/inbox/actions` and
+ * `features/reflect/actions`.
  */
 export default function Inbox() {
   const router = useRouter()
   const view = useInbox()
+  const think = useThinkView()
+  const evergreen = useEvergreenChoices()
   const [message, setMessage] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
+  const journal = (questionId: string) =>
+    router.push({ pathname: '/answer', params: { question: questionId } })
 
   // Leaving the Inbox sends whatever is still in its Undo window.
   useEffect(() => flushDecisions, [])
@@ -83,7 +94,7 @@ export default function Inbox() {
 
         {view.questions.length > 0 ? (
           <>
-            <SectionTitle title="Questions" count={view.questions.length} />
+            <SectionTitle title="To clarify" count={view.questions.length} />
             {view.questions.map((q) => (
               <QuestionCard
                 key={q.id}
@@ -95,6 +106,25 @@ export default function Inbox() {
           </>
         ) : null}
 
+        <SectionTitle
+          title="To think about"
+          count={think.toThink.length > 0 ? think.toThink.length : undefined}
+        />
+        {think.toThink.length > 0 ? (
+          think.toThink.map((q) => (
+            <ThinkCard
+              key={q.id}
+              question={q}
+              onJournal={() => journal(q.id)}
+              onLater={() => laterQuestion(q.id)}
+              onNotThisOne={() => notThisOne(q.id)}
+            />
+          ))
+        ) : (
+          <ThinkEmpty onPick={() => setPicking(true)} />
+        )}
+        <AnsweredList items={think.answered} onAddMore={(q) => journal(q.id)} />
+
         {view.done.length > 0 ? (
           <>
             <SectionTitle title="Done for you today" count={view.done.length} />
@@ -105,6 +135,17 @@ export default function Inbox() {
           </>
         ) : null}
       </ScrollView>
+      <PickQuestionSheet
+        visible={picking}
+        choices={evergreen.choices}
+        canPick={evergreen.canPick}
+        onClose={() => setPicking(false)}
+        onPick={(q) => {
+          const id = pickQuestion(q.id)
+          setPicking(false)
+          if (id) journal(id)
+        }}
+      />
     </Screen>
   )
 }

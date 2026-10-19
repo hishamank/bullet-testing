@@ -279,11 +279,21 @@ question offers:
 
 Tapping an option (`question.answer`) does not apply: it is refused for reflective questions.
 
+**Pick a question** lists the evergreen questions except those let go with Not this one and those
+already waiting. A pick is created on the phone at once, so it can be answered offline. If the
+server later refuses it, the phone drops its copy and the Inbox says "That question couldn't be
+added. Your answer is still saved." (the answer stays an ordinary capture).
+
+**Answers and their source** link both ways: an answer's Stream card is headed "Thinking about"
+with the question (tapping it opens the capture it is about; nothing for evergreen questions),
+its Capture detail pins the question above the text, and the capture asked about lists
+"You thought about this · N" with each answer.
+
 **Sensitive thoughts.** When a thought reads as self-harm, crisis or acute distress, the server
-marks it `sensitive` (conservatively, while splitting the capture; server-only, never pulled). That capture then gets no
-reflective question, its open loops never get "Still on your mind?", and evergreen questions
-pause for 7 days. Everything else is identical: the capture is kept, split and extracted. No UI,
-no copy, no notification.
+marks it `sensitive` (conservatively, while splitting the capture; server-only, never pulled).
+That capture then gets no reflective question, its open loops never get "Still on your mind?",
+and evergreen questions pause for 7 days. Everything else is identical: the capture is kept,
+split and extracted. No UI, no copy, no notification.
 
 ## 3. Suggestions
 

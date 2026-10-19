@@ -2,17 +2,19 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Composer } from '@/components/capture/Composer'
-import { BackHeader, IconButton, Label, Placeholder, Screen } from '@/components/ui'
+import { BackHeader, IconButton, Label, Placeholder, QuestionText, Screen } from '@/components/ui'
 import { sendCapture } from '@/features/capture/actions'
 import { findPinned, fromLabel } from '@/features/capture/pinned'
 import { sendLoopNote } from '@/features/journal/actions'
+import { questionSourceLine } from '@/features/reflect/model'
 import { useLocalQuery } from '@/hooks'
 import { kindStyle, radius, space, type, useTheme } from '@/theme'
 
 /**
- * Answer: the capture page with a clarifying question (`?question=`) or an open loop
- * (`?thought=`) pinned on top. The answer is saved as a capture; a loop's note also closes the
- * loop.
+ * Answer: the capture page with a question (`?question=`: a clarifying one, or a reflective one
+ * from "Journal about it" / "Add more") or an open loop (`?thought=`) pinned on top. The answer
+ * is saved as a capture (typed, or spoken via `/record` with the same link); a loop's note also
+ * closes the loop. A reflective question may be answered again and again.
  */
 export default function AnswerScreen() {
   const t = useTheme()
@@ -36,6 +38,16 @@ export default function AnswerScreen() {
     )
   }
   const tint = kindStyle(pinned.kind === 'question' ? 'question' : 'to_check', t.scheme)
+  const heading = pinned.reflective
+    ? 'Thinking about'
+    : pinned.kind === 'question'
+      ? 'Answering'
+      : 'Closing with a note'
+  const from = pinned.reflective
+    ? questionSourceLine(pinned.origin ?? 'evergreen', pinned.source, Date.now())
+    : pinned.source
+      ? fromLabel(pinned.source, Date.now())
+      : null
   return (
     <Screen>
       <Composer
@@ -46,19 +58,28 @@ export default function AnswerScreen() {
           <View style={[styles.card, { backgroundColor: tint.background }]}>
             <View style={styles.cardText}>
               <Label size={type.caption} style={{ color: tint.text }}>
-                {pinned.kind === 'question' ? 'Answering' : 'Closing with a note'}
+                {heading}
               </Label>
-              <Label size={type.body}>{pinned.text}</Label>
-              {pinned.source ? (
+              {pinned.reflective ? (
+                <QuestionText size={type.body}>{pinned.text}</QuestionText>
+              ) : (
+                <Label size={type.body}>{pinned.text}</Label>
+              )}
+              {from ? (
                 <Label tone="secondary" size={type.label}>
-                  {fromLabel(pinned.source, Date.now())}
+                  {from}
                 </Label>
               ) : null}
             </View>
-            <IconButton icon="close" label="Stop answering" iconSize={20} onPress={close} />
+            <IconButton
+              icon="close"
+              label={pinned.reflective ? 'Stop journaling about it' : 'Stop answering'}
+              iconSize={20}
+              onPress={close}
+            />
           </View>
         }
-        placeholder="Your answer…"
+        placeholder={pinned.reflective ? 'Write about it…' : 'Your answer…'}
         inputLabel="Your answer"
         micLabel="Answer by voice"
         statusLine={

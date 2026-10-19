@@ -5,7 +5,15 @@ import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react
 import { AudioPlayer } from '@/components/journal/AudioPlayer'
 import { KindPicker } from '@/components/journal/KindPicker'
 import { Divider, Group, SectionTitle } from '@/components/journal/parts'
-import { BackHeader, Label, Note, Placeholder, Screen, TextButton } from '@/components/ui'
+import {
+  BackHeader,
+  Label,
+  Note,
+  Placeholder,
+  QuestionText,
+  Screen,
+  TextButton,
+} from '@/components/ui'
 import { retryCaptures } from '@/features/capture/actions'
 import { captureStatusLabel } from '@/features/capture/notice'
 import { dismissNotice, undoApplied } from '@/features/inbox/actions'
@@ -19,7 +27,8 @@ import {
 } from '@/features/journal/capture'
 import { changeKind, deleteCapture, editCapture, keepAsAudio } from '@/features/journal/actions'
 import { AUDIO_READ_ERROR_TEXT, untranscribableCopy } from '@/features/journal/stream'
-import { whenLabel } from '@/features/journal/format'
+import { clock, whenLabel } from '@/features/journal/format'
+import { thinkingAboutLabel } from '@/features/reflect/model'
 import { type LinkedThing, THING_STATE_LABELS } from '@/features/journal/things'
 import { useLocalQuery } from '@/hooks'
 import { deviceDeps } from '@/sync/runtime'
@@ -27,7 +36,9 @@ import { kindStyle, radius, size, space, type, useTheme } from '@/theme'
 
 /**
  * Capture detail: the recording, the home transcript vs the phone draft, the thoughts (tap a
- * kind to change it) with the things they produced, Edit, and "Delete capture…".
+ * kind to change it) with the things they produced, Edit, and "Delete capture…". An answer to a
+ * reflective question shows that question pinned above its text (linking up to the capture it is
+ * about); a capture asked about lists the answers ("You thought about this · N").
  */
 export default function CaptureDetailScreen() {
   const t = useTheme()
@@ -54,6 +65,8 @@ export default function CaptureDetailScreen() {
     })
   }, [things])
   const back = () => router.back()
+  const openCapture = (captureId: string) =>
+    router.push({ pathname: '/capture/[id]', params: { id: captureId } })
 
   if (!c) {
     return (
@@ -232,6 +245,56 @@ export default function CaptureDetailScreen() {
           </Label>
         ) : null}
 
+        {c.thinkingAbout ? (
+          <View
+            style={[styles.about, { backgroundColor: kindStyle('question', t.scheme).background }]}
+          >
+            <Pressable
+              accessibilityRole={c.thinkingAbout.sourceBulletId ? 'link' : 'text'}
+              accessibilityLabel={[
+                thinkingAboutLabel(c.thinkingAbout.text),
+                c.thinkingAbout.sourceLine,
+              ]
+                .filter(Boolean)
+                .join('. ')}
+              accessibilityHint={
+                c.thinkingAbout.sourceBulletId ? 'Opens the capture it is about' : undefined
+              }
+              disabled={!c.thinkingAbout.sourceBulletId}
+              onPress={() => {
+                const src = c.thinkingAbout?.sourceBulletId
+                if (src) openCapture(src)
+              }}
+              style={({ pressed }) => [styles.aboutLink, { opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Label size={type.caption} style={{ color: kindStyle('question', t.scheme).text }}>
+                Thinking about
+              </Label>
+              <QuestionText size={type.body}>{c.thinkingAbout.text}</QuestionText>
+              {c.thinkingAbout.sourceLine ? (
+                <Label tone="accent" size={type.label}>
+                  {c.thinkingAbout.sourceLine}
+                  {c.thinkingAbout.sourceBulletId ? ' ›' : ''}
+                </Label>
+              ) : null}
+            </Pressable>
+            {c.thinkingAbout.canAddMore ? (
+              <View style={{ alignItems: 'flex-start' }}>
+                <TextButton
+                  title="Add more"
+                  accessibilityLabel={`Add more: ${c.thinkingAbout.text}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/answer',
+                      params: { question: c.thinkingAbout?.questionId ?? '' },
+                    })
+                  }
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         {c.audio ? <AudioPlayer audio={c.audio} /> : null}
 
         {editing ? (
@@ -323,6 +386,38 @@ export default function CaptureDetailScreen() {
           </>
         ) : null}
 
+        {c.thoughtAbout.length > 0 ? (
+          <>
+            <SectionTitle>You thought about this · {c.thoughtAbout.length}</SectionTitle>
+            <Group>
+              {c.thoughtAbout.map((a, i) => (
+                <View key={a.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`${a.source === 'voice' ? 'Voice answer' : 'Answer'}, ${clock(a.capturedAt, a.timezone)}: ${a.snippet}`}
+                    accessibilityHint="Opens the answer"
+                    onPress={() => openCapture(a.id)}
+                    style={({ pressed }) => [styles.answer, { opacity: pressed ? 0.7 : 1 }]}
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Label size={type.bodySmall} numberOfLines={3}>
+                        {a.snippet}
+                      </Label>
+                      <Label tone="muted" size={type.label}>
+                        {whenLabel(a.capturedAt, Date.now(), a.timezone)}
+                      </Label>
+                    </View>
+                    <Label tone="accent" size={type.label}>
+                      Open
+                    </Label>
+                  </Pressable>
+                </View>
+              ))}
+            </Group>
+          </>
+        ) : null}
+
         {loose.length > 0 ? (
           <>
             <SectionTitle>Things</SectionTitle>
@@ -353,6 +448,16 @@ export default function CaptureDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  about: { borderRadius: 12, paddingHorizontal: space.md, paddingVertical: space.sm, gap: 2 },
+  aboutLink: { minHeight: size.touch, justifyContent: 'center', gap: space.xs, paddingVertical: 4 },
+  answer: {
+    minHeight: size.touch,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   body: { paddingHorizontal: space.lg, paddingBottom: space.xxl, gap: 14 },
   headerActions: { flexDirection: 'row', gap: space.sm },
   failed: { flexDirection: 'row', alignItems: 'center', gap: space.sm },

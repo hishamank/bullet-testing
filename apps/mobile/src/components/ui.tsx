@@ -13,7 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { kindStyle, radius, size, space, type, useTheme } from '@/theme'
+import { kindStyle, radius, readingFont, size, space, type, useTheme } from '@/theme'
 import { Icon, type IconName } from './Icon'
 
 export function Screen({
@@ -51,6 +51,21 @@ export function Label({
     soft: t.textSoft,
   }[tone]
   return <Text {...rest} style={[{ color, fontSize, lineHeight: fontSize * 1.35 }, style]} />
+}
+
+/** A reflective question, in the serif reading face (scales with Dynamic Type like any Label). */
+export function QuestionText({
+  size: fontSize = type.body,
+  style,
+  ...rest
+}: TextProps & { size?: number }) {
+  return (
+    <Label
+      {...rest}
+      size={fontSize}
+      style={[{ fontFamily: readingFont, lineHeight: fontSize * 1.4 }, style]}
+    />
+  )
 }
 
 /** An icon-only button: always 44pt and always labelled for VoiceOver. */

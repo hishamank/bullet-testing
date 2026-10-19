@@ -14,6 +14,7 @@ import {
 } from '../../data/queries'
 import { listRejections, type SyncRejection } from '../../data/rejections'
 import { bullets, events, questions, suggestions, tasks, trackers } from '../../data/schema'
+import { PICK_REFUSED_TEXT } from '../reflect/model'
 import { formatValue, type Summary, type SummaryContext, snippet, summarize } from './summary'
 import type { Decision, UndoState } from './undo'
 
@@ -226,6 +227,8 @@ export function noticeText(
         : `${name ? `Couldn't undo ${name}` : "Couldn't undo that"}; it's still there, unchanged.`
     case 'question.answer':
       return 'Your answer arrived after that was already decided, so nothing changed.'
+    case 'question.pick_evergreen':
+      return PICK_REFUSED_TEXT
     default:
       return null
   }
@@ -237,7 +240,12 @@ export function startOfDay(now: number, timezone: string): number {
   return zonedToEpoch({ year: p.year, month: p.month, day: p.day }, timezone)
 }
 
-const NOTICE_TYPES = new Set(['suggestion.accept', 'suggestion.undo', 'question.answer'])
+const NOTICE_TYPES = new Set([
+  'suggestion.accept',
+  'suggestion.undo',
+  'question.answer',
+  'question.pick_evergreen',
+])
 
 /** Fetch what `buildInbox` needs from the local mirror. */
 export function loadInboxRows(
