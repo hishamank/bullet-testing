@@ -6,9 +6,12 @@ import {
   buildPlans,
   cleanTitle,
   dueInfo,
+  END_BEFORE_START,
+  eventEditPatch,
   eventMovePatch,
   loadPlanItem,
   loadPlans,
+  moveEventStart,
   moveToDay,
   type PlanTask,
 } from './plans'
@@ -171,5 +174,36 @@ describe('edit sheet', () => {
     })
     expect(eventMovePatch({ starts_at: 100, ends_at: null }, 200)).toEqual({ starts_at: 200 })
     expect(eventMovePatch({ starts_at: 100, ends_at: null }, 100)).toBeNull()
+  })
+
+  test('the sheet: a new start carries the end along; No end stays none', () => {
+    expect(moveEventStart({ starts_at: 100, ends_at: 160 }, 200)).toEqual({
+      starts_at: 200,
+      ends_at: 260,
+    })
+    expect(moveEventStart({ starts_at: 100, ends_at: null }, 200)).toEqual({
+      starts_at: 200,
+      ends_at: null,
+    })
+  })
+
+  test('the sheet sends only what changed, ends_at included, and refuses an end before start', () => {
+    const e = { title: 'Dentist', starts_at: 100, ends_at: 160 }
+    expect(eventEditPatch(e, { ...e })).toEqual({ ok: true, patch: null })
+    expect(eventEditPatch(e, { ...e, ends_at: 220 })).toEqual({
+      ok: true,
+      patch: { ends_at: 220 },
+    })
+    expect(eventEditPatch(e, { ...e, ends_at: null })).toEqual({
+      ok: true,
+      patch: { ends_at: null },
+    })
+    expect(eventEditPatch({ ...e, ends_at: null }, { ...e, starts_at: 130, ends_at: 130 })).toEqual(
+      { ok: true, patch: { starts_at: 130, ends_at: 130 } },
+    )
+    expect(eventEditPatch(e, { ...e, ends_at: 99 })).toEqual({
+      ok: false,
+      message: END_BEFORE_START,
+    })
   })
 })

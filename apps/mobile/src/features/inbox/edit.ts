@@ -46,6 +46,18 @@ export function editFormFor(s: SuggestionLike): EditForm | null {
   }
 }
 
+/**
+ * Moving an event's start keeps its length: the end shifts by the same amount. No end (or no
+ * known start) leaves the end as it is.
+ */
+export function shiftEnd(
+  start: number | null,
+  end: number | null,
+  newStart: number,
+): number | null {
+  return end !== null && start !== null ? end + (newStart - start) : end
+}
+
 export type EditResult = { ok: true; payload: SuggestionPayload } | { ok: false; message: string }
 
 /** Parse a typed number ("5", "5,5", " 72.4 "); null when it isn't one. */
@@ -75,9 +87,7 @@ export function applyEdit(
     }
     case 'event': {
       if (form.title.trim() === '') return { ok: false, message: 'Give it a title.' }
-      const start = num(p.starts_at)
-      const end = num(p.ends_at)
-      const ends_at = end !== null && start !== null ? end + (form.starts_at - start) : end
+      const ends_at = shiftEnd(num(p.starts_at), num(p.ends_at), form.starts_at)
       payload = { ...p, title: form.title.trim(), starts_at: form.starts_at, ends_at }
       break
     }

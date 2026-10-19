@@ -1,10 +1,46 @@
 /** Small Inbox pieces: the kind pill with its own word, section titles, and the round buttons. */
 
-import type { ThoughtKind } from '@bullet/core'
+import type { BulletSource, ThoughtKind } from '@bullet/core'
+import { Link } from 'expo-router'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { kindStyle, radius, size, space, type, useTheme } from '@/theme'
 import { Icon } from '../Icon'
-import { Label } from '../ui'
+import { Label, touch } from '../ui'
+
+/**
+ * The capture a row came from: its quoted snippet, linking to Capture detail. Nothing when the
+ * capture isn't on the phone (there would be nothing to open).
+ */
+export function CaptureLink({
+  bulletId,
+  snippet,
+  source,
+  lines = 3,
+}: {
+  bulletId: string
+  snippet: string
+  source: BulletSource
+  lines?: number
+}) {
+  const t = useTheme()
+  const voice = source === 'voice'
+  if (!snippet) return null
+  return (
+    <Link href={{ pathname: '/capture/[id]', params: { id: bulletId } }} asChild>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${voice ? 'Voice capture' : 'Capture'} ${snippet}`}
+        accessibilityHint={voice ? 'Opens the capture, where you can play it' : 'Opens the capture'}
+        style={({ pressed }) => [styles.source, { opacity: pressed ? 0.6 : 1 }]}
+      >
+        <Icon name={voice ? 'play' : 'text'} color={t.textSecondary} size={14} />
+        <Label tone="secondary" size={type.label} style={{ flex: 1 }} numberOfLines={lines}>
+          {snippet}
+        </Label>
+      </Pressable>
+    </Link>
+  )
+}
 
 /** Like KindPill, but with the Inbox's own word ("new tracker", "mood"). */
 export function InboxPill({ kind, label }: { kind: ThoughtKind; label: string }) {
@@ -110,6 +146,7 @@ export const card = (bg: string) => ({
 })
 
 const styles = StyleSheet.create({
+  source: { ...touch, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   pill: {
     alignSelf: 'flex-start',
     borderRadius: radius.pill,

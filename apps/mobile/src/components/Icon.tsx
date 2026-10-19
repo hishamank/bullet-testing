@@ -21,6 +21,7 @@ const ICONS = {
   note: { ios: 'square.and.pencil', android: 'edit_note', web: 'edit_note' },
   expand: { ios: 'chevron.down', android: 'expand_more', web: 'expand_more' },
   collapse: { ios: 'chevron.up', android: 'expand_less', web: 'expand_less' },
+  settings: { ios: 'gearshape', android: 'settings', web: 'settings' },
 } satisfies Record<string, SymbolName>
 
 export type IconName = keyof typeof ICONS

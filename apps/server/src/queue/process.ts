@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   type EngineConfig,
+  EngineError,
   type ExtractionSnapshot,
   type LlmClient,
   processCapture,
@@ -24,7 +25,14 @@ import type { AudioStore } from '../storage/audio-store'
 import { hasPendingSuggestions, reconcileSuggestions } from '../apply/reconcile'
 import { reconcileThoughts, replaceQuestions } from '../capture/thoughts'
 import { touch } from '../sync/changes'
-import { type BulletRow, type ClaimedJob, isJobCurrent, markJobDone, setBulletProc } from './jobs'
+import {
+  type BulletRow,
+  type ClaimedJob,
+  DEFAULT_RETRY_POLICY,
+  isJobCurrent,
+  markJobDone,
+  setBulletProc,
+} from './jobs'
 
 export interface ProcessDeps {
   db: Db
@@ -34,6 +42,8 @@ export interface ProcessDeps {
   /** Absent → voice bullets are processed on their device draft. */
   transcriber?: Transcriber
   audioStore?: AudioStore
+  /** The worker's retry limit (for "out of attempts"); defaults to DEFAULT_RETRY_POLICY's. */
+  maxAttempts?: number
 }
 
 /** The user mixes these; the transcriber auto-detects, the hints only bias it. */
@@ -46,11 +56,32 @@ const LANGUAGE_HINTS = ['en', 'ar', 'fr']
 async function transcribeStage(deps: ProcessDeps, claimed: ClaimedJob): Promise<BulletRow | null> {
   const t = claimed.transcribe
   if (!t || !deps.transcriber || !deps.audioStore) return claimed.bullet
-  const result = await deps.transcriber.transcribe({
-    audio: deps.audioStore.read(t.storageKey),
-    mimeType: t.mimeType,
-    languageHints: LANGUAGE_HINTS,
-  })
+  let result: Awaited<ReturnType<Transcriber['transcribe']>>
+  try {
+    result = await deps.transcriber.transcribe({
+      audio: deps.audioStore.read(t.storageKey),
+      mimeType: t.mimeType,
+      languageHints: LANGUAGE_HINTS,
+    })
+  } catch (err) {
+    // The recording can't be transcribed (damaged, no speech), but the user wrote the text down
+    // themselves ("Write it down"): once that failure is confirmed (the previous attempt failed
+    // the same way, or this is the last attempt), read their words instead of failing again.
+    // A first failure still gets its normal retry, so a transcript can be kept alongside.
+    const maxAttempts = deps.maxAttempts ?? DEFAULT_RETRY_POLICY.maxAttempts
+    const confirmed =
+      claimed.bullet.proc_error_code === 'transcription_failed' ||
+      claimed.job.attempts >= maxAttempts
+    if (
+      err instanceof EngineError &&
+      err.code === 'TRANSCRIPTION_FAILED' &&
+      claimed.bullet.text_edited_by_user &&
+      confirmed
+    ) {
+      return continueWithoutTranscript(deps, claimed)
+    }
+    throw err
+  }
   const now = deps.now()
   return deps.db.transaction((tx) => {
     const current = isJobCurrent(tx, claimed)
@@ -91,6 +122,27 @@ async function transcribeStage(deps: ProcessDeps, claimed: ClaimedJob): Promise<
       now,
     )
     return { ...current, text, proc_status: 'processing' as const }
+  })
+}
+
+/** Skip the transcript: the bullet goes on to `processing` with its own (user-written) text. */
+function continueWithoutTranscript(deps: ProcessDeps, claimed: ClaimedJob): BulletRow | null {
+  const now = deps.now()
+  return deps.db.transaction((tx) => {
+    const current = isJobCurrent(tx, claimed)
+    if (!current) return null
+    setBulletProc(
+      tx,
+      current,
+      {
+        proc_status: 'processing',
+        proc_error_code: current.proc_error_code,
+        proc_error_message: current.proc_error_message,
+        proc_next_retry_at: null,
+      },
+      now,
+    )
+    return { ...current, proc_status: 'processing' as const }
   })
 }
 

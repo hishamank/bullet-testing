@@ -14,7 +14,9 @@ import {
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
-import { audioAttachments, bullets, suggestions, thoughts } from '../../data/schema'
+import { audioAttachments, bullets, suggestions, syncState, thoughts } from '../../data/schema'
+import { audioReadErrorKey } from '../../sync/client'
+import { keptAsAudio } from './audio-only'
 import { clock, dayKey, dayTitle, duration, spokenDuration } from './format'
 
 export interface CardThought {
@@ -31,6 +33,10 @@ export interface CaptureCard {
   timezone: string
   /** The recording's length (voice notes). */
   durationMs: number | null
+  /** This phone couldn't read its recording file to upload it (the text is kept). */
+  audioReadError: boolean
+  /** "Keep as audio" was chosen after the recording couldn't be transcribed (phone-local). */
+  keptAsAudio: boolean
   status: BulletProcessingStatus
   errorCode: ProcessingErrorCode | null
   attempts: number
@@ -74,13 +80,21 @@ export function listCaptureCards(db: PhoneDb, limit: number): StreamPage {
     thoughtsBy.set(t.source_bullet_id, list)
   }
   const durationBy = new Map<string, number>()
+  const audioBy = new Map<string, string>()
   for (const a of db
-    .select({ bullet_id: audioAttachments.bullet_id, duration_ms: audioAttachments.duration_ms })
+    .select({
+      id: audioAttachments.id,
+      bullet_id: audioAttachments.bullet_id,
+      duration_ms: audioAttachments.duration_ms,
+    })
     .from(audioAttachments)
     .where(and(inArray(audioAttachments.bullet_id, ids), eq(audioAttachments.state, 'active')))
     .all()) {
     durationBy.set(a.bullet_id, a.duration_ms)
+    audioBy.set(a.bullet_id, a.id)
   }
+  const unreadable = unreadableRecordings(db, [...audioBy.values()])
+  const audioOnly = keptAsAudio(db, ids)
   const counts = new Map<string, { auto: number; pending: number }>()
   for (const s of db
     .select({
@@ -105,6 +119,8 @@ export function listCaptureCards(db: PhoneDb, limit: number): StreamPage {
     capturedAt: b.captured_at,
     timezone: b.timezone,
     durationMs: durationBy.get(b.id) ?? null,
+    audioReadError: unreadable.has(audioBy.get(b.id) ?? ''),
+    keptAsAudio: audioOnly.has(b.id),
     status: displayStatus(b.server_status, pending.has(b.id)),
     errorCode: b.server_error_code,
     attempts: b.server_attempts,
@@ -116,7 +132,29 @@ export function listCaptureCards(db: PhoneDb, limit: number): StreamPage {
   return { cards, hasMore: rows.length > limit }
 }
 
+/**
+ * Recordings (by attachment id) that this phone couldn't read for upload. The sync client notes
+ * why in `sync_state` and clears it ('') once the file uploads.
+ */
+export function unreadableRecordings(db: PhoneDb, attachmentIds: readonly string[]): Set<string> {
+  if (attachmentIds.length === 0) return new Set()
+  const byKey = new Map(attachmentIds.map((id) => [audioReadErrorKey(id), id]))
+  return new Set(
+    db
+      .select()
+      .from(syncState)
+      .where(inArray(syncState.key, [...byKey.keys()]))
+      .all()
+      .filter((r) => r.value !== '')
+      .map((r) => byKey.get(r.key) as string),
+  )
+}
+
 // ---- pure ----
+
+/** Shown on the card and in detail when this phone couldn't read the recording. No Retry. */
+export const AUDIO_READ_ERROR_TEXT =
+  "The recording couldn't be read on this phone. The text is kept."
 
 export interface DaySection<T> {
   key: string
@@ -162,7 +200,29 @@ export interface CardState {
   onPhone: boolean
   /** "Not processed": offer Retry, with a calm reason. */
   retry: boolean
+  /** The recording can't be transcribed (for good): offer "Write it down" / "Keep as audio". */
+  untranscribable: boolean
   reason: string | null
+}
+
+export const UNTRANSCRIBABLE = {
+  title: "Couldn't transcribe this recording",
+  detail: 'The audio was damaged or no speech was detected',
+} as const
+
+export type TranscriptionFailure = 'ask' | 'kept' | null
+
+/**
+ * A capture whose recording can't be transcribed (damaged audio, no speech) is not retried: the
+ * user writes it down or keeps it as audio (`kept`). Transient transcriber errors keep Retry.
+ */
+export function transcriptionFailure(
+  status: BulletProcessingStatus,
+  errorCode: ProcessingErrorCode | null,
+  kept: boolean,
+): TranscriptionFailure {
+  if (status !== 'failed' || errorCode !== 'transcription_failed') return null
+  return kept ? 'kept' : 'ask'
 }
 
 /** Why a capture wasn't processed, in plain words (the capture itself is always safe). */
@@ -186,9 +246,22 @@ export function errorReason(code: ProcessingErrorCode | null): string {
 }
 
 export function cardState(
-  c: Pick<CaptureCard, 'status' | 'errorCode' | 'autoApplied' | 'pending'>,
+  c: Pick<CaptureCard, 'status' | 'errorCode' | 'autoApplied' | 'pending'> &
+    Partial<Pick<CaptureCard, 'keptAsAudio'>>,
 ): CardState {
-  const base = { onPhone: false, retry: false, reason: null }
+  const base = { onPhone: false, retry: false, untranscribable: false, reason: null }
+  switch (transcriptionFailure(c.status, c.errorCode, c.keptAsAudio ?? false)) {
+    case 'kept':
+      return { ...base, label: 'Audio only', tone: 'muted' }
+    case 'ask':
+      return {
+        ...base,
+        label: UNTRANSCRIBABLE.title,
+        tone: 'warning',
+        untranscribable: true,
+        reason: UNTRANSCRIBABLE.detail,
+      }
+  }
   switch (c.status) {
     case 'saved_local':
       return { ...base, label: 'On this phone', tone: 'secondary', onPhone: true }
@@ -242,6 +315,7 @@ export function cardAccessibilityLabel(c: CaptureCard): string {
     clock(c.capturedAt, c.timezone),
     state.label.replace(/…$/, ''),
     state.reason,
+    c.audioReadError ? AUDIO_READ_ERROR_TEXT : null,
     thoughtsText,
   ]
     .filter(Boolean)

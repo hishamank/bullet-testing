@@ -1,11 +1,7 @@
 import { serve } from '@hono/node-server'
-import {
-  createOpenAiCompatibleClient,
-  createWhisperCppTranscriber,
-  ENGINE_CONFIG_DEFAULTS,
-} from '@bullet/engine'
+import { createOpenAiCompatibleClient, createWhisperCppTranscriber } from '@bullet/engine'
 import { createApp } from './app'
-import { loadServerConfig } from './config'
+import { engineConfig, loadServerConfig } from './config'
 import { openDb } from './db/client'
 import { recoverStuckJobs } from './queue/jobs'
 import { createWorker } from './queue/worker'
@@ -26,7 +22,7 @@ const worker = createWorker({
     apiKey: config.llmApiKey,
     timeoutMs: config.llmTimeoutMs + 5_000,
   }),
-  engine: { ...ENGINE_CONFIG_DEFAULTS, model: config.llmModel },
+  engine: engineConfig(config),
   llmTimeoutMs: config.llmTimeoutMs,
   // Without WHISPER_BASE_URL, voice bullets are processed on their device draft.
   transcriber: config.whisperBaseUrl

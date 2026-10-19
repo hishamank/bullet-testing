@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native'
 import type { DoneItem } from '@/features/inbox/model'
 import { radius, space, type, useTheme } from '@/theme'
 import { Label, TextButton, touch } from '../ui'
+import { CaptureLink } from './parts'
 
 /** "From your answer", "On this phone · will sync", or both. */
 function doneNote(item: DoneItem): string {
@@ -45,6 +46,12 @@ export function DoneList({
                 {doneNote(item)}
               </Label>
             ) : null}
+            <CaptureLink
+              bulletId={item.bulletId}
+              snippet={item.snippet}
+              source={item.source}
+              lines={1}
+            />
           </View>
           <TextButton
             title="Undo"

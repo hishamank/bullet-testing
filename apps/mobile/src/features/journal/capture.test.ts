@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vite-plus/test'
-import { openTestDb, T0 } from '../../test/db'
+import { undoSuggestion } from '../../data/local'
+import { setState } from '../../data/mirror'
+import { recordRejection } from '../../data/rejections'
+import { audioReadErrorKey } from '../../sync/client'
+import { openTestDb, T0, testDeps } from '../../test/db'
 import {
   audioSource,
   deleteChoices,
@@ -7,7 +11,9 @@ import {
   loadCaptureDetail,
   THOUGHT_KINDS,
   transcriptView,
+  writeDownStart,
 } from './capture'
+import { keepAsAudioLocal } from './audio-only'
 import {
   seedAudio,
   seedBullet,
@@ -59,6 +65,44 @@ describe('capture detail', () => {
     expect(d?.things[0]?.thoughtId).toBe(th)
   })
 
+  test('only things done for you offer Undo; a refused Undo reads calmly', () => {
+    const db = openTestDb()
+    const b = seedBullet(db, T0)
+    const run = seedSuggestion(db, b, {
+      target_kind: 'activity',
+      payload: { name: 'Run', quantity: 5, unit: 'km' },
+      status: 'accepted',
+      auto_applied: true,
+      applied_at: T0 - 3 * 86_400_000, // days ago: still undoable here
+      applied_entity_id: 'not-pulled-yet',
+    })
+    seedSuggestion(db, b, {
+      target_kind: 'task',
+      payload: { title: 'Call the plumber' },
+      status: 'accepted',
+      applied_entity_id: 'also-not-pulled',
+    })
+    let d = loadCaptureDetail(db, b, T0, TZ)
+    expect(d?.things.map((t) => [t.state, t.undoable])).toEqual([
+      ['done_for_you', true],
+      ['added', false],
+    ])
+    expect(d?.notices).toEqual([])
+
+    undoSuggestion(db, run, testDeps())
+    recordRejection(
+      db,
+      { op_id: 'op-1', type: 'suggestion.undo', suggestion_id: run, question_id: null },
+      'conflict',
+      'edited since',
+      T0,
+    )
+    d = loadCaptureDetail(db, b, T0, TZ)
+    expect(d?.notices.map((n) => n.text)).toEqual([
+      "“Run” stays as you left it: you changed it after it was added, so Undo won't overwrite your edit.",
+    ])
+  })
+
   test('a deleted thing reads as deleted and links nowhere', () => {
     const db = openTestDb()
     const b = seedBullet(db, T0)
@@ -95,6 +139,51 @@ describe('capture detail', () => {
     expect(v.initial).toBe('server')
     expect([v.text('server'), v.text('draft')]).toEqual(['server words', 'draft words'])
     expect(v.note).toBeNull()
+    expect(d?.audioReadError).toBe(false)
+  })
+
+  test('a recording that cannot be transcribed asks, until kept as audio; others keep Retry', () => {
+    const db = openTestDb()
+    const b = seedBullet(db, T0, {
+      source: 'voice',
+      server_status: 'failed',
+      server_error_code: 'transcription_failed',
+    })
+    expect(loadCaptureDetail(db, b, T0, TZ)).toMatchObject({
+      transcriptionFailure: 'ask',
+      errorReason: null,
+    })
+    keepAsAudioLocal(db, b)
+    expect(loadCaptureDetail(db, b, T0, TZ)?.transcriptionFailure).toBe('kept')
+
+    const other = seedBullet(db, T0, {
+      source: 'voice',
+      server_status: 'failed',
+      server_error_code: 'transcription_timeout',
+    })
+    expect(loadCaptureDetail(db, other, T0, TZ)).toMatchObject({
+      transcriptionFailure: null,
+      errorReason: 'Transcribing took too long.',
+    })
+  })
+
+  test('"Write it down" starts from the phone draft, never the placeholder', () => {
+    expect(
+      writeDownStart({
+        text: 'Voice note, 0:12',
+        transcripts: [{ kind: 'device_draft', text: ' book the vet ' }],
+      }),
+    ).toBe('book the vet')
+    expect(writeDownStart({ text: 'Voice note, 0:12', transcripts: [] })).toBe('')
+    expect(writeDownStart({ text: 'water the plants', transcripts: [] })).toBe('water the plants')
+  })
+
+  test('a recording this phone could not read is flagged', () => {
+    const db = openTestDb()
+    const b = seedBullet(db, T0, { source: 'voice' })
+    const a = seedAudio(db, b, { upload_status: 'pending' })
+    setState(db, audioReadErrorKey(a), 'file missing')
+    expect(loadCaptureDetail(db, b, T0, TZ)?.audioReadError).toBe(true)
   })
 })
 
