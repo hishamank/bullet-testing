@@ -13,6 +13,7 @@ import {
   type EngineConfig,
   EngineError,
   type ExtractionSnapshot,
+  hasSpeech,
   type LlmClient,
   processCapture,
   type Transcriber,
@@ -63,6 +64,10 @@ async function transcribeStage(deps: ProcessDeps, claimed: ClaimedJob): Promise<
       mimeType: t.mimeType,
       languageHints: LANGUAGE_HINTS,
     })
+    // Whatever the transcriber, a transcript with no words never becomes the capture's text.
+    if (!hasSpeech(result.text)) {
+      throw new EngineError('TRANSCRIPTION_FAILED', 'no speech found in the recording')
+    }
   } catch (err) {
     // The recording can't be transcribed (damaged, no speech), but the user wrote the text down
     // themselves ("Write it down"): once that failure is confirmed (the previous attempt failed

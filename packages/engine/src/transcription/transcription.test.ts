@@ -1,5 +1,6 @@
 import { expect, test } from 'vite-plus/test'
-import { createScriptedTranscriber, hasSpeech, withTranscriberTimeout } from './scripted'
+import { createScriptedTranscriber, withTranscriberTimeout } from './scripted'
+import { hasSpeech } from './speech'
 
 const req = { audio: new Uint8Array([1, 2, 3]), mimeType: 'audio/mp4' }
 

@@ -1,6 +1,7 @@
 /** A scripted {@link Transcriber} for tests: answers from a handler and records every request. */
 
 import { EngineError } from '../errors'
+import { hasSpeech } from './speech'
 import type { Transcriber, TranscriptionRequest, TranscriptionResult } from './types'
 
 export interface ScriptedTranscriber extends Transcriber {
@@ -23,14 +24,6 @@ export function createScriptedTranscriber(
       return { engine: 'scripted', model: null, languages: [], ...r }
     },
   }
-}
-
-/**
- * Whether a transcript holds any words: not empty, not only punctuation, not only non-speech
- * markers. whisper.cpp answers a tone or room noise with "." or "[BLANK_AUDIO]".
- */
-export function hasSpeech(text: string): boolean {
-  return /[\p{L}\p{N}]/u.test(text.replace(/\[[^\]]*\]|\([^)]*\)/g, ' '))
 }
 
 /**
