@@ -75,7 +75,10 @@ export const bulletCreateOpSchema = z.object({
       source: bulletSourceSchema,
       text_edited_by_user: z.boolean().optional(),
       audio: voiceAudioSchema.optional(),
-      /** This capture answers a clarifying question. */
+      /**
+       * This capture answers a question: a clarifying one, or a reflective one ("Journal about
+       * it"; several captures may answer the same reflective question).
+       */
       answers_question_id: uuid().optional(),
       /**
        * This capture closes an open loop "with a note": the `to_check` / `question` thought it
@@ -154,11 +157,43 @@ export const thoughtReclassifyOpSchema = z.object({
   kind: thoughtKindSchema,
 })
 
-/** The user dismissed a clarifying question without answering. */
+/**
+ * The user dismissed a question without answering. On a reflective question this is "Not this
+ * one": dismissed for good, and its source thought never produces another question
+ * (`never_ask`), even after the capture is processed again.
+ */
 export const questionDismissOpSchema = z.object({
   ...opBase,
   type: z.literal('question.dismiss'),
   question_id: uuid(),
+})
+
+/**
+ * "Later" on a reflective question: hidden for a week (`snoozed`, `snoozed_until`). Allowed once;
+ * a second "Later" dismisses it quietly (without the "Not this one" consequences). Refused
+ * `invalid` for a clarifying question. Answered or dismissed already: a no-op.
+ */
+export const questionSnoozeOpSchema = z.object({
+  ...opBase,
+  type: z.literal('question.snooze'),
+  question_id: uuid(),
+})
+
+/**
+ * The user picked an evergreen question to journal about. The phone mints the question's id and
+ * shows it at once (so it can be answered offline); the server creates the same open reflective
+ * question. A pick may go one over the open cap (4 open at most); the user asked, so the daily
+ * cap, the quiet and sensitive pauses don't hold it back (it still counts toward the day's new
+ * questions). Refused `invalid` for an unknown template, `conflict` when 4 reflective questions
+ * are already open; the phone then drops its local copy. The same question id again is a
+ * `duplicate`.
+ */
+export const questionPickEvergreenOpSchema = z.object({
+  ...opBase,
+  type: z.literal('question.pick_evergreen'),
+  /** Client-minted id of the new question. */
+  question_id: uuid(),
+  template_id: nonEmptyString(),
 })
 
 /**
@@ -169,6 +204,7 @@ export const questionDismissOpSchema = z.object({
  *                    definition always needs); "No" dismisses it.
  *  - `other`       — the answer is recorded; nothing else changes.
  * The question becomes `answered` with `answer_option`. Re-sending the same answer is a no-op.
+ * Reflective questions have no options: answering one this way is refused `invalid`.
  */
 export const questionAnswerOpSchema = z.object({
   ...opBase,
@@ -278,6 +314,8 @@ export const pushOpSchema = z.discriminatedUnion('type', [
   thoughtReclassifyOpSchema,
   questionDismissOpSchema,
   questionAnswerOpSchema,
+  questionSnoozeOpSchema,
+  questionPickEvergreenOpSchema,
   thoughtResolveOpSchema,
   thoughtUnresolveOpSchema,
   taskUpdateOpSchema,

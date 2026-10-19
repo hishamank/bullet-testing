@@ -2,7 +2,8 @@
 
 **Status:** stable for slice 1 (2026-10-18; voice-note audio, the `transcribing` state, and
 thoughts + clarifying questions were added the same day; light manual editing, closing open loops
-and tap-to-answer questions were added 2026-10-19). The code version lives in `@bullet/core`
+and tap-to-answer questions were added 2026-10-19; reflective questions (slice 2) were added
+2026-10-19 too, §2e). The code version lives in `@bullet/core`
 (`processing.ts`, `sync.ts`). We may **add** things later (new operations, new kinds of data); we
 won't rename or remove anything below without updating this page.
 
@@ -187,8 +188,11 @@ Rules the design can rely on:
 - You can **re-classify** a thought. Your choice sticks, even if the capture is processed again.
 - Things (and their suggestions) say which **thought** they came from, as well as which capture.
 - Worries, ideas, notes and self-questions are kept as thoughts and nothing is extracted from
-  them in slice 1. Thinking about them with you (reflective questions) comes in a later slice,
-  as do links between captures and recurring themes.
+  them. A worry, self-question or idea may get a **reflective question** (§2e). Links between
+  captures and recurring themes come later.
+- A thought may carry `sensitive: true` (it reads as self-harm, crisis or acute distress). This is
+  **never shown**: no UI, no copy, no notification, and the capture is never hidden. Its only
+  effect is that no reflective question is asked about that capture (§2e).
 - Long recordings work: the capture is split in pieces for the AI and the thoughts are put back
   together in order.
 
@@ -228,8 +232,53 @@ about one thing. Examples: "Which Thursday: today or next week?", "Start trackin
     the tracker's own card (see §3), and deciding there answers this question too.
 - **Or answer with a capture** (typed or spoken) that points at the question.
 - Either way the question becomes `answered` (with the option you tapped, if any).
-- There are no open-ended or reflective questions in slice 1. Those come later, are optional, and
-  never nag.
+- Clarifying questions have `kind: clarifying`. Open-ended questions to think about are
+  **reflective** (§2e).
+
+## 2e. Reflective questions (slice 2)
+
+Now and then the app offers a question **to think about**: about what you said, never what you
+should do. It is optional and never nags.
+
+**Where they come from** (`origin`):
+
+- `capture`: after a capture's things are done, the server may ask **one** question about one of
+  its worries, self-questions or ideas, quoting your words, in your language, with a curious tone
+  ("You wrote «I'm dreading Monday's meeting». What about it feels heavy?"). It never delays the
+  capture's things. A capture that answers a reflective question gets none of its own.
+- `open_loop`: a `to_check` or `question` thought left unresolved for **7 days** gets
+  "Still on your mind? «check if the passport expires»". At most once per thought, ever. A
+  resolved one never does.
+- `evergreen`: a hand-written list of about 20 calm questions ("What took more energy than it
+  should have this week?"), with a `template_id`. Offered only when no other reflective question
+  is open, at most one every 3 days. The user can also **pick one** to journal about
+  (`question.pick_evergreen`). The list is in `@bullet/core` (`EVERGREEN_QUESTIONS`).
+
+**Limits**, across all three: at most **3** open at a time (a picked evergreen question may make
+it 4), at most **2** new per day (rolling 24 hours), one per capture, and nothing new while you
+haven't captured anything for 14 days. Snoozed ones count as open.
+
+**On the phone:** the Inbox's Questions split into **To clarify** (clarifying, counted in the
+badge) and **To think about** (reflective: never in the badge, never notified). Each reflective
+question offers:
+
+- **Journal about it:** an ordinary capture (typed or spoken) with `answers_question_id`. It is
+  split into thoughts and extracted like any other, and the question becomes `answered`. More
+  captures can answer it later ("Add more"), with the same `answers_question_id`. Answered ones
+  are listed under **Answered · N**.
+- **Later:** hidden for 7 days (`snoozed`, `snoozed_until`), then back. Allowed once; a second
+  Later dismisses it quietly.
+- **Not this one:** dismissed for good, and the thought it was about never produces another
+  question (`never_ask` on the thought), even after the capture is processed again. A dismissed
+  evergreen question is not offered again.
+
+Tapping an option (`question.answer`) does not apply: it is refused for reflective questions.
+
+**Sensitive thoughts.** When a thought reads as self-harm, crisis or acute distress, the server
+marks it `sensitive` (conservatively, while splitting the capture). That capture then gets no
+reflective question, its open loops never get "Still on your mind?", and evergreen questions
+pause for 7 days. Everything else is identical: the capture is kept, split and extracted. No UI,
+no copy, no notification.
 
 ## 3. Suggestions
 
@@ -369,7 +418,8 @@ device `draft` transcript, optional `answers_question_id`, and optional `resolve
 `text_from_draft`; anything else is a no-op), `suggestion.accept` (optional edited
 `payload`), `suggestion.reject`, `suggestion.undo`, `thought.reclassify` (`thought_id`, `kind`),
 `thought.resolve` / `thought.unresolve` (`thought_id`), `question.dismiss` (`question_id`),
-`question.answer` (`question_id`, `option`), and the manual edits: `task.update` (`task_id`,
+`question.answer` (`question_id`, `option`), `question.snooze` (`question_id`; reflective only),
+`question.pick_evergreen` (a client-minted `question_id`, `template_id`), and the manual edits: `task.update` (`task_id`,
 `patch` of `status: todo | done`, `due_at`, `title`), `task.delete` (`task_id`), `event.update`
 (`event_id`, `patch` of `starts_at`, `ends_at`, `title`), `event.delete` (`event_id`),
 `tracker_entry.update` (`tracker_entry_id`, `patch: { value }`) and `tracker_entry.delete`
@@ -380,6 +430,12 @@ manual edit or delete). Thoughts carry `resolved_at` and `resolved_by_bullet_id`
 carry `answer_option`; bullets carry `resolves_thought_id` and `text_from_draft`. Older rows without
 them read as null (`text_from_draft`: false).
 
+Reflective questions (2026-10-19): questions carry `kind` (`clarifying` | `reflective`), `origin`
+(`capture` | `open_loop` | `evergreen`), `snoozed_until`, `snooze_count` and `template_id`, and
+`status` may be `snoozed`. A question's `source_bullet_id` is null for an evergreen question (it
+has no capture). Thoughts carry `sensitive` and `never_ask`. Older rows read as `clarifying`,
+`capture`, null, 0, null, false, false.
+
 Provenance: every thing and suggestion carries `source_bullet_id` (the capture) and
 `source_thought_id` (the thought; null for things made by hand or before thoughts existed).
 
@@ -387,7 +443,9 @@ The response is `{ results: [{ op_id, status: applied | duplicate | rejected, er
 server_time }`. Rejection codes are `not_found`, `invalid`, `conflict` and `stale`. A rejected op
 is final. For the new ops: editing or resolving something deleted, a reading that doesn't fit its
 tracker, resolving a thought that isn't `to_check`/`question`, or an option the question doesn't
-offer are `invalid`; answering a question whose suggestion is no longer waiting (dismissed, or its
+offer are `invalid` (so is `question.answer` or `question.snooze` on the wrong kind of question,
+or picking an unknown evergreen template; a pick over the open limit is `conflict`); answering a
+question whose suggestion is no longer waiting (dismissed, or its
 result edited by you) is `conflict`. Re-sending the same answer, resolve or edit is harmless.
 
 **`GET /sync/pull?cursor=<opaque>&limit=<1..500>`** returns `{ changes: { bullets, suggestions,
