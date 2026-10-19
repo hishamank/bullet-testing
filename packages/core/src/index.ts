@@ -84,6 +84,9 @@ export {
   suggestionStatusSchema,
   suggestionTierSchema,
   type TargetKind,
+  type ThingKind,
+  THING_KINDS,
+  isThingKind,
   type TaskPriority,
   type TaskStatus,
   type TrackerInputType,
@@ -120,6 +123,8 @@ export {
   type TargetKindUpdateSchemas,
   targetKindInsertSchemas,
   targetKindUpdateSchemas,
+  type ThoughtResolvePayload,
+  thoughtResolvePayloadSchema,
   validateSuggestionPayload,
 } from './registry'
 // Suggestion (extraction envelope)
@@ -141,3 +146,5 @@ export * from './entities/audio'
 // Capture → thoughts → things: thoughts and clarifying questions
 export * from './entities/question'
 export * from './entities/thought'
+// Slice 3: links between thoughts, themes and Noticed cards
+export * from './entities/connections'

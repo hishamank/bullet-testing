@@ -9,6 +9,12 @@ import {
 } from './entities/audio'
 import { bulletSelectSchema } from './entities/bullet'
 import { eventSelectSchema } from './entities/event'
+import {
+  noticedCardSelectSchema,
+  themeSelectSchema,
+  themeThoughtSelectSchema,
+  thoughtLinkSelectSchema,
+} from './entities/connections'
 import { questionSelectSchema } from './entities/question'
 import { thoughtKindSchema, thoughtSelectSchema } from './entities/thought'
 import { taskSelectSchema } from './entities/task'
@@ -197,14 +203,16 @@ export const questionPickEvergreenOpSchema = z.object({
 })
 
 /**
- * The user answered a clarifying question by tapping one of its `options` (no model call):
+ * The user answered a clarifying question by tapping one of its `options` (no model call), or a
+ * reflective `connection` question ("Same thing" links the two thoughts; "Different" records that
+ * they are not, like `link.veto`):
  *  - `date`        — the option's day is set on the linked task/event suggestion, which is then
  *                    applied (or, if it already was, its result is moved to that day).
  *  - `new_tracker` — "Yes" accepts the linked tracker suggestion (that tap is the confirmation a
  *                    definition always needs); "No" dismisses it.
  *  - `other`       — the answer is recorded; nothing else changes.
  * The question becomes `answered` with `answer_option`. Re-sending the same answer is a no-op.
- * Reflective questions have no options: answering one this way is refused `invalid`.
+ * Other reflective questions have no options: answering one this way is refused `invalid`.
  */
 export const questionAnswerOpSchema = z.object({
   ...opBase,
@@ -303,6 +311,62 @@ export const trackerEntryDeleteOpSchema = z.object({
   tracker_entry_id: uuid(),
 })
 
+// --- connections, themes, Noticed (slice 3) ---
+
+/**
+ * "Not related": the link is deleted and the pair is remembered (both directions), so nothing
+ * links those two thoughts again: not the next capture, a nightly run, an edit or re-processing.
+ * Already deleted: a no-op.
+ */
+export const linkVetoOpSchema = z.object({
+  ...opBase,
+  type: z.literal('link.veto'),
+  link_id: uuid(),
+})
+
+/** Rename a theme. The user's name is what shows from then on (the model's is kept, unseen). */
+export const themeRenameOpSchema = z.object({
+  ...opBase,
+  type: z.literal('theme.rename'),
+  theme_id: uuid(),
+  name: nonEmptyString().max(60),
+})
+
+/**
+ * "Not a theme": the theme is retired, never re-created from the same thoughts, and its unopened
+ * cards are withdrawn. Its links stay.
+ */
+export const themeRetireOpSchema = z.object({
+  ...opBase,
+  type: z.literal('theme.retire'),
+  theme_id: uuid(),
+})
+
+/**
+ * "Merge with…": `theme_id`'s thoughts move to `into_theme_id`, `theme_id` is retired (pointing
+ * at the survivor), and later nightly matches of it fold into the survivor.
+ */
+export const themeMergeOpSchema = z.object({
+  ...opBase,
+  type: z.literal('theme.merge'),
+  theme_id: uuid(),
+  into_theme_id: uuid(),
+})
+
+/** The user opened a Noticed card. */
+export const noticedOpenOpSchema = z.object({
+  ...opBase,
+  type: z.literal('noticed.open'),
+  card_id: uuid(),
+})
+
+/** The user dismissed a Noticed card. */
+export const noticedDismissOpSchema = z.object({
+  ...opBase,
+  type: z.literal('noticed.dismiss'),
+  card_id: uuid(),
+})
+
 export const pushOpSchema = z.discriminatedUnion('type', [
   bulletCreateOpSchema,
   bulletEditOpSchema,
@@ -324,6 +388,12 @@ export const pushOpSchema = z.discriminatedUnion('type', [
   eventDeleteOpSchema,
   trackerEntryUpdateOpSchema,
   trackerEntryDeleteOpSchema,
+  linkVetoOpSchema,
+  themeRenameOpSchema,
+  themeRetireOpSchema,
+  themeMergeOpSchema,
+  noticedOpenOpSchema,
+  noticedDismissOpSchema,
 ])
 export type PushOp = z.infer<typeof pushOpSchema>
 export type PushOpType = PushOp['type']
@@ -416,6 +486,11 @@ export const pullChangesSchema = z.object({
   transcripts: z.array(transcriptSelectSchema),
   thoughts: z.array(syncedThoughtSchema),
   questions: z.array(questionSelectSchema),
+  // Slice 3. Defaulted, so a phone can still read an older server's pull.
+  thought_links: z.array(thoughtLinkSelectSchema).default([]),
+  themes: z.array(themeSelectSchema).default([]),
+  theme_thoughts: z.array(themeThoughtSelectSchema).default([]),
+  noticed_cards: z.array(noticedCardSelectSchema).default([]),
 })
 export type PullChanges = z.infer<typeof pullChangesSchema>
 export type PullChangeKind = keyof PullChanges

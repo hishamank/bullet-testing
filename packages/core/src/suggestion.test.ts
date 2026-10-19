@@ -1,9 +1,27 @@
 import { expect, test } from 'vite-plus/test'
+import { validateSuggestionPayload } from './registry'
 import {
   DEFINITION_TARGET_KINDS,
   suggestionInsertSchema,
   suggestionSelectSchema,
 } from './suggestion'
+
+test('a thought_resolve ("Did this close it?") is an update of a loop, never auto', () => {
+  const loop = '55555555-5555-4555-8555-555555555555'
+  const resolve = {
+    ...validSuggestion,
+    target_kind: 'thought_resolve' as const,
+    operation: 'update' as const,
+    target_id: loop,
+    payload: { thought_id: loop, resolved_by_bullet_id: validSuggestion.source_bullet_id },
+  }
+  expect(suggestionSelectSchema.safeParse(resolve).success).toBe(true)
+  expect(suggestionSelectSchema.safeParse({ ...resolve, tier: 'auto' }).success).toBe(false)
+  expect(validateSuggestionPayload('thought_resolve', resolve.payload, 'update').success).toBe(true)
+  expect(validateSuggestionPayload('thought_resolve', { thought_id: 'x' }, 'update').success).toBe(
+    false,
+  )
+})
 
 const TRACKER_TARGET_ID = '44444444-4444-4444-8444-444444444444'
 

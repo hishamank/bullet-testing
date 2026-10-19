@@ -84,6 +84,15 @@ const refineSuggestionInvariants = (
     })
   }
 
+  // "Did this close it?" is the user's call: a `thought_resolve` is never applied on its own.
+  if (s.target_kind === 'thought_resolve' && s.tier === 'auto') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "target_kind 'thought_resolve' requires confirmation: tier must never be 'auto'",
+      path: ['tier'],
+    })
+  }
+
   // §4.5 — definitions are never `auto`.
   if (isDefinitionTargetKind(s.target_kind) && s.tier === 'auto') {
     ctx.addIssue({
