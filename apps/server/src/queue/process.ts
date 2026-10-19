@@ -26,14 +26,7 @@ import type { AudioStore } from '../storage/audio-store'
 import { hasPendingSuggestions, reconcileSuggestions } from '../apply/reconcile'
 import { reconcileThoughts, replaceQuestions } from '../capture/thoughts'
 import { touch } from '../sync/changes'
-import {
-  type BulletRow,
-  type ClaimedJob,
-  DEFAULT_RETRY_POLICY,
-  isJobCurrent,
-  markJobDone,
-  setBulletProc,
-} from './jobs'
+import { type BulletRow, type ClaimedJob, isJobCurrent, markJobDone, setBulletProc } from './jobs'
 
 export interface ProcessDeps {
   db: Db
@@ -43,9 +36,12 @@ export interface ProcessDeps {
   /** Absent → voice bullets are processed on their device draft. */
   transcriber?: Transcriber
   audioStore?: AudioStore
-  /** The worker's retry limit (for "out of attempts"); defaults to DEFAULT_RETRY_POLICY's. */
-  maxAttempts?: number
 }
+
+/** A transcription failure retrying cannot fix: the recording is corrupt or holds no speech. */
+const isPermanent = (err: unknown): err is EngineError =>
+  err instanceof EngineError &&
+  (err.code === 'TRANSCRIPTION_FAILED' || err.code === 'TRANSCRIPTION_NO_SPEECH')
 
 /** The user mixes these; the transcriber auto-detects, the hints only bias it. */
 const LANGUAGE_HINTS = ['en', 'ar', 'fr']
@@ -59,30 +55,24 @@ async function transcribeStage(deps: ProcessDeps, claimed: ClaimedJob): Promise<
   if (!t || !deps.transcriber || !deps.audioStore) return claimed.bullet
   let result: Awaited<ReturnType<Transcriber['transcribe']>>
   try {
+    const audio = deps.audioStore.read(t.storageKey)
+    // Zero-length audio (stopped as soon as it started) has nothing to hear.
+    if (audio.byteLength === 0 || t.durationMs === 0) {
+      throw new EngineError('TRANSCRIPTION_NO_SPEECH', 'the recording is empty')
+    }
     result = await deps.transcriber.transcribe({
-      audio: deps.audioStore.read(t.storageKey),
+      audio,
       mimeType: t.mimeType,
       languageHints: LANGUAGE_HINTS,
     })
     // Whatever the transcriber, a transcript with no words never becomes the capture's text.
     if (!hasSpeech(result.text)) {
-      throw new EngineError('TRANSCRIPTION_FAILED', 'no speech found in the recording')
+      throw new EngineError('TRANSCRIPTION_NO_SPEECH', 'no speech found in the recording')
     }
   } catch (err) {
-    // The recording can't be transcribed (damaged, no speech), but the user wrote the text down
-    // themselves ("Write it down"): once that failure is confirmed (the previous attempt failed
-    // the same way, or this is the last attempt), read their words instead of failing again.
-    // A first failure still gets its normal retry, so a transcript can be kept alongside.
-    const maxAttempts = deps.maxAttempts ?? DEFAULT_RETRY_POLICY.maxAttempts
-    const confirmed =
-      claimed.bullet.proc_error_code === 'transcription_failed' ||
-      claimed.job.attempts >= maxAttempts
-    if (
-      err instanceof EngineError &&
-      err.code === 'TRANSCRIPTION_FAILED' &&
-      claimed.bullet.text_edited_by_user &&
-      confirmed
-    ) {
+    // The recording can't be transcribed, for good (corrupt, or no speech): retrying won't help.
+    // When the user wrote the text down themselves ("Write it down"), read their words at once.
+    if (isPermanent(err) && claimed.bullet.text_edited_by_user) {
       return continueWithoutTranscript(deps, claimed)
     }
     throw err

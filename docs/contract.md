@@ -77,10 +77,14 @@ Each bullet has exactly **one** of these states.
 - **Failed** (`transcribing → failed` or `processing → failed`): the server tried several times
   and gave up (the transcriber or the AI was down, too slow, or gave nonsense). A failed bullet
   is **never lost**: the text and the recording are safe, only the transcript or extraction is
-  missing.
+  missing. A recording that **can't** be transcribed (no speech in it, or audio that can't be
+  read) fails **at once**, without automatic retries: trying the same recording again would give
+  the same answer.
 - **Retry** (`failed → synced`): you tapped Retry.
-- **Automatic retry** (`transcribing`/`processing → synced`): a temporary problem. The server will try again by
-  itself shortly. The bullet shows how many attempts so far and when the next one is due.
+- **Automatic retry** (`transcribing`/`processing → synced`): a temporary problem (the
+  transcriber or the AI unreachable, too slow, or busy). The server will try again by itself
+  shortly, up to 5 attempts. The bullet shows how many attempts so far and when the next one is
+  due.
 - **Edit** (`processed`/`needs_review`/`failed → synced`): you changed the text, so it's read
   again (see §4).
 
@@ -106,8 +110,18 @@ Every bullet carries:
   - `llm_bad_output`: the AI's answer was unusable.
   - `transcription_unavailable`: the server's transcriber isn't running or isn't reachable.
   - `transcription_timeout`: transcribing took too long.
-  - `transcription_failed`: the recording couldn't be transcribed (damaged audio, or no speech).
+  - `transcription_failed`: the recording couldn't be read (damaged or undecodable audio).
+    Permanent: no automatic retry.
+  - `transcription_no_speech`: the recording was read but has no speech in it (silence, a tone,
+    zero-length audio, or only Whisper's silence phrases such as "Thank you."). Permanent: no
+    automatic retry. _Added 2026-10-19._
   - `internal`: something else went wrong on the server.
+
+  For the two permanent ones the phone offers **Write it down** / **Keep as audio** instead of
+  Retry, worded "No speech found in this recording" (`transcription_no_speech`) or "Couldn't
+  transcribe this recording" (`transcription_failed`). After "Write it down" the server reads
+  the user's words right away. `bullet.retry` still works on them (it tries the recording once
+  more).
 
   A `failed` bullet always has an error. A `synced` bullet may also have one while an automatic
   retry is waiting ("Retrying…").

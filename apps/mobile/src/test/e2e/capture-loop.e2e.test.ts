@@ -4,7 +4,7 @@
  *   BULLET_E2E_URL=http://127.0.0.1:3001 BULLET_E2E_TOKEN=… pnpm --filter mobile exec vp test run src/test/e2e
  *
  * Optional: BULLET_E2E_SPEECH_WAV (+ BULLET_E2E_SPEECH_WORDS), BULLET_E2E_LLM_STOP /
- * BULLET_E2E_LLM_START, BULLET_E2E_SLOW=1, BULLET_E2E_REPORT, BULLET_E2E_TZ. Point it at a
+ * BULLET_E2E_LLM_START, BULLET_E2E_REPORT, BULLET_E2E_TZ. Point it at a
  * throwaway database: it writes made-up captures. See docs/e2e-results.md.
  *
  * Contract invariants are asserted; the model's judgement (kinds, dates, names) is recorded as
@@ -653,7 +653,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
     CAPTURE_TIMEOUT,
   )
 
-  // A tone has no speech: it fails as transcription_failed (tested below), so these two need a
+  // A tone has no speech: it fails as transcription_no_speech (tested below), so these two need a
   // speech WAV.
   test.skipIf(!E2E.speechWav)(
     'voice: resumable upload → transcribing → server transcript replaces the draft → thoughts',
@@ -984,13 +984,14 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
   )
 
   test(
-    'a recording with no speech fails as transcription_failed and keeps the draft as text',
+    'a recording with no speech (and no usable draft) fails at once as transcription_no_speech',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
       const tone = toneWav(3)
       const path = join(dir, 'tone.wav')
       writeFileSync(path, tone)
-      const draft = 'note to self about the garden'
+      // Three words: too little to stand in for a transcript (decision 2), so it fails.
+      const draft = 'garden note maybe'
       const id = captureVoiceBullet(
         p.db,
         {
@@ -1012,22 +1013,30 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         },
         p.deps,
       )
-      await syncUntil(p, id, (b) => b.server_error_code !== null || isSettled(b), CAPTURE_TIMEOUT)
+      const t0 = Date.now()
+      const seen = await syncUntil(p, id, isSettled, CAPTURE_TIMEOUT)
       const b = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
       record({
         type: 'no_speech',
         error: b.server_error_code,
         message: b.server_error_message,
+        status: b.server_status,
+        attempts: b.server_attempts,
+        ms: Date.now() - t0,
+        transitions: seen.seen,
         text: b.text,
       })
-      expect(b.server_error_code).toBe('transcription_failed')
+      // Decision 1: no retries, straight to failed with the no-speech code.
+      expect(b.server_status).toBe('failed')
+      expect(b.server_error_code).toBe('transcription_no_speech')
+      expect(b.server_attempts).toBe(1)
       expect(b.text).toBe(draft)
     },
     CAPTURE_TIMEOUT,
   )
 
   test(
-    'damaged recording: transcription fails with an error code; bullet.retry re-queues it',
+    'damaged recording: fails at once as transcription_failed; bullet.retry re-queues it',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
       const junk = new Uint8Array(40_000).map((_, i) => (i * 7919 + 13) % 251)
@@ -1049,26 +1058,34 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         },
         p.deps,
       )
-      // First attempt: an error code and an automatic retry scheduled.
-      const first = await syncUntil(p, id, (b) => b.server_error_code !== null, CAPTURE_TIMEOUT)
+      // Decision 1: a recording that can't be decoded fails on the first attempt, no backoff.
+      const t0 = Date.now()
+      const first = await syncUntil(p, id, (b) => b.server_status === 'failed', CAPTURE_TIMEOUT)
       const b = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
       record({
         type: 'transcription_failure',
         error: b.server_error_code,
         message: b.server_error_message,
         status: b.server_status,
+        attempts: b.server_attempts,
+        ms: Date.now() - t0,
         transitions: first.seen,
       })
       expect(b.server_error_code).toBe('transcription_failed')
-      if (!E2E.slow) return
-      // Out of attempts (≈ 10 s + 1 min + 6 min + 15 min): failed, the recording kept.
-      await syncUntil(p, id, (x) => x.server_status === 'failed', 30 * MIN, 5_000)
+      expect(b.server_attempts).toBe(1)
       retryBullet(p.db, id, p.deps)
-      const retried = await syncUntil(p, id, (x) => x.server_status !== 'failed', 2 * MIN)
+      // The retry runs again (a second attempt), and fails again at once.
+      const retried = await syncUntil(
+        p,
+        id,
+        (x) => x.server_attempts >= 2 && x.server_status === 'failed',
+        2 * MIN,
+      )
       record({ type: 'retry', transitions: retried.seen })
       const r = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
-      expect(r.server_status).toMatch(/^(synced|transcribing)$/)
+      expect(r.server_status).toBe('failed')
+      expect(retried.seen.length).toBeGreaterThan(0)
     },
-    40 * MIN,
+    5 * MIN,
   )
 })

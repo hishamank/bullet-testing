@@ -28,7 +28,7 @@ export function createScriptedTranscriber(
 
 /**
  * A deadline for any {@link Transcriber} (rejects with `TRANSCRIBER_TIMEOUT`), and the guard every
- * result passes: a transcript with no words is a failure (`TRANSCRIPTION_FAILED`), never a bullet
+ * result passes: a transcript with no words is a failure (`TRANSCRIPTION_NO_SPEECH`), never a bullet
  * whose text is "." or empty.
  */
 export function withTranscriberTimeout(inner: Transcriber, timeoutMs: number): Transcriber {
@@ -49,7 +49,7 @@ export function withTranscriberTimeout(inner: Transcriber, timeoutMs: number): T
           (res) => {
             clearTimeout(timer)
             if (!hasSpeech(res.text)) {
-              reject(new EngineError('TRANSCRIPTION_FAILED', 'no speech found in the recording'))
+              reject(new EngineError('TRANSCRIPTION_NO_SPEECH', 'no speech found in the recording'))
             } else resolve({ ...res, text: res.text.trim() })
           },
           (err: unknown) => {

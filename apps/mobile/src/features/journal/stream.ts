@@ -8,6 +8,7 @@ import {
   type BulletProcessingStatus,
   type BulletSource,
   displayStatus,
+  isPermanentTranscriptionError,
   type ProcessingErrorCode,
   type ThoughtKind,
 } from '@bullet/core'
@@ -205,10 +206,24 @@ export interface CardState {
   reason: string | null
 }
 
-export const UNTRANSCRIBABLE = {
-  title: "Couldn't transcribe this recording",
-  detail: 'The audio was damaged or no speech was detected',
-} as const
+/**
+ * How a recording that can't be transcribed is worded: no speech heard in it, or audio that
+ * couldn't be read at all. Either way the recording is kept and the user picks what to do.
+ */
+export function untranscribableCopy(code: ProcessingErrorCode | null): {
+  title: string
+  detail: string
+} {
+  return code === 'transcription_no_speech'
+    ? {
+        title: 'No speech found in this recording',
+        detail: 'The recording is kept. Write down what you said, or keep it as audio.',
+      }
+    : {
+        title: "Couldn't transcribe this recording",
+        detail: "The audio couldn't be read. The recording is kept.",
+      }
+}
 
 export type TranscriptionFailure = 'ask' | 'kept' | null
 
@@ -221,7 +236,7 @@ export function transcriptionFailure(
   errorCode: ProcessingErrorCode | null,
   kept: boolean,
 ): TranscriptionFailure {
-  if (status !== 'failed' || errorCode !== 'transcription_failed') return null
+  if (status !== 'failed' || !isPermanentTranscriptionError(errorCode)) return null
   return kept ? 'kept' : 'ask'
 }
 
@@ -240,6 +255,8 @@ export function errorReason(code: ProcessingErrorCode | null): string {
       return 'Transcribing took too long.'
     case 'transcription_failed':
       return "The recording couldn't be transcribed. It's kept."
+    case 'transcription_no_speech':
+      return "No speech was found in the recording. It's kept."
     default:
       return 'Something went wrong on the home server.'
   }
@@ -253,14 +270,16 @@ export function cardState(
   switch (transcriptionFailure(c.status, c.errorCode, c.keptAsAudio ?? false)) {
     case 'kept':
       return { ...base, label: 'Audio only', tone: 'muted' }
-    case 'ask':
+    case 'ask': {
+      const copy = untranscribableCopy(c.errorCode)
       return {
         ...base,
-        label: UNTRANSCRIBABLE.title,
+        label: copy.title,
         tone: 'warning',
         untranscribable: true,
-        reason: UNTRANSCRIBABLE.detail,
+        reason: copy.detail,
       }
+    }
   }
   switch (c.status) {
     case 'saved_local':

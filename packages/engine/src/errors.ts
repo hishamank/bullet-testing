@@ -9,7 +9,8 @@ export type EngineErrorCode =
   | 'LLM_TIMEOUT' // the LLM did not answer within the deadline
   | 'TRANSCRIBER_HTTP' // the speech-to-text engine is unreachable / answered with an error
   | 'TRANSCRIBER_TIMEOUT' // transcription did not finish within the deadline
-  | 'TRANSCRIPTION_FAILED' // the engine could not transcribe the audio (bad audio, no speech)
+  | 'TRANSCRIPTION_FAILED' // the recording could not be decoded (corrupt / unsupported audio)
+  | 'TRANSCRIPTION_NO_SPEECH' // the recording was read but holds no speech (silence, a tone)
   | 'LLM_PARSE' // the model returned content that is not valid JSON
   | 'EXTRACTION_INVALID' // the model's JSON did not satisfy the extraction schema
 

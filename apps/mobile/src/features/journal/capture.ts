@@ -8,6 +8,7 @@ import {
   type BulletDeleteMode,
   type BulletProcessingStatus,
   displayStatus,
+  type ProcessingErrorCode,
   type TargetKind,
   type ThoughtKind,
   thoughtKindSchema,
@@ -57,6 +58,8 @@ export interface CaptureDetail {
   status: BulletProcessingStatus
   /** A retryable failure's reason (null for a recording that can't be transcribed). */
   errorReason: string | null
+  /** The server's last error code (tells "no speech" from "couldn't read the audio"). */
+  errorCode: ProcessingErrorCode | null
   /** The recording can't be transcribed: `ask` (Write it down / Keep as audio) or `kept`. */
   transcriptionFailure: TranscriptionFailure
   audio: AudioRow | null
@@ -138,6 +141,7 @@ export function loadCaptureDetail(
     textEditedByUser: b.text_edited_by_user,
     status,
     errorReason: status === 'failed' && failure === null ? errorReason(b.server_error_code) : null,
+    errorCode: b.server_error_code ?? null,
     transcriptionFailure: failure,
     audio,
     audioReadError: audio ? unreadableRecordings(db, [audio.id]).has(audio.id) : false,

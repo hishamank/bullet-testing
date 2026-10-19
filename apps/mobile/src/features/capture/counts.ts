@@ -1,5 +1,6 @@
 /** Read models for the capture page's corners and status line. Pure queries over the local mirror. */
 
+import { isPermanentTranscriptionError } from '@bullet/core'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
@@ -16,7 +17,8 @@ export interface CaptureCounts {
    */
   failedIds: string[]
   /**
-   * Failed voice captures whose recording can't be transcribed (`transcription_failed`), oldest
+   * Failed voice captures whose recording can't be transcribed (`transcription_failed` or
+   * `transcription_no_speech`), oldest
    * first: they need "Write it down" or "Keep as audio", not Retry. Ones kept as audio are left
    * out of both lists.
    */
@@ -42,8 +44,10 @@ export function captureCounts(db: PhoneDb): CaptureCounts {
     failed.map((r) => r.id),
   )
   const shown = failed.filter((r) => !audioOnly.has(r.id))
-  const failedIds = shown.filter((r) => r.code !== 'transcription_failed').map((r) => r.id)
-  const untranscribableIds = shown.filter((r) => r.code === 'transcription_failed').map((r) => r.id)
+  const failedIds = shown.filter((r) => !isPermanentTranscriptionError(r.code)).map((r) => r.id)
+  const untranscribableIds = shown
+    .filter((r) => isPermanentTranscriptionError(r.code))
+    .map((r) => r.id)
   const awaiting =
     db
       .select({ n: sql<number>`count(*)` })

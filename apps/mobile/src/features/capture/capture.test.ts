@@ -178,6 +178,7 @@ describe('capture counts', () => {
     const deps = testDeps()
     const typed = captureBullet(db, { text: 'one' }, deps)
     const voice = captureBullet(db, { text: 'Voice note, 0:12' }, deps)
+    const silent = captureBullet(db, { text: 'Voice note, 0:03' }, deps)
     db.delete(outbox).run()
     db.update(bullets)
       .set({ server_status: 'failed', server_error_code: 'llm_timeout' })
@@ -187,8 +188,16 @@ describe('capture counts', () => {
       .set({ server_status: 'failed', server_error_code: 'transcription_failed' })
       .where(eq(bullets.id, voice))
       .run()
-    expect(captureCounts(db)).toMatchObject({ failedIds: [typed], untranscribableIds: [voice] })
+    db.update(bullets)
+      .set({ server_status: 'failed', server_error_code: 'transcription_no_speech' })
+      .where(eq(bullets.id, silent))
+      .run()
+    expect(captureCounts(db)).toMatchObject({
+      failedIds: [typed],
+      untranscribableIds: [voice, silent],
+    })
     keepAsAudioLocal(db, voice)
+    keepAsAudioLocal(db, silent)
     expect(captureCounts(db)).toMatchObject({ failedIds: [typed], untranscribableIds: [] })
   })
 

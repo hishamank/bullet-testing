@@ -156,6 +156,17 @@ describe('capture detail', () => {
     keepAsAudioLocal(db, b)
     expect(loadCaptureDetail(db, b, T0, TZ)?.transcriptionFailure).toBe('kept')
 
+    const silent = seedBullet(db, T0, {
+      source: 'voice',
+      server_status: 'failed',
+      server_error_code: 'transcription_no_speech',
+    })
+    expect(loadCaptureDetail(db, silent, T0, TZ)).toMatchObject({
+      transcriptionFailure: 'ask',
+      errorReason: null,
+      errorCode: 'transcription_no_speech',
+    })
+
     const other = seedBullet(db, T0, {
       source: 'voice',
       server_status: 'failed',

@@ -4,7 +4,14 @@ export {
   type ScriptedTranscriber,
   withTranscriberTimeout,
 } from './scripted'
-export { hasSpeech } from './speech'
+export {
+  hasSpeech,
+  isSilenceHallucination,
+  isUsableDraft,
+  SHORT_RECORDING_MS,
+  transcriptIsNoSpeech,
+  wordCount,
+} from './speech'
 export {
   createWhisperCppTranscriber,
   type WhisperCppOptions,

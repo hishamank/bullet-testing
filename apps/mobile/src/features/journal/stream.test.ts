@@ -156,14 +156,25 @@ describe('grouping and wording', () => {
     const base = { autoApplied: 0, pending: 0, status: 'failed' as const }
     expect(cardState({ ...base, errorCode: 'transcription_failed' })).toMatchObject({
       label: "Couldn't transcribe this recording",
-      reason: 'The audio was damaged or no speech was detected',
+      reason: "The audio couldn't be read. The recording is kept.",
       tone: 'warning',
       retry: false,
       untranscribable: true,
     })
-    expect(
-      cardState({ ...base, errorCode: 'transcription_failed', keptAsAudio: true }),
-    ).toMatchObject({ label: 'Audio only', tone: 'muted', retry: false, untranscribable: false })
+    expect(cardState({ ...base, errorCode: 'transcription_no_speech' })).toMatchObject({
+      label: 'No speech found in this recording',
+      tone: 'warning',
+      retry: false,
+      untranscribable: true,
+    })
+    for (const errorCode of ['transcription_failed', 'transcription_no_speech'] as const) {
+      expect(cardState({ ...base, errorCode, keptAsAudio: true })).toMatchObject({
+        label: 'Audio only',
+        tone: 'muted',
+        retry: false,
+        untranscribable: false,
+      })
+    }
     // Transient transcriber trouble keeps Retry.
     for (const errorCode of ['transcription_unavailable', 'transcription_timeout'] as const) {
       expect(cardState({ ...base, errorCode })).toMatchObject({

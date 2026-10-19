@@ -18,7 +18,7 @@ import {
   writeDownStart,
 } from '@/features/journal/capture'
 import { changeKind, deleteCapture, editCapture, keepAsAudio } from '@/features/journal/actions'
-import { AUDIO_READ_ERROR_TEXT, UNTRANSCRIBABLE } from '@/features/journal/stream'
+import { AUDIO_READ_ERROR_TEXT, untranscribableCopy } from '@/features/journal/stream'
 import { whenLabel } from '@/features/journal/format'
 import { type LinkedThing, THING_STATE_LABELS } from '@/features/journal/things'
 import { useLocalQuery } from '@/hooks'
@@ -201,10 +201,10 @@ export default function CaptureDetailScreen() {
         {c.transcriptionFailure === 'ask' && !editing ? (
           <View style={{ gap: space.xs }}>
             <Label tone="warning" size={type.bodySmall} style={{ fontWeight: '600' }}>
-              {UNTRANSCRIBABLE.title}
+              {untranscribableCopy(c.errorCode).title}
             </Label>
             <Label tone="secondary" size={type.bodySmall}>
-              {UNTRANSCRIBABLE.detail}
+              {untranscribableCopy(c.errorCode).detail}
             </Label>
             <View style={styles.headerActions}>
               <TextButton title="Write it down" onPress={() => setDraft(writeDownStart(c))} />

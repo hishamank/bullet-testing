@@ -22,11 +22,17 @@ type H = ReturnType<typeof createHarness>
 /** Push a voice capture with its recording metadata + device draft. */
 async function captureVoice(
   h: H,
-  opts: { edited?: boolean; text?: string; sha?: string | null } = {},
+  opts: {
+    edited?: boolean
+    text?: string
+    sha?: string | null
+    draft?: string
+    durationMs?: number
+  } = {},
 ) {
   const bulletId = uid()
   const audioId = uid()
-  const draft = 'call mom bukra'
+  const draft = opts.draft ?? 'call mom bukra'
   const res = await h.push([
     {
       op_id: uid(),
@@ -41,7 +47,7 @@ async function captureVoice(
         audio: {
           id: audioId,
           mime_type: 'audio/mp4',
-          duration_ms: 3_000,
+          duration_ms: opts.durationMs ?? 3_000,
           size_bytes: AUDIO.length,
           sha256: opts.sha === undefined ? sha(AUDIO) : opts.sha,
           draft: { text: draft, engine: 'apple-speechanalyzer', model: null, languages: ['en-US'] },
@@ -298,14 +304,26 @@ describe('voice notes: transcription', () => {
     expect(seen).toBe('transcribing')
   })
 
-  test('an empty transcript fails as transcription_failed', async () => {
+  test('an empty transcript fails at once as transcription_no_speech (no retries)', async () => {
+    let calls = 0
     const h = createHarness(llmByText({}), {
-      transcriber: createScriptedTranscriber(() => ({ text: '' })),
+      transcriber: createScriptedTranscriber(() => {
+        calls += 1
+        return { text: '' }
+      }),
     })
     const { bulletId, audioId } = await captureVoice(h)
     await put(h, audioId, 0, AUDIO)
     await h.worker.drain()
-    expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_failed')
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'failed',
+      proc_error_code: 'transcription_no_speech',
+      proc_attempts: 1,
+      proc_next_retry_at: null,
+    })
+    h.clock.now += DEFAULT_RETRY_POLICY.maxDelayMs
+    await h.worker.drain()
+    expect(calls).toBe(1)
   })
 
   test('a transcript with no words (" ." for a tone) never replaces the draft', async () => {
@@ -315,62 +333,103 @@ describe('voice notes: transcription', () => {
     const { bulletId, audioId } = await captureVoice(h)
     await put(h, audioId, 0, AUDIO)
     await h.worker.drain()
-    expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_failed')
+    expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_no_speech')
     expect(bullet(h, bulletId)?.text).toBe('call mom bukra')
   })
 
-  test('an unreadable recording the user wrote down is read from their text', async () => {
-    const llm = llmByText({})
-    const h = createHarness(llm, {
+  test('a corrupt recording fails at once as transcription_failed', async () => {
+    const h = createHarness(llmByText({}), {
       transcriber: createScriptedTranscriber(() => {
-        throw new EngineError('TRANSCRIPTION_FAILED', 'no speech found in the recording')
+        throw new EngineError('TRANSCRIPTION_FAILED', 'ffmpeg conversion failed')
       }),
     })
     const { bulletId, audioId } = await captureVoice(h)
     await put(h, audioId, 0, AUDIO)
-    for (let i = 0; i < DEFAULT_RETRY_POLICY.maxAttempts; i++) {
-      await h.worker.drain()
-      h.clock.now += DEFAULT_RETRY_POLICY.maxDelayMs
-    }
+    await h.worker.drain()
     expect(bullet(h, bulletId)).toMatchObject({
       proc_status: 'failed',
       proc_error_code: 'transcription_failed',
+      proc_attempts: 1,
     })
+    expect(h.db.select().from(jobs).get()?.status).toBe('failed')
+  })
 
-    // "Write it down": a user edit, then normal processing on their words.
-    await h.push([
-      {
-        op_id: uid(),
-        type: 'bullet.edit',
-        bullet_id: bulletId,
-        text: 'call the plumber about the sink',
-        edited_at: h.clock.now,
-      },
-    ])
-    // The first failure after the edit still gets its normal retry…
+  test('a zero-length recording is no speech, without calling the transcriber', async () => {
+    const t = whisper()
+    const h = createHarness(llmByText({}), { transcriber: t })
+    const { bulletId, audioId } = await captureVoice(h, { durationMs: 0 })
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    expect(t.calls).toHaveLength(0)
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'failed',
+      proc_error_code: 'transcription_no_speech',
+    })
+  })
+
+  test('a transcriber that is down keeps the normal retry schedule', async () => {
+    const h = createHarness(llmByText({}), {
+      transcriber: createScriptedTranscriber(() => {
+        throw new EngineError('TRANSCRIBER_HTTP', 'unreachable')
+      }),
+    })
+    const { bulletId, audioId } = await captureVoice(h)
+    await put(h, audioId, 0, AUDIO)
     await h.worker.drain()
     expect(bullet(h, bulletId)).toMatchObject({
       proc_status: 'synced',
-      proc_error_code: 'transcription_failed',
+      proc_error_code: 'transcription_unavailable',
     })
-    // …and once it is confirmed, their words are read instead of failing again.
-    h.clock.now += DEFAULT_RETRY_POLICY.maxDelayMs
-    await h.worker.drain()
-    expect(bullet(h, bulletId)).toMatchObject({
-      proc_status: 'processed',
-      text: 'call the plumber about the sink',
-      text_edited_by_user: true,
-    })
-    expect(llm.chatCalls.at(-1)?.messages[1]?.content).toContain('call the plumber about the sink')
-    expect(h.db.select().from(transcripts).where(eq(transcripts.kind, 'server')).all()).toEqual([])
+    expect(bullet(h, bulletId)?.proc_next_retry_at).not.toBeNull()
   })
 
-  test('a user-edited bullet whose first transcription fails keeps the transcript once it works', async () => {
+  for (const [code, err] of [
+    ['transcription_failed', 'TRANSCRIPTION_FAILED'],
+    ['transcription_no_speech', 'TRANSCRIPTION_NO_SPEECH'],
+  ] as const) {
+    test(`an untranscribable recording (${code}) the user wrote down is read from their text`, async () => {
+      const llm = llmByText({})
+      const h = createHarness(llm, {
+        transcriber: createScriptedTranscriber(() => {
+          throw new EngineError(err, 'cannot transcribe')
+        }),
+      })
+      const { bulletId, audioId } = await captureVoice(h)
+      await put(h, audioId, 0, AUDIO)
+      await h.worker.drain()
+      expect(bullet(h, bulletId)).toMatchObject({ proc_status: 'failed', proc_error_code: code })
+
+      // "Write it down": a user edit, then normal processing on their words, at once.
+      await h.push([
+        {
+          op_id: uid(),
+          type: 'bullet.edit',
+          bullet_id: bulletId,
+          text: 'call the plumber about the sink',
+          edited_at: h.clock.now,
+        },
+      ])
+      await h.worker.drain()
+      expect(bullet(h, bulletId)).toMatchObject({
+        proc_status: 'processed',
+        text: 'call the plumber about the sink',
+        text_edited_by_user: true,
+      })
+      expect(llm.chatCalls.at(-1)?.messages[1]?.content).toContain(
+        'call the plumber about the sink',
+      )
+      expect(h.db.select().from(transcripts).where(eq(transcripts.kind, 'server')).all()).toEqual(
+        [],
+      )
+    })
+  }
+
+  test('a user-edited bullet whose transcription is briefly down keeps the transcript once it works', async () => {
     let calls = 0
     const h = createHarness(llmByText({}), {
       transcriber: createScriptedTranscriber(() => {
         calls += 1
-        if (calls === 1) throw new EngineError('TRANSCRIPTION_FAILED', 'whisper 400')
+        if (calls === 1) throw new EngineError('TRANSCRIBER_HTTP', 'whisper busy')
         return { text: 'call mom tomorrow' }
       }),
     })
@@ -402,7 +461,7 @@ describe('voice notes: transcription', () => {
       audioStore: h.audioStore,
     }
     await expect(processClaimedJob(deps, claimed!)).rejects.toMatchObject({
-      code: 'TRANSCRIPTION_FAILED',
+      code: 'TRANSCRIPTION_NO_SPEECH',
     })
     expect(bullet(h, bulletId)?.text).toBe('call mom bukra')
   })
