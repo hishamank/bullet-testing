@@ -43,7 +43,7 @@ import type { ExtractionSnapshot, SnapshotTask, SnapshotTracker } from '../extra
 import type { QuestionTopic } from '@bullet/core'
 import { ambiguousWeekday, type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
 import { safeTimezone, zonedParts, zonedToEpoch } from '../time/zoned'
-import { type Match, matchOpenTask, matchTracker } from './match'
+import { type Match, matchOpenTask, matchTracker, TRACKER_NAME_FIELDS } from './match'
 import { assignTier } from './tier'
 
 /** A Suggestion INSERT draft — owner_id/source_bullet_id are added when persisting. */
@@ -312,7 +312,11 @@ function resolveHappened(
     candidate.kind === 'tracker_entry' &&
     numberFieldOrNull(candidate.fields, ['value', 'quantity']) !== null
   ) {
-    const name = String(activity.payload.name)
+    // Name the tracker after what is measured ("sleep"), not the whole reading ("Slept 6 hours.").
+    const name =
+      candidate.referenceName?.trim() ||
+      stringFieldOrNull(candidate.fields, [...TRACKER_NAME_FIELDS]) ||
+      String(activity.payload.name)
     const unit = typeof activity.payload.unit === 'string' ? activity.payload.unit : undefined
     offer(
       {

@@ -451,3 +451,37 @@ describe('mark-done is a field-level patch with a conservative tier', () => {
     expect(s.tier).toBe('suggest')
   })
 })
+
+describe('a reading names its tracker in a field (live Qwen3.5-4B output)', () => {
+  // Seen live: { kind: 'tracker_entry', fields: { tracker: 'sleep', value: 6 } } for "Slept 6
+  // hours." The offer used to read 'Start tracking "Slept 6 hours."?'.
+  const sleep = (fields: Record<string, unknown>) =>
+    candidate({ kind: 'tracker_entry', text: 'Slept 6 hours.', fields, confidence: 0.95 })
+
+  test('the offered tracker is named after the field, not the sentence', () => {
+    for (const fields of [
+      { tracker: 'sleep', value: 6 },
+      { tracker_name: 'sleep', value: 6 },
+    ]) {
+      const { suggestions, questions } = resolveCandidates([sleep(fields)], EMPTY, config, CTX)
+      const tracker = suggestions.find((s) => s.target_kind === 'tracker')
+      expect(tracker?.payload.name).toBe('sleep')
+      expect(questions[0]?.text).toBe('Start tracking "sleep"?')
+    }
+  })
+
+  test('the field is used to match an existing tracker', () => {
+    const snapshot: ExtractionSnapshot = {
+      trackers: [
+        { id: 't-sleep', name: 'sleep', input_type: 'number', config: { input_type: 'number' } },
+      ],
+      openTasks: [],
+    }
+    const s = one(sleep({ tracker: 'sleep', value: 6 }), snapshot)
+    expect(s).toMatchObject({
+      target_kind: 'tracker_entry',
+      operation: 'append',
+      target_id: 't-sleep',
+    })
+  })
+})
