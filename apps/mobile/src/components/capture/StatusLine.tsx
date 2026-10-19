@@ -4,13 +4,16 @@ import type { CaptureCounts } from '@/features/capture/counts'
 import {
   captureNotice,
   failedText,
+  foundText,
   onPhoneText,
+  SORTING_TEXT,
+  STILL_SORTING_TEXT,
   UNAUTHORIZED_TEXT,
   unpairedText,
   untranscribableText,
   UNREACHABLE_TEXT,
 } from '@/features/capture/notice'
-import { usePairing, useSyncStatus } from '@/hooks'
+import { useNow, usePairing, useSyncStatus } from '@/hooks'
 import { type, useTheme } from '@/theme'
 import { Icon } from '../Icon'
 import { Label, Note, TextButton, touch } from '../ui'
@@ -21,6 +24,8 @@ export function StatusLine({ counts, onRetry }: { counts: CaptureCounts; onRetry
   const router = useRouter()
   const sync = useSyncStatus()
   const pairing = usePairing()
+  // A static line that changes on its own only once ("Still sorting" after 5 minutes).
+  const now = useNow(30_000)
   const notice = captureNotice({
     saved: false,
     failedCount: counts.failedIds.length,
@@ -28,8 +33,38 @@ export function StatusLine({ counts, onRetry }: { counts: CaptureCounts; onRetry
     cannotReachServer: sync.cannotReachServer,
     unpaired: pairing !== 'paired',
     untranscribableIds: counts.untranscribableIds,
+    latest: counts.latest,
+    now,
   })
   switch (notice.kind) {
+    case 'sorting': {
+      const text = notice.slow ? STILL_SORTING_TEXT : SORTING_TEXT
+      return (
+        <View style={styles.row} accessible accessibilityRole="text" accessibilityLabel={text}>
+          <Label tone="muted" size={type.label} style={{ textAlign: 'center' }}>
+            {text}
+          </Label>
+        </View>
+      )
+    }
+    case 'found': {
+      const text = foundText(notice.count)
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, touch, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel={text}
+          accessibilityHint="Opens the capture"
+          onPress={() =>
+            router.push({ pathname: '/capture/[id]', params: { id: notice.bulletId } })
+          }
+        >
+          <Label tone="secondary" size={type.label}>
+            {text}
+          </Label>
+        </Pressable>
+      )
+    }
     case 'unpaired':
       return (
         <Pressable

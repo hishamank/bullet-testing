@@ -103,6 +103,16 @@ Each bullet has exactly **one** of these states.
   that version, **whatever its previous state was**. So an edited `processed` bullet goes back to
   `saved_local`, then `synced`, and so on.
 - Everything else shows the state the server last reported.
+- **Processing feedback** for the latest capture is one quiet, static line under the mic (no
+  spinner, no notification), from the capture's own status and time:
+  - while it is `saved_local` (and the server is reachable), `synced`, `transcribing` or
+    `processing`: "Saved. Sorting this out in the background.";
+  - more than 5 minutes after it was captured and still on its way: "Still sorting. Your capture
+    is safe.";
+  - done, with things found: "N things found" (taps through to the capture). A reading counts
+    with its new tracker as one thing; dismissed ones don't count. Shown for an hour.
+    Failed captures, recordings that can't be transcribed and offline captures keep their own
+    lines, which come first.
 - The phone keeps working fully offline: capture, edit, delete, accept/dismiss suggestions, edit
   tasks/events/readings, resolve thoughts, answer questions. It all queues up and goes out on the
   next sync.

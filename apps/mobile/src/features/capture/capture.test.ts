@@ -12,11 +12,17 @@ import {
   initialComposer,
   SAVED_MS,
 } from './composer'
+import { seedSuggestion } from '../journal/fixtures'
 import { captureCounts } from './counts'
 import {
   captureNotice,
+  FOUND_SHOWN_MS,
   failedText,
+  foundText,
   inboxCornerLabel,
+  SORTING_TEXT,
+  STILL_SORTING_AFTER_MS,
+  STILL_SORTING_TEXT,
   journalCornerLabel,
   onPhoneText,
   unpairedText,
@@ -123,6 +129,50 @@ describe('capture notice', () => {
     expect(untranscribableText(2)).toBe("2 recordings couldn't be transcribed")
   })
 
+  it('processing feedback: quiet static copy for the latest capture', () => {
+    const latest = { id: 'c1', status: 'processing' as const, capturedAt: T0, things: 0 }
+    expect(captureNotice({ ...base, latest, now: T0 + 2_000 })).toEqual({
+      kind: 'sorting',
+      slow: false,
+      bulletId: 'c1',
+    })
+    for (const status of ['saved_local', 'synced', 'transcribing'] as const) {
+      expect(captureNotice({ ...base, latest: { ...latest, status }, now: T0 })).toMatchObject({
+        kind: 'sorting',
+      })
+    }
+    // Over 5 minutes since the capture: still sorting, the capture is safe.
+    expect(captureNotice({ ...base, latest, now: T0 + STILL_SORTING_AFTER_MS + 1 })).toMatchObject({
+      kind: 'sorting',
+      slow: true,
+    })
+    // Done, with things found: "N things found", opening the capture.
+    const done = { ...latest, status: 'needs_review' as const, things: 3 }
+    expect(captureNotice({ ...base, latest: done, now: T0 + 60_000 })).toEqual({
+      kind: 'found',
+      count: 3,
+      bulletId: 'c1',
+    })
+    // Nothing found, an hour later, or failed: no line from it.
+    expect(captureNotice({ ...base, latest: { ...done, things: 0 }, now: T0 })).toEqual({
+      kind: 'none',
+    })
+    expect(captureNotice({ ...base, latest: done, now: T0 + FOUND_SHOWN_MS + 1 })).toEqual({
+      kind: 'none',
+    })
+    expect(captureNotice({ ...base, latest: { ...latest, status: 'failed' }, now: T0 })).toEqual({
+      kind: 'none',
+    })
+    // Retry and offline lines come first.
+    expect(captureNotice({ ...base, failedCount: 1, latest, now: T0 })).toMatchObject({
+      kind: 'failed',
+    })
+    expect(SORTING_TEXT).toBe('Saved. Sorting this out in the background.')
+    expect(STILL_SORTING_TEXT).toBe('Still sorting. Your capture is safe.')
+    expect(foundText(1)).toBe('1 thing found')
+    expect(foundText(3)).toBe('3 things found')
+  })
+
   it("doesn't mention captures on the phone while they are about to sync", () => {
     expect(captureNotice({ ...base, onPhoneCount: 1 })).toEqual({ kind: 'none' })
   })
@@ -143,7 +193,7 @@ describe('capture counts', () => {
     const deps = testDeps()
     const a = captureBullet(db, { text: 'one' }, deps)
     const b = captureBullet(db, { text: 'two' }, deps)
-    expect(captureCounts(db)).toEqual({
+    expect(captureCounts(db)).toMatchObject({
       onPhone: 2,
       failedIds: [],
       untranscribableIds: [],
@@ -155,7 +205,7 @@ describe('capture counts', () => {
     db.delete(outbox).run()
     db.update(bullets).set({ server_status: 'failed' }).where(eq(bullets.id, a)).run()
     db.update(bullets).set({ server_status: 'synced' }).where(eq(bullets.id, b)).run()
-    expect(captureCounts(db)).toEqual({
+    expect(captureCounts(db)).toMatchObject({
       onPhone: 0,
       failedIds: [a],
       untranscribableIds: [],
@@ -199,6 +249,30 @@ describe('capture counts', () => {
     keepAsAudioLocal(db, voice)
     keepAsAudioLocal(db, silent)
     expect(captureCounts(db)).toMatchObject({ failedIds: [typed], untranscribableIds: [] })
+  })
+
+  it('the latest capture: its shown status and the things found in it', () => {
+    const db = openTestDb()
+    expect(captureCounts(db).latest).toBeNull()
+    captureBullet(db, { text: 'older' }, testDeps({ now: T0 - 60_000 }))
+    const c = captureBullet(db, { text: 'Slept 6 hours. Dentist Thursday 3pm' }, testDeps())
+    expect(captureCounts(db).latest).toEqual({
+      id: c,
+      status: 'saved_local',
+      capturedAt: T0,
+      things: 0,
+    })
+    db.delete(outbox).run()
+    db.update(bullets).set({ server_status: 'needs_review' }).where(eq(bullets.id, c)).run()
+    const tracker = seedSuggestion(db, c, { target_kind: 'tracker', payload: { name: 'Sleep' } })
+    seedSuggestion(db, c, {
+      target_kind: 'tracker_entry',
+      payload: { tracker_id: tracker, value: 6 },
+    })
+    seedSuggestion(db, c, { target_kind: 'event', payload: { title: 'Dentist' } })
+    seedSuggestion(db, c, { target_kind: 'task', payload: { title: 'x' }, status: 'rejected' })
+    // "Start tracking Sleep?" with its reading is one thing; a dismissed one is not counted.
+    expect(captureCounts(db).latest).toMatchObject({ status: 'needs_review', things: 2 })
   })
 
   it('ignores deleted captures', () => {

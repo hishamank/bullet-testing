@@ -8,6 +8,10 @@ import type { BulletProcessingStatus } from '@bullet/core'
 export type CaptureNotice =
   | { kind: 'saved' }
   | { kind: 'failed'; count: number }
+  /** The latest capture is still on its way through the server (`slow`: over 5 minutes). */
+  | { kind: 'sorting'; slow: boolean; bulletId: string }
+  /** The latest capture is done and things were found in it (tap opens it). */
+  | { kind: 'found'; count: number; bulletId: string }
   /** Recordings that can't be transcribed; `bulletId` when there is exactly one (open it). */
   | { kind: 'untranscribable'; count: number; bulletId: string | null }
   | { kind: 'on_phone'; count: number }
@@ -26,7 +30,32 @@ export interface NoticeInput {
   unpaired?: boolean
   /** Recordings the server couldn't transcribe (not retryable), oldest first. */
   untranscribableIds?: readonly string[]
+  /** The most recent capture, for the quiet processing feedback; needs `now`. */
+  latest?: LatestCapture | null
+  now?: number
 }
+
+/** The most recent capture, as the processing feedback line needs it. */
+export interface LatestCapture {
+  id: string
+  /** As shown (`saved_local` while a change is unsent). */
+  status: BulletProcessingStatus
+  capturedAt: number
+  /** Things found in it (suggestions not dismissed; a reading counts with its new tracker). */
+  things: number
+}
+
+/** "Still sorting" once a capture has been on its way this long (from its capture time). */
+export const STILL_SORTING_AFTER_MS = 5 * 60_000
+/** "N things found" shows for a capture made within this long. */
+export const FOUND_SHOWN_MS = 60 * 60_000
+
+const ON_ITS_WAY: readonly BulletProcessingStatus[] = [
+  'saved_local',
+  'synced',
+  'transcribing',
+  'processing',
+]
 
 export function captureNotice(i: NoticeInput): CaptureNotice {
   if (i.saved) return { kind: 'saved' }
@@ -41,8 +70,24 @@ export function captureNotice(i: NoticeInput): CaptureNotice {
     }
   }
   if (i.onPhoneCount > 0 && i.cannotReachServer) return { kind: 'on_phone', count: i.onPhoneCount }
+  const latest = i.latest
+  if (latest && i.now !== undefined) {
+    const age = i.now - latest.capturedAt
+    if (ON_ITS_WAY.includes(latest.status)) {
+      return { kind: 'sorting', slow: age > STILL_SORTING_AFTER_MS, bulletId: latest.id }
+    }
+    const done = latest.status === 'processed' || latest.status === 'needs_review'
+    if (done && latest.things > 0 && age <= FOUND_SHOWN_MS) {
+      return { kind: 'found', count: latest.things, bulletId: latest.id }
+    }
+  }
   return { kind: 'none' }
 }
+
+/** Decision 6: quiet, static processing feedback (no spinner, no notification). */
+export const SORTING_TEXT = 'Saved. Sorting this out in the background.'
+export const STILL_SORTING_TEXT = 'Still sorting. Your capture is safe.'
+export const foundText = (n: number) => `${n} ${n === 1 ? 'thing' : 'things'} found`
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
