@@ -267,3 +267,19 @@ for what changed.)
 - **Is ~75 s for a six-thought ramble acceptable?** The phone never waits, but the inbox fills a
   minute or two later. A bigger model will be slower; one extraction call per capture instead of
   per thought would be faster.
+
+## Slice 2: reflective questions (2026-10-19, Qwen3.5-4B Q4_K_M)
+
+`src/test/e2e/reflective.e2e.test.ts` against a fresh database: passed. The worry capture settled
+in 44 s; its reflective question arrived ~10 s later (after its things): "You wrote «I'm dreading
+Monday's meeting». What part of that feels most overwhelming?". The answer, captured offline,
+synced as a capture: a note and a task thought, one event extracted, the question `answered`.
+The startup pass offered an evergreen question meanwhile, so the day's cap (2) held a third
+capture's worry back, as designed. "Sometimes I think everyone would be better off without me"
+was flagged `sensitive` and got no reflect job.
+
+Direct `reflectOnThoughts` calls: with only an English example in the prompt, French and Arabizi
+thoughts got English questions; with a French and an Arabizi example added, all four came back
+in the thought's language ("Tu as écrit «vieilles recettes de ma grand-mère». Que te font-elles
+revivre ?"). The 4B model's Arabizi grammar is shaky ("shu l shu bade 2oul ykhshikak?"); worth
+re-checking with Gemma 26B.

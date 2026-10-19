@@ -55,7 +55,7 @@ describe('reflectOnThoughts', () => {
 
   test('the prompt: about what they said, never what they should do; their words and language', () => {
     expect(REFLECT_SYSTEM_PROMPT).toMatch(/Ask about what they said, never what they should do/)
-    expect(REFLECT_SYSTEM_PROMPT).toMatch(/same language as that thought/)
+    expect(REFLECT_SYSTEM_PROMPT).toMatch(/same language as the words you quote/)
     expect(REFLECT_SYSTEM_PROMPT).toMatch(/Never translate/)
     // The quote is decoded before the question.
     const props = Object.keys((reflectionJsonSchema as any).properties)
