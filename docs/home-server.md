@@ -128,10 +128,12 @@ topic vs across topics):
   against English) scored 0.39–0.45: below any threshold.
 - **Two fixes, both automatic in the `llm` profile:** each thought is embedded inside a short
   template, `This journal note : "…" is about, in one word:"` (the PromptEOL trick: the model's
-  answer-state summarises the topic), and vectors are **centred**: the mean of 36 everyday
-  background lines (embedded once per model) and of the user's own thoughts is subtracted before
-  comparing. Then at 0.40: 39–53% of related pairs linked against 0.5–3.7% of unrelated ones (the
-  lower numbers once the journal's own thoughts dominate the mean). `--pooling last` scored about
+  answer-state summarises the topic), and vectors are **centred**: a mean is subtracted before
+  comparing, a fixed blend of the 36 everyday background lines (embedded once per model) and the
+  user's own live thoughts, the journal weighing by its size but **never more than half**. Then at
+  0.40: 39–53% of related pairs linked against 0.5–3.7% of unrelated ones (the higher numbers with
+  the background alone, the lower ones with the journal at about half). The cap keeps a journal of
+  10 000 thoughts reading the thresholds the same way as one of 50. `--pooling last` scored about
   the same as `mean`; `mean` is kept.
 - Below the link threshold the open-loop "answers?" check (a yes/no model call) and the connection
   question catch more: they read the words, not only the vectors.
@@ -190,28 +192,28 @@ cp apps/server/.env.example apps/server/.env
 
 Edit `apps/server/.env` (git-ignored; `start`, `dev` and the `device:*` scripts load it):
 
-| Variable                   | Default                 | Notes                                                                                                                |
-| -------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `HOST`                     | `127.0.0.1`             | Keep loopback; Tailscale serve proxies to it                                                                         |
-| `PORT`                     | `3001`                  |                                                                                                                      |
-| `DB_PATH`                  | `./data/bullet.db`      | Relative to `apps/server`                                                                                            |
-| `AUDIO_DIR`                | `./data/audio`          | Recordings, kept forever. Back this up with the DB                                                                   |
-| `LLM_BASE_URL`             | `http://127.0.0.1:8080` | llama-server root                                                                                                    |
-| `LLM_MODEL`                | `default`               | Label sent as `model`; match `--alias`                                                                               |
-| `LLM_API_KEY`              | unset                   | Only if llama-server has `--api-key`                                                                                 |
-| `LLM_TIMEOUT_MS`           | `120000`                | Per model call; `180000` suits the iGPU                                                                              |
-| `WHISPER_BASE_URL`         | unset                   | Unset = no server transcription (device drafts only)                                                                 |
-| `WHISPER_MODEL`            | `large-v3-turbo`        | Recorded on each server transcript                                                                                   |
-| `WHISPER_PROMPT`           | unset                   | Optional initial prompt (names, spelling style)                                                                      |
-| `TRANSCRIBE_TIMEOUT_MS`    | `600000`                | Per recording                                                                                                        |
-| `AUTO_APPLY_VALUE_RECORDS` | `false`                 | `true`: confident readings with a value (mood 4, 5 km) apply automatically, with Undo; otherwise they wait for a tap |
-| `LLM_NIGHTLY_MODEL`        | unset                   | The model for the nightly run (theme names, link review); unset = `LLM_MODEL`                                        |
-| `LLM_NIGHTLY_BASE_URL`     | unset                   | Its llama-server, if it is another one (e.g. Gemma 26B on 8083); unset = `LLM_BASE_URL`                              |
-| `EMBED_BASE_URL`           | `LLM_BASE_URL`          | The llama-server started with `--embeddings` (section 3b); the chat server alone answers 501, so links wait          |
-| `EMBED_MODEL`              | `LLM_MODEL`             | Stored with every vector; a new name re-embeds. Also picks the profile                                               |
-| `EMBED_PROFILE`            | from the model name     | `llm` (centred, calibrated for Qwen) or `dedicated` (the spec's raw-cosine thresholds)                               |
-| `EMBED_TIMEOUT_MS`         | `60000`                 | Per embedding request                                                                                                |
-| `TZ`                       | the system zone         | The nightly run is at 02:00 in this zone                                                                             |
+| Variable                   | Default                 | Notes                                                                                                                                                              |
+| -------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HOST`                     | `127.0.0.1`             | Keep loopback; Tailscale serve proxies to it                                                                                                                       |
+| `PORT`                     | `3001`                  |                                                                                                                                                                    |
+| `DB_PATH`                  | `./data/bullet.db`      | Relative to `apps/server`                                                                                                                                          |
+| `AUDIO_DIR`                | `./data/audio`          | Recordings, kept forever. Back this up with the DB                                                                                                                 |
+| `LLM_BASE_URL`             | `http://127.0.0.1:8080` | llama-server root                                                                                                                                                  |
+| `LLM_MODEL`                | `default`               | Label sent as `model`; match `--alias`                                                                                                                             |
+| `LLM_API_KEY`              | unset                   | Only if llama-server has `--api-key`                                                                                                                               |
+| `LLM_TIMEOUT_MS`           | `120000`                | Per model call; `180000` suits the iGPU                                                                                                                            |
+| `WHISPER_BASE_URL`         | unset                   | Unset = no server transcription (device drafts only)                                                                                                               |
+| `WHISPER_MODEL`            | `large-v3-turbo`        | Recorded on each server transcript                                                                                                                                 |
+| `WHISPER_PROMPT`           | unset                   | Optional initial prompt (names, spelling style)                                                                                                                    |
+| `TRANSCRIBE_TIMEOUT_MS`    | `600000`                | Per recording                                                                                                                                                      |
+| `AUTO_APPLY_VALUE_RECORDS` | `false`                 | `true`: confident readings with a value (mood 4, 5 km) apply automatically, with Undo; otherwise they wait for a tap                                               |
+| `LLM_NIGHTLY_MODEL`        | unset                   | The model for the nightly run (theme names, link review); unset = `LLM_MODEL`                                                                                      |
+| `LLM_NIGHTLY_BASE_URL`     | unset                   | Its llama-server, if it is another one (e.g. Gemma 26B on 8083); unset = `LLM_BASE_URL`                                                                            |
+| `EMBED_BASE_URL`           | `LLM_BASE_URL`          | The llama-server started with `--embeddings` (section 3b); the chat server alone answers 501, so links wait. Unset: the `llm` profile, whatever `EMBED_MODEL` says |
+| `EMBED_MODEL`              | `LLM_MODEL`             | Stored with every vector; a new name re-embeds. Also picks the profile                                                                                             |
+| `EMBED_PROFILE`            | from the URL and model  | `llm` (centred, calibrated for Qwen) or `dedicated` (the spec's raw-cosine thresholds)                                                                             |
+| `EMBED_TIMEOUT_MS`         | `60000`                 | Per embedding request                                                                                                                                              |
+| `TZ`                       | the system zone         | The nightly run is at 02:00 in this zone                                                                                                                           |
 
 Create a token for the phone (shown once; it is stored hashed):
 
@@ -291,6 +293,20 @@ server; run twice to compare with and without), `--timeout-ms`.
   ones (one short call each) and writes at most 2 Noticed cards. After downtime it runs once to catch
   up; every limit is checked against the database, so a week offline still gives at most 8 active
   themes and 2 cards. `nightly_runs` records each run and its counts.
+- **The nightly run never holds a capture back.** Between model calls, embedding batches (32) and
+  chunks of the similarity matrix (200 rows) it checks whether an extraction, link or reflect job is
+  waiting; if so it stops (`yielded`: what it did is kept, every step is idempotent and the caps are
+  re-checked) and is offered again as soon as the queue is empty. A failed run waits an hour.
+- **Links are add-only.** A link is made once, by its capture's link job (or a "Same thing"), and is
+  never re-scored when the mean drifts or a model changes; it goes only when the user vetoes it, a
+  nightly review finds it unrelated, or one of its thoughts goes. Themes, by contrast, are recomputed
+  every night from the current vectors.
+- **Volume.** Linking a capture is one scan of all the user's vectors (milliseconds at thousands of
+  thoughts). Theme clustering compares every pair within the 30-day window (O(n²)): about 1.7 s for
+  1 500 thoughts in the window and 10 s for 3 000 on the reference machine, outside any transaction
+  and in yielding chunks. Beyond ~5 000 thoughts in 30 days it would want an approximate index;
+  journals are far below that. Every vector is loaded in memory (Qwen 4B: 10 KB per thought, 30 MB
+  per 3 000).
 
 ## Tests
 

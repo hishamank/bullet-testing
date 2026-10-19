@@ -131,8 +131,11 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
   model as embedder needs the `llm` profile (template + centring; calibrated thresholds in
   `docs/home-server.md`). Corrections (`link_vetoes`, `themes.vetoed_thought_ids`, aliases) are
   keyed by thought id, which survives edits while the text matches. Sensitive thoughts never
-  leave their capture: pull sends such links, memberships, mostly-sensitive themes and
-  quote-less cards as `deleted`.
+  appear outside their capture: a link carries `visible_from` (shown only from the capture whose
+  other end isn't sensitive; never named after the flag), memberships, mostly-sensitive themes and
+  quote-less cards are pulled as `deleted`, and a card's headline is rebuilt when its
+  `headline_thought_id` turns sensitive. The nightly run yields (`shouldYield`) whenever a capture
+  job is ready; it must never hold a capture back. A waiting `thought_resolve` counts in the badge.
 - **Apply engine** (`apps/server/src/apply`): revalidates against current state at apply time;
   a created entity's id **is** the suggestion id (idempotent); `update` payloads are field-level
   patches validated by `targetKindUpdateSchemas` (never a snapshot); undo restores `before`

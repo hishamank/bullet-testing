@@ -305,7 +305,8 @@ split and extracted. No UI, no copy, no notification.
 ## 2f. Connections, themes and Noticed (slice 3)
 
 The app quietly shows the thread when you've said something before, in your own words, and lets you
-say "no, that's not it". Nothing here is in the Inbox badge, and nothing notifies.
+say "no, that's not it". Nothing here notifies. Noticed cards and connection questions are never in
+the Inbox badge; a waiting "Did this close it?" is (like any suggestion waiting for a decision).
 
 **Links between thoughts** of different captures, one of four types:
 
@@ -316,10 +317,11 @@ say "no, that's not it". Nothing here is in the Inbox badge, and nothing notifie
 
 A capture's thoughts are linked within moments of it being `processed` (a `link` job right after
 its extraction): each thought is compared with the 10 closest earlier thoughts, and linked when
-they are close enough (closer still when they share no name). At most **5 links per thought**;
-anything not close enough is dropped, never queued. A nightly run checks the least certain links
-with a bigger model: it settles same person vs same topic, and removes one it finds unrelated (it
-never comes back).
+they are close enough (a lower threshold applies when they share a name). At most **5 links per
+thought**; anything not close enough is dropped, never queued. A nightly run checks the least
+certain links with a bigger model: it settles same person vs same topic, and removes one it finds
+unrelated (it never comes back). Links are only ever added this way, never re-scored: a link made
+stays until you or a nightly review remove it, or one of its thoughts goes.
 
 **Answered loops.** When a later capture seems to answer an open loop, the live model is asked
 "does it?" and a yes proposes closing it: a **`thought_resolve` suggestion** (§3), tier `suggest`,
@@ -329,9 +331,11 @@ capture.
 - **Accept** closes the loop (`resolved_at`, `resolved_by_bullet_id` = the answering capture).
   Refused (`conflict`) when the loop was closed meanwhile: show **Already closed**.
 - **Dismiss** remembers the pair: it is never proposed again, even after re-processing.
-- **Undo** opens the loop again.
+- **Undo** opens the loop again (the link stays, no longer called an answer).
 - A loop you closed by hand is never touched; nothing is proposed from a sensitive answer.
-- It is about another capture's loop, so it never puts the answering capture in `needs_review`.
+- It is about another capture's loop, so it never puts the answering capture in `needs_review`;
+  it does count in the Inbox badge while it waits.
+- Withdrawn when the loop or the answer is deleted, or turns sensitive.
 
 **Connection questions** ("Is this the same thing? «A» / «B»", §2e origin `connection`): a pair a
 little under the link threshold, both worries, things to check, self-questions or ideas. It obeys
@@ -346,7 +350,8 @@ and keeps at most **8 active**. A theme's `status`: `active`, `dormant` (not rec
 come back), or `retired` ("Not a theme", or merged into another: `merged_into_theme_id`).
 
 **Noticed cards** (an Inbox section below Questions): "«quote» · came up N times in M days", up to 3
-quotes (each opens its capture), and the theme as an editable pill. Wording is observational and in
+quotes (each opens its capture; the headline always quotes one of them), and the theme as an
+editable pill. Wording is observational and in
 your words: the app never writes "seem", "tend", "should", "pattern", "stress", "anxious", "always"
 or "never" (only a quote of yours can contain them). At most one card per theme per 14 days, at most
 2 new cards a day; a card you haven't opened is **retired** after 14 days. Status: `new`, `opened`,
@@ -365,12 +370,18 @@ or "never" (only a quote of yours can contain them). At most one card per theme 
 
 A remembered pair is about two thoughts; an edit that rewords a thought makes it a new thought.
 
-**Sensitive thoughts** are linked on the server but never leave their own capture: links touching
-one are not pulled, Noticed never quotes one, they never take part in a connection question or an
-answered loop. A theme made half or more of them is not pulled at all (no card, no name).
+**Sensitive thoughts** are linked, but never appear outside their own capture. A link is shown only
+from the capture whose **other** end is not sensitive: a sensitive capture's own Related still
+lists its non-sensitive links, while the other capture doesn't list it (`visible_from`: `both`,
+`a` or `b`; a link between two sensitive thoughts is not pulled). Noticed never quotes one (if a
+card's headline thought turns sensitive, the headline is rebuilt from another quote, or the card
+goes), and they never take part in a connection question or an answered loop (one waiting is
+withdrawn when its thought turns sensitive). A theme made half or more of them is not pulled at all
+(no card, no name) and doesn't count toward the 8.
 
 **On the phone** (data layer: `apps/mobile/src/data/connections.ts`): Capture detail **Related · N**
-(each row: date, quote, small word: same person / related / answers / again), the Inbox's
+(each row: date, quote, small word: same person / related / answers / again; `listRelated` honours
+`visible_from`), the Inbox's
 **Noticed**, the Stream's "again" dot (a thought in an active theme), "Did this close it?" cards,
 and "Closed by «…»" on open loops (`resolved_by_bullet_id`).
 
@@ -538,7 +549,8 @@ has no capture). Thoughts carry `sensitive` and `never_ask`. Older rows read as 
 Connections (2026-10-19): questions carry `related_thought_id` (a `connection` question's earlier
 thought; null otherwise) and `origin` may be `connection`, whose `options` are `Same thing` and
 `Different`. A `thought_links` row: `a_thought_id`, `a_bullet_id` (the earlier), `b_thought_id`,
-`b_bullet_id`, `type`. A `themes` row: `name` (the user's, else the model's; null until named),
+`b_bullet_id`, `type`, `visible_from` (`both` | `a` | `b`: which capture's Related shows it;
+older rows read as `both`). A `themes` row: `name` (the user's, else the model's; null until named),
 `named_by_user`, `status`, `merged_into_theme_id`, `thought_count`, `day_count`, `first_seen_at`,
 `last_seen_at`. A `theme_thoughts` row: `theme_id`, `thought_id`, `bullet_id`. A `noticed_cards`
 row: `theme_id`, `headline`, `quotes` (`thought_id`, `bullet_id`, `text`; up to 3), `count`,
