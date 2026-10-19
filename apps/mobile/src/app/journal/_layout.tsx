@@ -1,6 +1,8 @@
 import { Slot, usePathname, useRouter } from 'expo-router'
+import { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
-import { BackHeader, Label, Screen } from '@/components/ui'
+import { SettingsSheet } from '@/components/setup/SettingsSheet'
+import { BackHeader, IconButton, Label, Screen } from '@/components/ui'
 import { radius, size, space, type, useTheme } from '@/theme'
 
 const VIEWS = [
@@ -15,9 +17,23 @@ export default function JournalLayout() {
   const t = useTheme()
   const router = useRouter()
   const pathname = usePathname()
+  const [settings, setSettings] = useState(false)
   return (
     <Screen edges={['top', 'left', 'right']}>
-      <BackHeader title="Journal" backLabel="Capture" side="right" onBack={() => router.back()} />
+      <BackHeader
+        title="Journal"
+        backLabel="Capture"
+        side="right"
+        onBack={() => router.back()}
+        accessory={
+          <IconButton
+            icon="settings"
+            label="Settings"
+            iconSize={20}
+            onPress={() => setSettings(true)}
+          />
+        }
+      />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -52,6 +68,7 @@ export default function JournalLayout() {
       <View style={{ flex: 1 }}>
         <Slot />
       </View>
+      <SettingsSheet visible={settings} onClose={() => setSettings(false)} />
     </Screen>
   )
 }

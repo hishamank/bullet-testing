@@ -41,6 +41,8 @@ export interface LinkedThing {
   label: string
   state: ThingState
   link: ThingLink
+  /** Applied for the user automatically: offer Undo (the Inbox's Done-for-you path). */
+  undoable: boolean
 }
 
 const KIND_WORDS: Record<TargetKind, string> = {
@@ -148,5 +150,6 @@ export function linkedThing(
     label: parts.join(' · '),
     state,
     link,
+    undoable: state === 'done_for_you',
   }
 }

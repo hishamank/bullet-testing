@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import type { QuestionItem } from '@/features/inbox/model'
 import { space, type, useTheme } from '@/theme'
 import { Label, TextButton, touch } from '../ui'
-import { card, OptionButton } from './parts'
+import { CaptureLink, card, OptionButton } from './parts'
 
 export function QuestionCard({
   question,
@@ -19,6 +19,12 @@ export function QuestionCard({
   const t = useTheme()
   return (
     <View style={card(t.card)}>
+      <CaptureLink
+        bulletId={question.bulletId}
+        snippet={question.snippet}
+        source={question.source}
+        lines={2}
+      />
       <Label size={16}>{question.text}</Label>
       <View style={styles.options}>
         {question.options.map((o) => (

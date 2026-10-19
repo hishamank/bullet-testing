@@ -8,7 +8,10 @@ import type { BulletProcessingStatus } from '@bullet/core'
 export type CaptureNotice =
   | { kind: 'saved' }
   | { kind: 'failed'; count: number }
+  /** Recordings that can't be transcribed; `bulletId` when there is exactly one (open it). */
+  | { kind: 'untranscribable'; count: number; bulletId: string | null }
   | { kind: 'on_phone'; count: number }
+  | { kind: 'unpaired'; count: number }
   | { kind: 'none' }
 
 export interface NoticeInput {
@@ -19,11 +22,24 @@ export interface NoticeInput {
   onPhoneCount: number
   /** Offline, or the home server is out of reach. */
   cannotReachServer: boolean
+  /** No home server yet ("Not yet" at setup): captures stay on the phone, sync is off. */
+  unpaired?: boolean
+  /** Recordings the server couldn't transcribe (not retryable), oldest first. */
+  untranscribableIds?: readonly string[]
 }
 
 export function captureNotice(i: NoticeInput): CaptureNotice {
   if (i.saved) return { kind: 'saved' }
+  if (i.unpaired) return { kind: 'unpaired', count: i.onPhoneCount }
   if (i.failedCount > 0) return { kind: 'failed', count: i.failedCount }
+  const untranscribable = i.untranscribableIds ?? []
+  if (untranscribable.length > 0) {
+    return {
+      kind: 'untranscribable',
+      count: untranscribable.length,
+      bulletId: untranscribable.length === 1 ? (untranscribable[0] ?? null) : null,
+    }
+  }
   if (i.onPhoneCount > 0 && i.cannotReachServer) return { kind: 'on_phone', count: i.onPhoneCount }
   return { kind: 'none' }
 }
@@ -31,6 +47,15 @@ export function captureNotice(i: NoticeInput): CaptureNotice {
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 
 export const onPhoneText = (n: number) => `${n} on this phone · will sync`
+
+/** The one quiet, tappable line while no home server is paired (tapping opens pairing). */
+export const unpairedText = (n: number) =>
+  n === 0
+    ? "Saved on this phone · Pair a home server when you're ready"
+    : `${n} saved on this phone · Pair to sync`
+
+export const untranscribableText = (n: number) =>
+  `${n} ${plural(n, 'recording', 'recordings')} couldn't be transcribed`
 
 export const failedText = (n: number) =>
   `${n} ${plural(n, 'capture', 'captures')} couldn't be processed`

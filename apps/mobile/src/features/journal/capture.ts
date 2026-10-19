@@ -15,6 +15,7 @@ import {
 import { and, eq } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { ENTITY_TABLES, bulletsWithPendingChanges } from '../../data/mirror'
+import { listRejections } from '../../data/rejections'
 import {
   audioAttachments,
   bullets,
@@ -23,7 +24,14 @@ import {
   trackers,
   transcripts,
 } from '../../data/schema'
-import { errorReason } from './stream'
+import { type InboxNotice, noticeText, summaryContext } from '../inbox/model'
+import { keptAsAudio } from './audio-only'
+import {
+  errorReason,
+  type TranscriptionFailure,
+  transcriptionFailure,
+  unreadableRecordings,
+} from './stream'
 import { type LinkedThing, linkedThing, type SuggestionRow } from './things'
 
 export interface TranscriptRow {
@@ -47,11 +55,18 @@ export interface CaptureDetail {
   timezone: string
   textEditedByUser: boolean
   status: BulletProcessingStatus
+  /** A retryable failure's reason (null for a recording that can't be transcribed). */
   errorReason: string | null
+  /** The recording can't be transcribed: `ask` (Write it down / Keep as audio) or `kept`. */
+  transcriptionFailure: TranscriptionFailure
   audio: AudioRow | null
+  /** This phone couldn't read the recording file to upload it (the text is kept). */
+  audioReadError: boolean
   transcripts: TranscriptRow[]
   thoughts: { id: string; kind: ThoughtKind; kindSource: 'engine' | 'user'; text: string }[]
   things: LinkedThing[]
+  /** Calm notes for an Undo of one of its things the server refused (e.g. edited since). */
+  notices: InboxNotice[]
 }
 
 export function loadCaptureDetail(
@@ -109,6 +124,11 @@ export function loadCaptureDetail(
         .where(eq(trackers.id, trackerId))
         .get() ?? null,
   }
+  const failure = transcriptionFailure(
+    status,
+    b.server_error_code,
+    keptAsAudio(db, [b.id]).has(b.id),
+  )
   return {
     id: b.id,
     text: b.text,
@@ -117,12 +137,34 @@ export function loadCaptureDetail(
     timezone: b.timezone,
     textEditedByUser: b.text_edited_by_user,
     status,
-    errorReason: status === 'failed' ? errorReason(b.server_error_code) : null,
+    errorReason: status === 'failed' && failure === null ? errorReason(b.server_error_code) : null,
+    transcriptionFailure: failure,
     audio,
+    audioReadError: audio ? unreadableRecordings(db, [audio.id]).has(audio.id) : false,
     transcripts: ts,
     thoughts: th.map((t) => ({ id: t.id, kind: t.kind, kindSource: t.kind_source, text: t.text })),
     things: ss.map((s) => linkedThing(s as SuggestionRow, look, now, tz)),
+    notices: undoNotices(db, ss, now, tz),
   }
+}
+
+/** Refused Undos of this capture's things, worded like the Inbox's notices. */
+function undoNotices(
+  db: PhoneDb,
+  rows: (typeof suggestions.$inferSelect)[],
+  now: number,
+  tz: string,
+): InboxNotice[] {
+  const named = new Map(rows.map((s) => [s.id, s]))
+  const refused = listRejections(db).filter(
+    (r) => r.type === 'suggestion.undo' && r.suggestion_id !== null && named.has(r.suggestion_id),
+  )
+  if (refused.length === 0) return []
+  const ctx = summaryContext(db, rows, now, tz)
+  return refused.flatMap((r) => {
+    const text = noticeText(r, named, ctx)
+    return text ? [{ key: r.key, text }] : []
+  })
 }
 
 // ---- pure ----
@@ -239,6 +281,16 @@ export function deleteChoices(thingCount: number): DeleteChoice[] {
       detail: 'Only the capture goes. Tasks, events and readings it made stay.',
     },
   ]
+}
+
+/**
+ * Where "Write it down" starts: the phone's live draft if there was one, else the capture text,
+ * unless that is only the "Voice note, 0:12" placeholder.
+ */
+export function writeDownStart(c: Pick<CaptureDetail, 'text' | 'transcripts'>): string {
+  const draft = lastOf(c.transcripts, 'device_draft')?.text.trim()
+  if (draft) return draft
+  return /^Voice note, [\d:]+$/.test(c.text.trim()) ? '' : c.text
 }
 
 /** An edit is saved only when it is non-empty and actually changes the text. */

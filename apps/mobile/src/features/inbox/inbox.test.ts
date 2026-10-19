@@ -343,12 +343,24 @@ describe('the Inbox read model', () => {
     const before = buildInbox(load(db), [])
     expect(before.questions).toHaveLength(1)
     expect(before.questions[0]?.options).toHaveLength(4)
+    expect(before.questions[0]).toMatchObject({
+      bulletId: B1,
+      snippet: '“dentist tuesday at three, mood is like a 3 today”',
+      source: 'voice',
+    })
 
     answerQuestion(db, Q, 'Next Tuesday', deps)
     const view = buildInbox(load(db), [])
     expect(view.questions).toHaveLength(0)
     const done = new Map(view.done.map((d) => [d.suggestionId, d]))
-    expect(done.get(S_RUN)).toMatchObject({ viaQuestion: false, confirmed: true })
+    expect(done.get(S_RUN)).toMatchObject({
+      viaQuestion: false,
+      confirmed: true,
+      bulletId: B2,
+      snippet: '“start tracking water, ran 5k”',
+      source: 'text',
+    })
+    expect(done.get(S_EVENT)?.bulletId).toBe(B1)
     expect(done.get(S_EVENT)).toMatchObject({ viaQuestion: true, confirmed: false })
     expect(done.get(S_EVENT)?.summary.done).toMatch(/^Dentist · .+ added$/)
     expect(view.groups[0]?.items.map((i) => i.id)).toEqual([S_MOOD])

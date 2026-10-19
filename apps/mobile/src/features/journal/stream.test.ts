@@ -2,7 +2,11 @@ import { describe, expect, test } from 'vite-plus/test'
 import { captureBullet } from '../../data/local'
 import { openTestDb, T0, testDeps } from '../../test/db'
 import { seedAudio, seedBullet, seedSuggestion, seedThought, TZ } from './fixtures'
+import { setState } from '../../data/mirror'
+import { keepAsAudioLocal } from './audio-only'
+import { audioReadErrorKey } from '../../sync/client'
 import {
+  AUDIO_READ_ERROR_TEXT,
   cardAccessibilityLabel,
   cardState,
   groupByDay,
@@ -53,6 +57,31 @@ describe('stream query', () => {
     const [card] = listCaptureCards(db, 10).cards
     expect(card?.status).toBe('saved_local')
     expect(cardState(card!)).toMatchObject({ label: 'On this phone', onPhone: true })
+  })
+
+  test('a recording this phone could not read is flagged, until it uploads', () => {
+    const db = openTestDb()
+    const b = seedBullet(db, T0, { source: 'voice' })
+    const a = seedAudio(db, b, { upload_status: 'pending' })
+    expect(listCaptureCards(db, 10).cards[0]?.audioReadError).toBe(false)
+    setState(db, audioReadErrorKey(a), 'file missing')
+    expect(listCaptureCards(db, 10).cards[0]?.audioReadError).toBe(true)
+    setState(db, audioReadErrorKey(a), '')
+    expect(listCaptureCards(db, 10).cards[0]?.audioReadError).toBe(false)
+  })
+
+  test('"Keep as audio" is remembered on the phone', () => {
+    const db = openTestDb()
+    const b = seedBullet(db, T0, {
+      source: 'voice',
+      server_status: 'failed',
+      server_error_code: 'transcription_failed',
+    })
+    expect(listCaptureCards(db, 10).cards[0]?.keptAsAudio).toBe(false)
+    keepAsAudioLocal(db, b)
+    const [card] = listCaptureCards(db, 10).cards
+    expect(card?.keptAsAudio).toBe(true)
+    expect(cardState(card!).label).toBe('Audio only')
   })
 
   test('deleted captures are left out', () => {
@@ -123,6 +152,28 @@ describe('grouping and wording', () => {
     )
   })
 
+  test('a recording that cannot be transcribed: no Retry; write it down or keep it as audio', () => {
+    const base = { autoApplied: 0, pending: 0, status: 'failed' as const }
+    expect(cardState({ ...base, errorCode: 'transcription_failed' })).toMatchObject({
+      label: "Couldn't transcribe this recording",
+      reason: 'The audio was damaged or no speech was detected',
+      tone: 'warning',
+      retry: false,
+      untranscribable: true,
+    })
+    expect(
+      cardState({ ...base, errorCode: 'transcription_failed', keptAsAudio: true }),
+    ).toMatchObject({ label: 'Audio only', tone: 'muted', retry: false, untranscribable: false })
+    // Transient transcriber trouble keeps Retry.
+    for (const errorCode of ['transcription_unavailable', 'transcription_timeout'] as const) {
+      expect(cardState({ ...base, errorCode })).toMatchObject({
+        label: 'Not processed',
+        retry: true,
+        untranscribable: false,
+      })
+    }
+  })
+
   test('source line and VoiceOver label', () => {
     const card = {
       id: 'x',
@@ -131,6 +182,8 @@ describe('grouping and wording', () => {
       capturedAt: Date.UTC(2026, 9, 15, 6, 40),
       timezone: TZ,
       durationMs: 192_000,
+      audioReadError: false,
+      keptAsAudio: false,
       status: 'transcribing' as const,
       errorCode: null,
       attempts: 0,
@@ -143,6 +196,9 @@ describe('grouping and wording', () => {
     expect(sourceLine({ ...card, source: 'text' })).toBe('Typed · 08:40')
     expect(cardAccessibilityLabel(card)).toBe(
       'Voice note, 3 minutes 12 seconds. 08:40. Transcribing. to check: passport expiry',
+    )
+    expect(cardAccessibilityLabel({ ...card, audioReadError: true })).toContain(
+      AUDIO_READ_ERROR_TEXT,
     )
   })
 })

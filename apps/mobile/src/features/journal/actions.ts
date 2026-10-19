@@ -26,6 +26,7 @@ import {
   updateTrackerEntry,
 } from '../../data/local'
 import { getDb } from '../../data/open'
+import { keepAsAudioLocal } from './audio-only'
 import { deviceDeps } from '../../sync/runtime'
 import { notifyLocalChange, syncNow } from '../sync/engine'
 
@@ -39,6 +40,12 @@ const tap = () =>
   Haptics.selectionAsync().catch(() => {
     // No haptics engine (simulator): the change is what matters.
   })
+
+/** "Keep as audio" for a recording that couldn't be transcribed: phone-local, nothing to sync. */
+export function keepAsAudio(bulletId: string): void {
+  keepAsAudioLocal(getDb(), bulletId)
+  notifyLocalChange()
+}
 
 export const resolveLoop = (thoughtId: string) => {
   run(() => resolveThought(getDb(), thoughtId, deviceDeps))

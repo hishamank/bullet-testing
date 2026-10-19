@@ -14,7 +14,12 @@ export default function CaptureScreen() {
   return (
     <Screen>
       <Composer
-        header={<Corners failedCount={counts.failedIds.length} inboxCount={inbox} />}
+        header={
+          <Corners
+            failedCount={counts.failedIds.length + counts.untranscribableIds.length}
+            inboxCount={inbox}
+          />
+        }
         pinned={<ServerNotes />}
         placeholder="What's on your mind?"
         inputLabel="New capture"

@@ -37,16 +37,20 @@ export default function RootLayout() {
       <Stack
         screenOptions={{ headerShown: false, contentStyle: { backgroundColor: t.background } }}
       >
-        <Stack.Protected guard={pairing === 'unpaired'}>
-          <Stack.Screen name="setup" />
-        </Stack.Protected>
-        <Stack.Protected guard={pairing === 'paired'}>
+        {/* Paired, or "Not yet" at setup: the app works; captures queue until paired. */}
+        <Stack.Protected guard={pairing !== 'unpaired'}>
           <Stack.Screen name="index" />
           <Stack.Screen name="journal" options={{ animation: 'slide_from_left' }} />
           <Stack.Screen name="inbox" />
           <Stack.Screen name="capture/[id]" />
           <Stack.Screen name="answer" />
           <Stack.Screen name="record" options={{ presentation: 'fullScreenModal' }} />
+        </Stack.Protected>
+        {/* First run, and later from Capture's status line or Settings until paired. */}
+        <Stack.Protected guard={pairing !== 'paired'}>
+          <Stack.Screen name="setup" />
+        </Stack.Protected>
+        <Stack.Protected guard={pairing === 'paired'}>
           <Stack.Screen name="server" />
         </Stack.Protected>
       </Stack>

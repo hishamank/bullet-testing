@@ -9,8 +9,15 @@ import { AccessibilityInfo } from 'react-native'
 import type { PhoneDb } from '@/data/db'
 import { getDb } from '@/data/open'
 import { type CaptureCounts, captureCounts, inboxCount } from '@/features/capture/counts'
+import {
+  lastSyncedAt,
+  pendingLine,
+  serverRowTitle,
+  serverStatusLine,
+} from '@/features/setup/settings'
 import type { Store } from '@/features/store'
 import { changeStore, monitorStore, type Pairing, pairingStore } from '@/features/sync/engine'
+import { currentServerSettings } from '@/sync/runtime'
 import {
   cannotReachServer,
   dismissUnreachableNote,
@@ -61,6 +68,37 @@ export function useSyncStatus(): SyncStatus {
     showUnreachableNote: showUnreachableNote(s),
     dismissUnreachableNote: () => monitorStore.set(dismissUnreachableNote),
     lastError: s.lastError?.message ?? null,
+  }
+}
+
+export interface ServerStatus {
+  paired: boolean
+  /** "Connected · host" / "Not paired" / "Can't reach · last synced …". */
+  statusLine: string
+  /** "Pair a home server" or "Change server". */
+  rowTitle: string
+  /** "Pending on this phone · N" (ops not yet confirmed by the server). */
+  pendingLine: string
+}
+
+/** The Settings sheet's Home server section. */
+export function useServerStatus(): ServerStatus {
+  const paired = usePairing() === 'paired'
+  const sync = useSyncStatus()
+  const counts = useCaptureCounts()
+  const synced = useLocalQuery(lastSyncedAt)
+  return {
+    paired,
+    statusLine: serverStatusLine({
+      paired,
+      baseUrl: currentServerSettings()?.baseUrl ?? null,
+      reachability: sync.reachability,
+      cannotReach: sync.cannotReachServer,
+      lastSyncedAt: synced,
+      now: Date.now(),
+    }),
+    rowTitle: serverRowTitle(paired),
+    pendingLine: pendingLine(counts.outbox),
   }
 }
 

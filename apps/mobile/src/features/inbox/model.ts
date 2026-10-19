@@ -46,10 +46,18 @@ export interface QuestionItem {
   text: string
   options: string[]
   bulletId: string
+  /** The capture it came from, as a short quote ('' if the capture isn't on the phone). */
+  snippet: string
+  source: BulletSource
 }
 
 export interface DoneItem {
   suggestionId: string
+  /** The capture it came from (opens Capture detail). */
+  bulletId: string
+  /** That capture as a short quote ('' if it isn't on the phone). */
+  snippet: string
+  source: BulletSource
   summary: Summary
   /** Applied because the user tapped a question's option (rather than automatically). */
   viaQuestion: boolean
@@ -124,17 +132,23 @@ export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {
   }
   const groups = [...byBullet.values()]
 
-  const questionItems = rows.openQuestions.map((q) => ({
+  const capture = (bulletId: string) => {
+    const b = rows.bullets.get(bulletId)
+    return { bulletId, snippet: b ? snippet(b.text) : '', source: b?.source ?? 'text' }
+  }
+
+  const questionItems: QuestionItem[] = rows.openQuestions.map((q) => ({
     id: q.id,
     text: q.text,
     options: q.options.slice(0, MAX_OPTIONS),
-    bulletId: q.source_bullet_id,
+    ...capture(q.source_bullet_id),
   }))
 
-  const done = rows.appliedToday
+  const done: DoneItem[] = rows.appliedToday
     .filter((s) => s.auto_applied || rows.answeredSuggestionIds.has(s.id))
     .map((s) => ({
       suggestionId: s.id,
+      ...capture(s.source_bullet_id),
       summary: summarize(s, rows.ctx),
       viaQuestion: !s.auto_applied,
       confirmed: s.applied_at !== null,
