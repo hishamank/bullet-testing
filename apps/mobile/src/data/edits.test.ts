@@ -90,7 +90,6 @@ const thought = (id: string, kind: 'to_check' | 'worry', position: number) => ({
   kind_source: 'engine' as const,
   resolved_at: null,
   resolved_by_bullet_id: null,
-  sensitive: false,
   never_ask: false,
 })
 

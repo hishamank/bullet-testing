@@ -3,7 +3,7 @@ import {
   pushOpSchema,
   type Question,
   REFLECTIVE_CAPS,
-  type Thought,
+  type SyncedThought,
 } from '@bullet/core'
 import Database from 'better-sqlite3'
 import { eq } from 'drizzle-orm'
@@ -57,7 +57,7 @@ const question = (over: Partial<Question>): Question => ({
   ...over,
 })
 
-const worry: Thought = {
+const worry: SyncedThought = {
   ...base,
   id: WORRY,
   source_bullet_id: B,
@@ -68,7 +68,6 @@ const worry: Thought = {
   kind_source: 'engine',
   resolved_at: null,
   resolved_by_bullet_id: null,
-  sensitive: false,
   never_ask: false,
 }
 

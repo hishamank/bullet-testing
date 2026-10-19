@@ -1,10 +1,14 @@
 import { pushOpSchema, type PullResponse } from '@bullet/core'
+import Database from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { describe, expect, test } from 'vite-plus/test'
 import { openTestDb, testDeps } from '../test/db'
+import { migrate } from './db'
 import { captureBullet, deleteBullet, dismissQuestion, reclassifyThought } from './local'
+import { MIGRATIONS } from './migrations.gen'
 import { applyPull } from './mirror'
 import { listOpenQuestions, listThoughts } from './queries'
-import { outbox, questions, thoughts } from './schema'
+import { outbox, questions, schema, thoughts } from './schema'
 
 const OWNER = '00000000-0000-4000-8000-0000000000aa'
 const B = '00000000-0000-4000-8000-000000000b01'
@@ -39,7 +43,6 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         kind_source: 'engine',
         resolved_at: null,
         resolved_by_bullet_id: null,
-        sensitive: false,
         never_ask: false,
       },
       {
@@ -53,7 +56,6 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         kind_source: 'engine',
         resolved_at: null,
         resolved_by_bullet_id: null,
-        sensitive: false,
         never_ask: false,
       },
     ],
@@ -134,5 +136,30 @@ describe('thoughts and questions on the phone', () => {
         .every((t) => t.state === 'deleted'),
     ).toBe(true)
     expect(listOpenQuestions(db)).toEqual([])
+  })
+})
+
+describe('the sensitive flag is server-only', () => {
+  test('a flag pulled before 0007 is cleared, and pulls work without it', () => {
+    const raw = new Database(':memory:')
+    const db = drizzle(raw, { schema })
+    migrate(db, MIGRATIONS.slice(0, 7))
+    raw
+      .prepare(
+        `INSERT INTO thoughts (id, created_at, updated_at, state, source_bullet_id, position, text,
+          kind, kind_source, sensitive) VALUES (?, 1, 1, 'active', ?, 0, 'a heavy day', 'note',
+          'engine', 1)`,
+      )
+      .run(T1, B)
+    expect(migrate(db)).toBe(1)
+    expect(raw.prepare('SELECT sensitive FROM thoughts WHERE id = ?').get(T1)).toEqual({
+      sensitive: 0,
+    })
+    // A pulled thought has no `sensitive`; the unused column keeps its default.
+    applyPull(db, page())
+    expect(raw.prepare('SELECT sensitive FROM thoughts WHERE id = ?').get(T2)).toEqual({
+      sensitive: 0,
+    })
+    expect(listThoughts(db, B).some((t) => 'sensitive' in t)).toBe(false)
   })
 })

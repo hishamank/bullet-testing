@@ -230,8 +230,8 @@ export const thoughts = sqliteTable(
     /** Open loops (`to_check` / `question`): when resolved, and the note capture that did it. */
     resolved_at: integer('resolved_at'),
     resolved_by_bullet_id: text('resolved_by_bullet_id'),
-    /** Reads as distress (server-flagged). Never shown; only pulled. */
-    sensitive: integer('sensitive', { mode: 'boolean' }).notNull().default(false),
+    // `sensitive` is server-only. Phones that pulled it before still have the column (left
+    // unused, defaulted and cleared by migration 0007); it is never read or written here.
     /** "Not this one" on a reflective question about it: never asked about again. */
     never_ask: integer('never_ask', { mode: 'boolean' }).notNull().default(false),
   },

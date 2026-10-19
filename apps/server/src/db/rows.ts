@@ -1,6 +1,6 @@
 /** Row ↔ contract mapping: what a database row looks like on the wire (`@bullet/core` shapes). */
 
-import type { AudioAttachment, Suggestion, SyncedBullet, Thought } from '@bullet/core'
+import type { AudioAttachment, Suggestion, SyncedBullet, SyncedThought } from '@bullet/core'
 import type { audioAttachments, bullets, suggestions, thoughts } from './schema'
 
 type BulletRow = typeof bullets.$inferSelect
@@ -48,8 +48,10 @@ export function toAudioAttachment(row: typeof audioAttachments.$inferSelect): Au
   return rest
 }
 
-export function toThought(row: typeof thoughts.$inferSelect): Thought {
-  const { span_start, span_end, ...rest } = row
+/** A thought for the phone: `sensitive` is server-only and never leaves the home server. */
+export function toThought(row: typeof thoughts.$inferSelect): SyncedThought {
+  const { span_start, span_end, sensitive, ...rest } = row
+  void sensitive
   return {
     ...rest,
     span: span_start === null || span_end === null ? null : { start: span_start, end: span_end },
