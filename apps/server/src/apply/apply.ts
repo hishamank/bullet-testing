@@ -181,8 +181,34 @@ export interface ApplyOptions {
 }
 
 /**
+ * The pending readings that wait on a proposed tracker (`payload.tracker_id` is the tracker
+ * suggestion's id, which becomes the tracker's id when it is created).
+ */
+function dependentReadings(db: Db, tracker: SuggestionRow): SuggestionRow[] {
+  if (tracker.target_kind !== 'tracker' || tracker.operation !== 'create') return []
+  return db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.owner_id, tracker.owner_id),
+        eq(suggestions.source_bullet_id, tracker.source_bullet_id),
+        eq(suggestions.target_kind, 'tracker_entry'),
+        eq(suggestions.operation, 'create'),
+        eq(suggestions.state, 'active'),
+      ),
+    )
+    .all()
+    .filter((r) => r.payload.tracker_id === tracker.id)
+}
+
+/**
  * Apply a pending suggestion against current state and mark it accepted (or `edited`). An
  * already-applied suggestion is returned unchanged (idempotent).
+ *
+ * Accepting a new tracker ("Start tracking Sleep?") also logs the readings that waited on it: the
+ * user's yes covers the reading they gave in the same capture. One that no longer fits (the user
+ * changed the scale while accepting) stays waiting for its own decision.
  */
 export function applySuggestion(
   db: Db,
@@ -190,6 +216,21 @@ export function applySuggestion(
   now: number,
   opts: ApplyOptions = {},
 ): SuggestionRow {
+  const applied = applyOne(db, s, now, opts)
+  if (applied !== s) {
+    for (const r of dependentReadings(db, applied)) {
+      if (r.status !== 'pending') continue
+      try {
+        applyOne(db, r, now, {})
+      } catch (err) {
+        if (!(err instanceof ApplyError)) throw err
+      }
+    }
+  }
+  return applied
+}
+
+function applyOne(db: Db, s: SuggestionRow, now: number, opts: ApplyOptions = {}): SuggestionRow {
   if (s.applied_entity_id !== null && (s.status === 'accepted' || s.status === 'edited')) return s
   if (s.state !== 'active') throw new ApplyError('invalid', 'suggestion was withdrawn')
   if (s.status !== 'pending') throw new ApplyError('invalid', `suggestion is ${s.status}`)
@@ -216,11 +257,16 @@ export function applySuggestion(
   )
 }
 
-/** Dismiss a pending suggestion. */
+/** Dismiss a pending suggestion. "Not now" on a new tracker also dismisses its waiting readings. */
 export function rejectSuggestion(db: Db, s: SuggestionRow, now: number): SuggestionRow {
   if (s.status === 'rejected') return s
   if (s.status !== 'pending') throw new ApplyError('invalid', `suggestion is ${s.status}`)
-  return updateSuggestionRow(db, s, { status: 'rejected', resolved_at: now }, now)
+  const rejected = updateSuggestionRow(db, s, { status: 'rejected', resolved_at: now }, now)
+  for (const r of dependentReadings(db, s)) {
+    if (r.status === 'pending')
+      updateSuggestionRow(db, r, { status: 'rejected', resolved_at: now }, now)
+  }
+  return rejected
 }
 
 /**
@@ -230,6 +276,15 @@ export function rejectSuggestion(db: Db, s: SuggestionRow, now: number): Suggest
 export function undoSuggestion(db: Db, s: SuggestionRow, now: number): SuggestionRow {
   if (s.applied_entity_id === null || s.applied_at === null) {
     throw new ApplyError('invalid', 'suggestion is not applied')
+  }
+  // Undoing a new tracker takes the readings logged with it along (unless changed by hand).
+  for (const r of dependentReadings(db, s)) {
+    if (r.applied_entity_id === null) continue
+    try {
+      undoSuggestion(db, r, now)
+    } catch (err) {
+      if (!(err instanceof ApplyError)) throw err
+    }
   }
   const entity = getEntity(db, s.target_kind, s.owner_id, s.applied_entity_id)
   // Changed (or deleted) by hand since it was applied: the user's version stays.

@@ -313,3 +313,77 @@ describe('open loops', () => {
     expect(t()?.resolved_at).toBe(T0)
   })
 })
+
+describe('re-processing keeps what did not change', () => {
+  test('an unchanged thought keeps its kind when the model wobbles (to_check → task)', async () => {
+    let run = 0
+    const wobbly: SegmentScript = (capture) => {
+      run += 1
+      const kinds = run === 1 ? (['to_check', 'task'] as const) : (['task', 'task'] as const)
+      const parts = capture.split('. ')
+      return parts.map((p, i) => ({ text: p.replace(/\.$/, ''), kind: kinds[i] ?? 'note' }))
+    }
+    const h = createHarness(llmByText({}), {}, wobbly)
+    const b = await h.capture('Need to check whether the insurance covers it. Call the bank')
+    await h.worker.drain()
+    await h.push([
+      {
+        op_id: uid(),
+        type: 'bullet.edit',
+        bullet_id: b,
+        text: 'Need to check whether the insurance covers it. Call the bank today',
+        edited_at: T0 + 1,
+      },
+    ])
+    await h.worker.drain()
+    const kinds = h.db
+      .select()
+      .from(thoughts)
+      .all()
+      .filter((t) => t.state === 'active')
+      .sort((a, b) => a.position - b.position)
+      .map((t) => [t.text, t.kind])
+    expect(kinds).toEqual([
+      ['Need to check whether the insurance covers it', 'to_check'],
+      ['Call the bank today', 'task'],
+    ])
+  })
+
+  test('a reading of a new tracker keeps its link to the offer across an edit', async () => {
+    const reading = candidate({
+      kind: 'tracker_entry',
+      text: 'slept 6 hours',
+      fields: { tracker: 'sleep', value: 6 },
+    })
+    const h = createHarness(llmByText({ slept: [reading] }), {}, (capture) => [
+      { text: capture, kind: 'tracker' },
+    ])
+    const b = await h.capture('slept 6 hours')
+    await h.worker.drain()
+    const before = h.db.select().from(suggestions).all()
+    const tracker = before.find((s) => s.target_kind === 'tracker')
+    expect(before.find((s) => s.target_kind === 'tracker_entry')?.payload.tracker_id).toBe(
+      tracker?.id,
+    )
+    await h.push([
+      {
+        op_id: uid(),
+        type: 'bullet.edit',
+        bullet_id: b,
+        text: 'slept 6 hours!',
+        edited_at: T0 + 1,
+      },
+    ])
+    await h.worker.drain()
+    const after = h.db
+      .select()
+      .from(suggestions)
+      .all()
+      .filter((s) => s.state === 'active')
+    expect(after.map((s) => s.target_kind).sort()).toEqual(['tracker', 'tracker_entry'])
+    expect(after.find((s) => s.target_kind === 'tracker')?.id).toBe(tracker?.id)
+    expect(after.find((s) => s.target_kind === 'tracker_entry')?.payload.tracker_id).toBe(
+      tracker?.id,
+    )
+  })
+})

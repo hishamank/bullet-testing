@@ -333,31 +333,79 @@ describe('processCapture: capture → thoughts → things', () => {
       ],
     )
     const out = await processCapture({ llm, config }, { text: 'slept 6 hours', ...CTX }, EMPTY)
-    // The reading stays an activity; the offer is a tracker definition the question is about.
-    expect(out.things.map((t) => [t.target_kind, t.tier])).toEqual([
-      ['activity', 'suggest'],
-      ['tracker', expect.not.stringMatching(/^auto$/)],
+    // Decision 3: the tracker offer (never auto), then the reading as an entry depending on it.
+    expect(out.things.map((t) => [t.target_kind, t.operation, t.tier])).toEqual([
+      ['tracker', 'create', 'suggest'],
+      ['tracker_entry', 'create', 'suggest'],
     ])
-    expect(out.things[1]?.payload).toEqual({
-      name: 'sleep',
+    expect(out.things[0]?.payload).toEqual({
+      name: 'Sleep',
       input_type: 'number',
-      config: { input_type: 'number' },
+      config: { input_type: 'number', unit: 'h' },
     })
+    expect(out.things[1]).toMatchObject({ payload: { value: 6 }, dependsOn: 0 })
     expect(out.questions[0]).toMatchObject({
       topic: 'new_tracker',
-      text: 'Start tracking "sleep"?',
+      text: 'Start tracking Sleep?',
       options: ['Yes', 'No'],
-      thingIndex: 1,
+      thingIndex: 0,
     })
+  })
+
+  test('two readings of one new tracker in a capture share one offer', async () => {
+    const llm = scripted(
+      () => [
+        { text: 'mood 2 sur 5 ce matin', kind: 'tracker' },
+        { text: 'call mom', kind: 'task' },
+        { text: 'mood 4/5 now', kind: 'tracker' },
+      ],
+      (t) =>
+        t === 'call mom'
+          ? [{ fields: { title: 'call mom' } }]
+          : [{ kind: 'tracker_entry', orientation: 'happened', fields: { tracker: 'mood' } }],
+    )
+    const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
+    expect(
+      out.things.map((t) => [t.target_kind, t.payload.value ?? t.payload.name, t.dependsOn]),
+    ).toEqual([
+      ['tracker', 'Mood', undefined],
+      ['tracker_entry', 2, 0],
+      ['task', undefined, undefined],
+      ['tracker_entry', 4, 0],
+    ])
+    expect(out.questions.filter((q) => q.topic === 'new_tracker')).toHaveLength(1)
+  })
+
+  test('a reprocessed thought keeps its previous kind when its text is unchanged', async () => {
+    const llm = scripted(
+      () => [
+        { text: 'Need to check whether the insurance covers it', kind: 'task' },
+        { text: 'new idea', kind: 'idea' },
+      ],
+      () => [],
+    )
+    const out = await processCapture(
+      { llm, config },
+      {
+        text: 'x',
+        ...CTX,
+        priorThoughts: [
+          { text: 'need to check whether the insurance  covers it', kind: 'to_check' },
+        ],
+      },
+      EMPTY,
+    )
+    expect(out.thoughts.map((t) => t.kind)).toEqual(['to_check', 'idea'])
   })
 
   test('at most 3 questions per capture, date questions first', async () => {
     const llm = scripted(
-      () => Array.from({ length: 5 }, (_, i) => ({ text: `reading ${i}`, kind: 'tracker' })),
+      () =>
+        ['mood', 'sleep', 'water', 'weight', 'energy'].map((t) => ({ text: t, kind: 'tracker' })),
       (t) => [{ kind: 'tracker_entry', orientation: 'happened', fields: { name: t, value: 1 } }],
     )
     const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
-    // Each reading: an activity plus a tracker offer.
+    // Each reading: a tracker offer plus the reading.
     expect(out.things).toHaveLength(10)
     expect(out.questions).toHaveLength(3)
   })

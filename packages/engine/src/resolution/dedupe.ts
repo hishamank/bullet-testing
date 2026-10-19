@@ -25,7 +25,13 @@ export function dedupeOutcome(outcome: ResolveOutcome): DedupeOutcome {
   // Old suggestion index → index of the kept suggestion it collapses into.
   const remap: number[] = []
 
-  for (const s of outcome.suggestions) {
+  for (const original of outcome.suggestions) {
+    // A reading that depends on a dropped tracker offer now depends on the kept one (an offer
+    // always comes before its readings, so it is already remapped).
+    const s =
+      original.dependsOn === undefined
+        ? original
+        : { ...original, dependsOn: remap[original.dependsOn] ?? original.dependsOn }
     const key = suggestionKey(s)
     const kept = keptByKey.get(key)
     if (kept !== undefined) {
@@ -58,7 +64,13 @@ export function dedupeOutcome(outcome: ResolveOutcome): DedupeOutcome {
 }
 
 function suggestionKey(s: ResolvedSuggestion): string {
-  return stableStringify([s.target_kind, s.operation, s.target_id, normalize(s.payload)])
+  return stableStringify([
+    s.target_kind,
+    s.operation,
+    s.target_id,
+    normalize(s.payload),
+    s.dependsOn ?? null,
+  ])
 }
 
 /** Case, Unicode form and whitespace are not meaningful differences in a payload's text. */

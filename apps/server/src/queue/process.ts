@@ -281,9 +281,15 @@ export async function processClaimedJob(
   const { bullet } = stage
   const snapshot = buildSnapshot(deps.db, bullet)
   const ctx = { capturedAt: bullet.captured_at, timezone: bullet.timezone }
+  // Processed before (an edit, a retry): unchanged thoughts keep their kinds.
+  const priorThoughts = deps.db
+    .select({ text: thoughts.text, kind: thoughts.kind })
+    .from(thoughts)
+    .where(and(eq(thoughts.source_bullet_id, bullet.id), eq(thoughts.state, 'active')))
+    .all()
   const outcome = await processCapture(
     { llm: deps.llm, config: deps.engine },
-    { text: bullet.text, ...ctx },
+    { text: bullet.text, ...ctx, priorThoughts },
     snapshot,
   )
 

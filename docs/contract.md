@@ -199,7 +199,7 @@ survives the capture being processed again.
 ## 2d. Clarifying questions
 
 Sometimes a thing is ambiguous. The app may then ask a **clarifying question**: short, concrete,
-about one thing. Examples: "Which Thursday: today or next week?", "Start tracking sleep?".
+about one thing. Examples: "Which Thursday: today or next week?", "Start tracking Sleep?".
 
 - At most **3** per capture.
 - Each has a **topic** (`date`, `new_tracker` or `other`), the question text, up to 4 quick
@@ -212,7 +212,9 @@ about one thing. Examples: "Which Thursday: today or next week?", "Start trackin
     task or event the question is about (keeping its time of day), and it is **applied**. It then
     shows as applied, with **Undo**, like anything done for you.
   - **"Start tracking X?"**: **Yes** creates the tracker (your tap is the OK a new tracker always
-    needs). **No** dismisses that suggestion. The reading you said stays as an activity either way.
+    needs) and logs the reading you gave with it. **No** dismisses the tracker and that reading
+    (your words stay in the capture's thought). The Inbox shows the same decision on the
+    tracker's own card (see §3), and deciding there answers this question too.
 - **Or answer with a capture** (typed or spoken) that points at the question.
 - Either way the question becomes `answered` (with the option you tapped, if any).
 - There are no open-ended or reflective questions in slice 1. Those come later, are optional, and
@@ -226,7 +228,11 @@ event). Each suggestion is one proposed change:
 - **Kind:** `task`, `event`, `tracker` (a new thing to track), `tracker_entry` (a reading such as
   mood 4), or `activity` (something you did).
 - **Operation:** `create` (make a new one), `append` (log under an existing tracker), or `update`
-  (change something that exists, such as marking a task done).
+  (change something that exists, such as marking a task done). A `tracker_entry` **`create`** is
+  a reading of a tracker that is itself only proposed: its `payload.tracker_id` is that `tracker`
+  suggestion's id (which becomes the tracker's id once created). It is decided **with** the
+  tracker, never on its own: accepting the tracker logs it, dismissing the tracker dismisses it,
+  undoing the tracker undoes it. _Added 2026-10-19._
 - **Tier:** how sure the system is. This is what to show, rather than a percentage:
   - `auto`: applied automatically. The UI should offer **Undo**.
   - `suggest`: probably right; one tap to confirm.
@@ -241,6 +247,17 @@ Rules the design can rely on:
 - Suggestions **never expire**. Review whenever you like.
 - **New trackers are never applied automatically.** They always need your OK.
 - Readings with a value (mood 4, weight 72) and new tasks/events wait for a tap by default.
+- **A reading is never a value-less activity.** "Slept 6 hours", "meditated 20 minutes",
+  "mood 2 sur 5" always carry their value: logged under an existing tracker ("Log 6 h to
+  Sleep?"), or, for something not tracked yet, a new tracker plus the reading ("Start tracking
+  Sleep?"). Only a value-less activity ("meditated", "went for a walk") may be applied
+  automatically.
+- **Tracker names are a short noun** for the measured thing, 1–2 words, Title Case, in your
+  language: "Mood", "Sleep", "Sommeil". Never the reading, its unit or its value.
+- **Inbox wording.** A new tracker: "Start tracking Mood?", its name in an editable field
+  (pre-filled), buttons **Start tracking** (accept, with the edited name as the payload's
+  `name`) and **Not now** (dismiss), and under it what it logs ("Logs 6 h from this capture").
+  A later reading: "Log 6 h to Sleep?".
 - Accepting a suggestion that's been waiting a while checks it against what's there **now**. If
   it no longer makes sense (say, the task it would mark done was deleted), you'll be told and
   nothing changes.

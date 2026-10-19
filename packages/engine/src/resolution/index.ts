@@ -8,6 +8,16 @@ export {
   type ResolvedSuggestion,
   type ResolveOutcome,
   resolveCandidates,
+  startTrackingQuestion,
+  type ThoughtContext,
   withProvenance,
 } from './resolve'
+export { trackerName, trackerNounFrom } from './naming'
+export {
+  convertDuration,
+  normalizeUnit,
+  type Reading,
+  readingFromFields,
+  readingFromText,
+} from './reading'
 export { assignTier, type TierOptions } from './tier'

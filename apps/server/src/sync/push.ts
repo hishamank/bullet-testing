@@ -16,7 +16,7 @@ import {
   rejectSuggestion,
   undoSuggestion,
 } from '../apply/apply'
-import { answerQuestionWithOption } from '../apply/answer'
+import { answerQuestionWithOption, settleTrackerQuestions } from '../apply/answer'
 import { deleteByHand, editByHand } from '../apply/manual'
 import { createBullet, deleteBullet, editBullet, retryBullet } from '../capture/bullets'
 import {
@@ -51,12 +51,14 @@ function executeOp(db: Db, ownerId: string, op: PushOp, now: number): 'applied' 
       // Already accepted (e.g. from another device): nothing to do.
       if (s.status === 'accepted' || s.status === 'edited') return 'duplicate'
       applySuggestion(db, s, now, { payload: op.payload })
+      settleTrackerQuestions(db, s, true, now)
       refreshReviewStatus(db, ownerId, s.source_bullet_id, now)
       return 'applied'
     }
     case 'suggestion.reject': {
       const s = suggestionOrThrow(db, ownerId, op.suggestion_id)
       rejectSuggestion(db, s, now)
+      settleTrackerQuestions(db, s, false, now)
       refreshReviewStatus(db, ownerId, s.source_bullet_id, now)
       return 'applied'
     }

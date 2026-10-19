@@ -18,6 +18,8 @@ export {
   type CaptureOutcome,
   type CaptureQuestionDraft,
   EXTRACTABLE_THOUGHT_KINDS,
+  keepPriorKinds,
+  type PriorThought,
   processCapture,
   type ThingDraft,
 } from './pipeline'

@@ -12,6 +12,9 @@
  * Matching: first by identity (kind + operation + target + normalised title/name), then any left
  * over pair up by kind + operation + target in order — so a small rewording of the bullet keeps
  * the task the user already accepted (and edited) instead of replacing it.
+ *
+ * A reading that depends on a proposed tracker (`dependsOn`) gets that tracker suggestion's id as
+ * its `payload.tracker_id`: ids are settled for every draft before anything is written.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -107,12 +110,19 @@ export function reconcileSuggestions(
     if (hit) pairs.push([hit, d, n])
     else added.push(n)
   }
+  for (const [s, , n] of pairs) ids[n] = s.id
+  for (const n of added) ids[n] = randomUUID()
+  // A reading of a proposed tracker logs under that suggestion's id (the tracker's id once created).
+  const linked = (d: ThingDraftWithThought): ThingDraftWithThought =>
+    d.dependsOn === undefined || !ids[d.dependsOn]
+      ? d
+      : { ...d, payload: { ...d.payload, tracker_id: ids[d.dependsOn] } }
 
   // Retire first, so an undo can't trip over a suggestion about to be re-added.
   for (const s of pool) retireSuggestion(db, s, now)
 
-  for (const [s, d, n] of pairs) {
-    ids[n] = s.id
+  for (const [s, raw] of pairs) {
+    const d = linked(raw)
     if (s.status !== 'pending') continue
     const thoughtId = d.thoughtId ?? null
     const payload = withProvenance(d, bullet.owner_id, bullet.id, thoughtId).payload
@@ -129,11 +139,11 @@ export function reconcileSuggestions(
   }
 
   for (const n of added) {
-    const d = drafts[n] as ThingDraftWithThought
+    const d = linked(drafts[n] as ThingDraftWithThought)
     const insert = withProvenance(d, bullet.owner_id, bullet.id, d.thoughtId ?? null)
     const row: SuggestionRow = {
       ...insert,
-      id: randomUUID(),
+      id: ids[n] as string,
       created_at: now,
       updated_at: now,
       state: 'active',
@@ -142,7 +152,6 @@ export function reconcileSuggestions(
     }
     db.insert(suggestions).values(row).run()
     touch(db, bullet.owner_id, 'suggestions', row.id)
-    ids[n] = row.id
     autoApply(db, row, now)
   }
 

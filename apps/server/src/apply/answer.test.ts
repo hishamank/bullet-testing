@@ -1,6 +1,6 @@
 import { zonedToEpoch } from '@bullet/engine'
 import { describe, expect, test } from 'vite-plus/test'
-import { bullets, events, questions, suggestions, trackers } from '../db/schema'
+import { bullets, events, questions, suggestions, trackerEntries, trackers } from '../db/schema'
 import { candidate, createHarness, llmByText, uid } from '../test/helpers'
 
 const paris = (day: number, hour: number) =>
@@ -107,7 +107,7 @@ describe('answering a clarifying question by tapping an option', () => {
     expect(h.db.select().from(questions).get()?.status).toBe('open')
   })
 
-  test('new tracker: "Yes" creates the tracker (never on its own), the reading stays', async () => {
+  test('new tracker: "Yes" creates the tracker (never on its own) and logs the reading', async () => {
     const h = createHarness(llm())
     const q = await questionFor(h, 'slept 6 hours')
     expect(q).toMatchObject({ topic: 'new_tracker', options: ['Yes', 'No'] })
@@ -119,30 +119,82 @@ describe('answering a clarifying question by tapping an option', () => {
     expect(tracker?.id).toBe(q.suggestion_id)
     expect(h.db.select().from(trackers).all()).toHaveLength(0)
 
+    // The reading waits on the tracker: a tracker entry pointing at the tracker suggestion.
+    const reading = h.db
+      .select()
+      .from(suggestions)
+      .all()
+      .find((s) => s.target_kind === 'tracker_entry')
+    expect(reading).toMatchObject({
+      operation: 'create',
+      tier: 'suggest',
+      status: 'pending',
+      payload: { tracker_id: tracker?.id, value: 6 },
+    })
+    expect(q.text).toBe('Start tracking Sleep?')
+
     await h.push([answer(q.id, 'Yes')])
     expect(h.db.select().from(trackers).get()).toMatchObject({
-      name: 'sleep',
+      id: tracker?.id,
+      name: 'Sleep',
       input_type: 'number',
-      config: { input_type: 'number', unit: 'hours' },
+      config: { input_type: 'number', unit: 'h' },
     })
     const after = h.db.select().from(suggestions).all()
     expect(after.find((s) => s.target_kind === 'tracker')).toMatchObject({
       status: 'accepted',
       auto_applied: false,
     })
-    expect(after.find((s) => s.target_kind === 'activity')?.status).toBe('pending')
+    expect(after.find((s) => s.target_kind === 'tracker_entry')).toMatchObject({
+      status: 'accepted',
+      auto_applied: false,
+    })
+    expect(h.db.select().from(trackerEntries).get()).toMatchObject({
+      tracker_id: tracker?.id,
+      value: 6,
+    })
+    expect(after.some((s) => s.target_kind === 'activity')).toBe(false)
+    expect(h.db.select().from(bullets).get()?.proc_status).toBe('processed')
+  })
+
+  test('new tracker: accepted with an edited name ("Start tracking" in the Inbox)', async () => {
+    const h = createHarness(llm())
+    await questionFor(h, 'slept 6 hours')
+    const tracker = h.db
+      .select()
+      .from(suggestions)
+      .all()
+      .find((s) => s.target_kind === 'tracker')!
+    await h.push([
+      {
+        op_id: uid(),
+        type: 'suggestion.accept',
+        suggestion_id: tracker.id,
+        payload: { ...tracker.payload, name: 'Night sleep' },
+      },
+    ])
+    expect(h.db.select().from(trackers).get()?.name).toBe('Night sleep')
+    expect(h.db.select().from(trackerEntries).get()?.value).toBe(6)
+    // Its "Start tracking …?" question is answered by the card's decision.
+    expect(h.db.select().from(questions).get()).toMatchObject({
+      status: 'answered',
+      answer_option: 'Yes',
+    })
+    // Undo takes the reading logged with it along.
+    await h.push([{ op_id: uid(), type: 'suggestion.undo', suggestion_id: tracker.id }])
+    expect(h.db.select().from(trackers).get()?.state).toBe('deleted')
+    expect(h.db.select().from(trackerEntries).get()?.state).toBe('deleted')
   })
 
   test('new tracker: "No" dismisses the tracker suggestion', async () => {
     const h = createHarness(llm())
     const q = await questionFor(h, 'slept 6 hours')
     await h.push([answer(q.id, 'No')])
-    const tracker = h.db
-      .select()
-      .from(suggestions)
-      .all()
-      .find((s) => s.target_kind === 'tracker')
-    expect(tracker?.status).toBe('rejected')
+    const all = h.db.select().from(suggestions).all()
+    expect(all.find((s) => s.target_kind === 'tracker')?.status).toBe('rejected')
+    // "Not now": the reading that waited on it goes too (the thought keeps the words).
+    expect(all.find((s) => s.target_kind === 'tracker_entry')?.status).toBe('rejected')
+    expect(h.db.select().from(bullets).get()?.proc_status).toBe('processed')
     expect(h.db.select().from(trackers).all()).toHaveLength(0)
     expect(h.db.select().from(questions).get()?.answer_option).toBe('No')
   })

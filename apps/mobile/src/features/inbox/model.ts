@@ -3,14 +3,18 @@
  * notices for refused decisions. `buildInbox` is pure over plain rows; `loadInbox` fetches them.
  */
 
-import type { BulletSource, SuggestionTier, TrackerConfig } from '@bullet/core'
+import type { BulletSource, SuggestionTier, TrackerConfig, TrackerEntryValue } from '@bullet/core'
 import { zonedParts, zonedToEpoch } from '@bullet/engine'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
-import { listOpenQuestions, listPendingSuggestions } from '../../data/queries'
+import {
+  listOpenQuestions,
+  listPendingSuggestions,
+  listReadingsWaitingOnTrackers,
+} from '../../data/queries'
 import { listRejections, type SyncRejection } from '../../data/rejections'
 import { bullets, events, questions, suggestions, tasks, trackers } from '../../data/schema'
-import { type Summary, type SummaryContext, snippet, summarize } from './summary'
+import { formatValue, type Summary, type SummaryContext, snippet, summarize } from './summary'
 import type { Decision, UndoState } from './undo'
 
 type SuggestionRow = typeof suggestions.$inferSelect
@@ -25,6 +29,10 @@ export interface DecideItem {
   summary: Summary
   tier: SuggestionTier
   isNewTracker: boolean
+  /** A new tracker's proposed name, pre-filled in its editable name field. */
+  trackerName: string | null
+  /** Readings that are logged when this new tracker is accepted ("6 h"). */
+  logs: string[]
   /** Set while the "Added / Dismissed · Undo" window is open. */
   decision: Decision | null
   /** Edit-then-accept makes sense (a new thing or a reading; not a change to an existing one). */
@@ -84,6 +92,8 @@ export interface InboxView {
 export interface InboxRows {
   /** Pending suggestions plus any whose Undo window is open, oldest first. */
   decide: SuggestionRow[]
+  /** Pending readings that wait on a proposed tracker in `decide` (shown on its card). */
+  waiting?: SuggestionRow[]
   /** Accepted/edited suggestions resolved or applied today. */
   appliedToday: SuggestionRow[]
   openQuestions: QuestionRow[]
@@ -98,18 +108,41 @@ export interface InboxRows {
 
 const EDITABLE = new Set(['create', 'append'])
 
+/** A tracker name as typed: trimmed, one line; null when empty (Start tracking is disabled). */
+export function trackerNameOrNull(typed: string): string | null {
+  const name = typed.replace(/\s+/g, ' ').trim()
+  return name === '' ? null : name.slice(0, 60)
+}
+
+/** The quiet line under a new tracker: what accepting it logs ("Logs 6 h from this capture"). */
+export function logsLine(logs: readonly string[]): string | null {
+  return logs.length === 0 ? null : `Logs ${logs.join(', ')} from this capture`
+}
+
 export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {
   const decisions = new Map(undo.map((e) => [e.suggestionId, e.decision]))
   const byBullet = new Map<string, CaptureGroup>()
   for (const s of rows.decide) {
     const decision = decisions.get(s.id) ?? null
     if (s.status !== 'pending' && decision === null) continue
+    const isNewTracker = s.target_kind === 'tracker' && s.operation === 'create'
     const item: DecideItem = {
       id: s.id,
       bulletId: s.source_bullet_id,
       summary: summarize(s, rows.ctx),
       tier: s.tier,
-      isNewTracker: s.target_kind === 'tracker' && s.operation === 'create',
+      isNewTracker,
+      trackerName: isNewTracker && typeof s.payload.name === 'string' ? s.payload.name : null,
+      logs: isNewTracker
+        ? (rows.waiting ?? [])
+            .filter((r) => r.payload.tracker_id === s.id && r.payload.value !== undefined)
+            .map((r) =>
+              formatValue(
+                r.payload.value as TrackerEntryValue,
+                s.payload.config as TrackerConfig | undefined,
+              ),
+            )
+        : [],
       decision,
       editable: EDITABLE.has(s.operation),
     }
@@ -272,6 +305,7 @@ export function loadInboxRows(
 
   return {
     decide,
+    waiting: listReadingsWaitingOnTrackers(db),
     appliedToday,
     openQuestions,
     answeredSuggestionIds,

@@ -30,6 +30,7 @@
 
 import type {
   SuggestionInsert,
+  ThoughtKind,
   SuggestionOperation,
   SuggestionPayload,
   SuggestionTier,
@@ -44,6 +45,8 @@ import type { QuestionTopic } from '@bullet/core'
 import { ambiguousWeekday, type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
 import { safeTimezone, zonedParts, zonedToEpoch } from '../time/zoned'
 import { type Match, matchOpenTask, matchTracker, TRACKER_NAME_FIELDS } from './match'
+import { trackerName } from './naming'
+import { convertDuration, type Reading, readingFromFields, readingFromText } from './reading'
 import { assignTier } from './tier'
 
 /** A Suggestion INSERT draft — owner_id/source_bullet_id are added when persisting. */
@@ -54,6 +57,18 @@ export interface ResolvedSuggestion {
   payload: SuggestionPayload
   confidence: number
   tier: SuggestionTier
+  /**
+   * A reading logged under a tracker that is itself only proposed: the index (in the same list)
+   * of that tracker `create` suggestion. Persisting sets `payload.tracker_id` to its id (a
+   * created entity's id is its suggestion's id), and accepting the tracker logs the reading.
+   */
+  dependsOn?: number
+}
+
+/** What the resolver knows about the thought the candidates came from. */
+export interface ThoughtContext {
+  kind?: ThoughtKind
+  text?: string
 }
 
 /**
@@ -82,10 +97,21 @@ export interface ResolveOutcome {
 type Ask = (q: Omit<QuestionDraft, 'suggestionIndex'>) => void
 
 /**
- * Offers an extra suggestion alongside the one being resolved, with a question about it (e.g. a
- * tracker definition with "Start tracking X?"). It is placed right after the resolved suggestion.
+ * What one 'happened' candidate resolves to: usually one suggestion; a reading of something not
+ * tracked yet is two (the tracker offer, then the reading that depends on it). `dependsOn` and
+ * `questions[].at` index into `suggestions`.
  */
-type Offer = (s: ResolvedSuggestion, q: Omit<QuestionDraft, 'suggestionIndex'>) => void
+interface Happened {
+  suggestions: ResolvedSuggestion[]
+  questions: { at: number; q: Omit<QuestionDraft, 'suggestionIndex'> }[]
+}
+
+/** Thoughts about the future (a plan, an appointment): nothing in them has happened yet. */
+const PLAN_THOUGHTS: readonly ThoughtKind[] = ['task', 'event']
+
+/** "Remind me to…", "don't forget to…": a one-off intention, never a tracker definition. */
+const REMINDER =
+  /\b(remind me|reminder|don'?t forget|do not forget|remember to|n'oublie|rappelle[- ]moi|fakkerne|fakirne|ma tensa)\b/i
 
 /**
  * Turn a {@link ResolvedSuggestion} draft into a full Suggestion INSERT, attaching provenance.
@@ -202,31 +228,38 @@ export function resolveCandidates(
   snapshot: ExtractionSnapshot,
   config: EngineConfig,
   ctx: CaptureContext,
+  thought: ThoughtContext = {},
 ): ResolveOutcome {
   const suggestions: ResolvedSuggestion[] = []
   const questions: QuestionDraft[] = []
   let skipped = 0
   // A question raised while resolving a candidate is about the suggestion it pushes next.
   const ask: Ask = (q) => questions.push({ ...q, suggestionIndex: suggestions.length })
-  const offers: Parameters<Offer>[] = []
-  const offer: Offer = (o, q) => offers.push([o, q])
-  const flushOffers = () => {
-    for (const [o, q] of offers.splice(0)) {
-      questions.push({ ...q, suggestionIndex: suggestions.length })
-      suggestions.push(o)
-    }
-  }
 
   for (const candidate of candidates) {
     // Small local models (e.g. gemma3:4b) sometimes WRAP field values one level deep under
     // structured output — `value: { value: 3 }`, `name: { name: 'mood' }`. Flatten that single
     // level ONCE here so every downstream reader works on primitives unchanged (see flattenFields).
-    const normalized: Candidate = { ...candidate, fields: flattenFields(candidate.fields) }
+    const normalized = rerouted({ ...candidate, fields: flattenFields(candidate.fields) }, thought)
     switch (normalized.orientation) {
       case 'happened': {
-        const resolved = resolveHappened(normalized, snapshot, config, ctx, offer)
-        suggestions.push(resolved)
-        flushOffers()
+        const resolved = resolveHappened(normalized, snapshot, config, ctx, thought)
+        // A plan ("Pay the electricity bill") has not happened: a record extracted from it ("Paid
+        // the electricity bill") is the model's invention. Marking an open task done stays.
+        const closesTask = resolved.suggestions.some(
+          (s) => s.target_kind === 'task' && s.operation === 'update',
+        )
+        if (thought.kind !== undefined && PLAN_THOUGHTS.includes(thought.kind) && !closesTask) {
+          skipped += 1
+          break
+        }
+        const base = suggestions.length
+        for (const s of resolved.suggestions) {
+          suggestions.push(s.dependsOn === undefined ? s : { ...s, dependsOn: base + s.dependsOn })
+        }
+        for (const { at, q } of resolved.questions) {
+          questions.push({ ...q, suggestionIndex: base + at })
+        }
         break
       }
       case 'future_oneoff': {
@@ -260,17 +293,77 @@ export function resolveCandidates(
   return { suggestions, questions, skipped }
 }
 
+/**
+ * Deterministic backstops on the model's routing:
+ *  - a "tracker definition" for a one-off intention ("Remind me to buy olive oil tomorrow"): a
+ *    reminder, a dated one-off, or a thought the segmenter called a task/event is a TASK;
+ *  - an `activity` the model labelled a plan in a plan thought keeps its plan orientation.
+ */
+function rerouted(candidate: Candidate, thought: ThoughtContext): Candidate {
+  if (candidate.orientation === 'future_recurring' && candidate.kind === 'tracker') {
+    const said = `${candidate.text} ${thought.text ?? ''}`
+    const oneOff =
+      REMINDER.test(said) ||
+      (thought.kind !== undefined && PLAN_THOUGHTS.includes(thought.kind)) ||
+      /\b(tomorrow|tonight|today|demain|bukra|bokra|ce soir)\b/i.test(said)
+    if (oneOff) {
+      const title = stringFieldOrNull(candidate.fields, ['title', 'name']) ?? candidate.text
+      return {
+        ...candidate,
+        kind: 'task',
+        orientation: 'future_oneoff',
+        fields: { ...candidate.fields, title },
+      }
+    }
+  }
+  return candidate
+}
+
+/**
+ * The reading a 'happened' candidate carries, if any: the model's value (under `value`,
+ * `quantity`, `duration`…), else a number/duration/scale recovered from its words. A lone number
+ * counts only when the thing is known to be a reading (a tracker thought or tracker candidate).
+ */
+function readingOf(candidate: Candidate, thought: ThoughtContext): Reading | null {
+  const readingKind =
+    candidate.kind === 'tracker_entry' || candidate.kind === 'tracker' || thought.kind === 'tracker'
+  const fromFields = readingFromFields(candidate.fields)
+  if (fromFields) {
+    // The model's number with the text's unit/scale, when it left those out.
+    if (fromFields.unit === null && fromFields.scale === null) {
+      const fromText = readingFromText(candidate.text, { allowBare: false })
+      if (fromText && fromText.value === fromFields.value) return fromText
+    }
+    return fromFields
+  }
+  return (
+    readingFromText(candidate.text, { allowBare: readingKind }) ??
+    (readingKind && thought.text ? readingFromText(thought.text, { allowBare: true }) : null)
+  )
+}
+
 /** Route a 'happened' candidate: append a tracker entry, mark a task done, or create activity. */
 function resolveHappened(
   candidate: Candidate,
   snapshot: ExtractionSnapshot,
   config: EngineConfig,
   ctx: CaptureContext,
-  offer: Offer,
-): ResolvedSuggestion {
+  thought: ThoughtContext,
+): Happened {
   const occurredAt = recordTime(candidate, ctx)
-  const trackerHit = matchTracker(candidate, snapshot.trackers)
+  const reading = readingOf(candidate, thought)
+  const readingKind =
+    candidate.kind === 'tracker_entry' || candidate.kind === 'tracker' || thought.kind === 'tracker'
+  // What is measured, as a short noun ("Sleep"): the tracker's name, and one more way to match.
+  const name = trackerName([
+    stringFieldOrNull(candidate.fields, [...TRACKER_NAME_FIELDS]),
+    readingKind ? candidate.referenceName : null,
+    stringFieldOrNull(candidate.fields, ['name', 'title']),
+    candidate.text,
+  ])
+  const trackerHit = matchTracker(candidate, snapshot.trackers, reading ? [name] : [])
   const taskHit = matchOpenTask(candidate, snapshot.openTasks)
+  const one = (s: ResolvedSuggestion): Happened => ({ suggestions: [s], questions: [] })
 
   // Prefer whichever existing thing matches more strongly (and clears the BORDERLINE gate).
   const trackerScore = trackerHit?.score ?? 0
@@ -283,14 +376,23 @@ function resolveHappened(
   // activity create rather than lost. Borderline matches are honoured as links here but have their
   // tier capped to 'suggest' inside {@link appendTrackerEntry} (the user confirms the link).
   if (trackerHit && trackerScore >= BORDERLINE_MATCH && trackerScore >= taskScore) {
-    const entry = appendTrackerEntry(candidate, trackerHit, config, occurredAt)
-    if (entry) return entry
+    const entry = appendTrackerEntry(candidate, trackerHit, config, occurredAt, reading)
+    if (entry) return one(entry)
   }
 
   // An OPEN-TASK match that clears BORDERLINE → mark that task done (mutate an existing instance);
-  // its tier is likewise capped to 'suggest' when the match is only borderline.
-  if (taskHit && taskScore >= BORDERLINE_MATCH) {
-    return markTaskDone(candidate, taskHit, config)
+  // its tier is likewise capped to 'suggest' when the match is only borderline. A reading only
+  // closes a task it matches strongly ("ran 5k" ↔ "Run 5k"); otherwise it is logged.
+  if (taskHit && taskScore >= (reading ? STRONG_MATCH : BORDERLINE_MATCH)) {
+    return one(markTaskDone(candidate, taskHit, config))
+  }
+
+  // A reading of something not tracked yet (decision 3): never a value-less activity. Offer the
+  // tracker ("Start tracking Sleep?", a definition: never auto) and the reading as a tracker
+  // entry that depends on it, waiting for a tap. A tracker that matched but rejected the value
+  // keeps the value on an activity instead (value-bearing, so never auto either).
+  if (reading && !(trackerHit && trackerScore >= BORDERLINE_MATCH)) {
+    return newTrackerWithReading(candidate, config, occurredAt, reading, name)
   }
 
   // No match that clears BORDERLINE (or a tracker matched but its value was invalid for that
@@ -304,37 +406,62 @@ function resolveHappened(
   // wasn't a quantity, so `quantity` reads null) that is therefore auto-eligible again. This is
   // consistent with the value rule: no WRONG value is ever silently written — only a value-less
   // record can auto-apply.
-  const activity = createActivity(candidate, config, occurredAt)
-  // A reading with a number but no tracker to log it under: offer to start tracking it. The
-  // reading itself stays an activity (activity-first); the offer is a tracker DEFINITION, which is
-  // never auto-applied — answering "Yes" is the user's confirmation.
-  if (
-    candidate.kind === 'tracker_entry' &&
-    numberFieldOrNull(candidate.fields, ['value', 'quantity']) !== null
-  ) {
-    // Name the tracker after what is measured ("sleep"), not the whole reading ("Slept 6 hours.").
-    const name =
-      candidate.referenceName?.trim() ||
-      stringFieldOrNull(candidate.fields, [...TRACKER_NAME_FIELDS]) ||
-      String(activity.payload.name)
-    const unit = typeof activity.payload.unit === 'string' ? activity.payload.unit : undefined
-    offer(
-      {
-        target_kind: 'tracker',
-        operation: 'create',
-        target_id: null,
-        payload: {
-          name,
-          input_type: 'number',
-          config: { input_type: 'number', ...(unit ? { unit } : {}) },
-        },
-        confidence: activity.confidence,
-        tier: assignTier('tracker', 'create', activity.confidence, config),
-      },
-      { topic: 'new_tracker', text: `Start tracking "${name}"?`, options: ['Yes', 'No'] },
-    )
+  return one(createActivity(candidate, config, occurredAt, reading))
+}
+
+/** The question offered with a new tracker (decision 4: "Start tracking Mood?"). */
+export function startTrackingQuestion(name: string): string {
+  return `Start tracking ${name}?`
+}
+
+/**
+ * A reading with no tracker to log it under: the tracker offer (a DEFINITION — never auto; "Yes"
+ * or an accept is the user's confirmation) followed by the reading as a tracker entry that
+ * depends on it (value-bearing: waits for a tap; logged when the tracker is accepted).
+ */
+function newTrackerWithReading(
+  candidate: Candidate,
+  config: EngineConfig,
+  loggedAt: number,
+  reading: Reading,
+  name: string,
+): Happened {
+  const confidence = clamp01(candidate.confidence)
+  const min = Math.trunc(reading.scale?.min ?? 1)
+  const max = Math.trunc(reading.scale?.max ?? 0)
+  const trackerConfig =
+    reading.scale && min < max && reading.value >= min && reading.value <= max
+      ? { input_type: 'scale', min, max }
+      : { input_type: 'number', ...(reading.unit ? { unit: reading.unit } : {}) }
+  const tracker: ResolvedSuggestion = {
+    target_kind: 'tracker',
+    operation: 'create',
+    target_id: null,
+    payload: { name, input_type: trackerConfig.input_type, config: trackerConfig },
+    confidence,
+    tier: assignTier('tracker', 'create', confidence, config),
   }
-  return activity
+  const entry: ResolvedSuggestion = {
+    target_kind: 'tracker_entry',
+    operation: 'create',
+    target_id: null,
+    payload: { value: reading.value, logged_at: loggedAt },
+    confidence,
+    // Its tracker does not exist yet: it can never apply on its own, whatever the config says.
+    tier: capToSuggest(
+      assignTier('tracker_entry', 'create', confidence, config, { valueBearing: true }),
+    ),
+    dependsOn: 0,
+  }
+  return {
+    suggestions: [tracker, entry],
+    questions: [
+      {
+        at: 0,
+        q: { topic: 'new_tracker', text: startTrackingQuestion(name), options: ['Yes', 'No'] },
+      },
+    ],
+  }
 }
 
 /**
@@ -389,8 +516,11 @@ function appendTrackerEntry(
   trackerHit: Match<SnapshotTracker>,
   config: EngineConfig,
   loggedAt: number,
+  reading: Reading | null,
 ): ResolvedSuggestion | null {
-  const value = coerceEntryValue(candidate.fields, trackerHit.item.input_type)
+  const value =
+    readingValueFor(reading, trackerHit.item.config) ??
+    coerceEntryValue(candidate.fields, trackerHit.item.input_type)
   // No usable value (e.g. "checked my weight" against a number tracker) → never invent one.
   if (value === null) return null
   // Validate/clamp against the tracker's config (@bullet/db defers this to us — see snapshot.ts).
@@ -456,19 +586,20 @@ function createActivity(
   candidate: Candidate,
   config: EngineConfig,
   occurredAt: number,
+  reading: Reading | null,
 ): ResolvedSuggestion {
   const name = stringField(candidate.fields, ['name', 'title'], candidate.text)
   // A quantity makes the activity VALUE-BEARING (e.g. "drank 3 coffees") → the tier is capped to
   // 'suggest' by default (a value is never auto-applied silently). A quantity-less activity ("went
   // for a walk") is value-less and stays auto-eligible.
-  const quantity = numberFieldOrNull(candidate.fields, ['quantity', 'value'])
+  const quantity = reading?.value ?? numberFieldOrNull(candidate.fields, ['quantity', 'value'])
   const payload: SuggestionPayload = {
     name,
     occurred_at: occurredAt,
     tracker_id: null,
     notes: stringFieldOrNull(candidate.fields, ['notes']),
     quantity,
-    unit: stringFieldOrNull(candidate.fields, ['unit']),
+    unit: reading?.unit ?? stringFieldOrNull(candidate.fields, ['unit']),
   }
   const confidence = clamp01(candidate.confidence)
   return {
@@ -575,7 +706,12 @@ function createEvent(
 
 /** future_recurring → create a tracker DEFINITION (never auto). */
 function resolveFutureRecurring(candidate: Candidate, config: EngineConfig): ResolvedSuggestion {
-  const name = stringField(candidate.fields, ['name', 'title'], candidate.text)
+  // A short noun for the measured thing ("track my mood every day" → "Mood"), never the sentence.
+  const name = trackerName([
+    stringFieldOrNull(candidate.fields, [...TRACKER_NAME_FIELDS, 'name', 'title']),
+    candidate.referenceName,
+    candidate.text,
+  ])
   const inputType = inputTypeField(candidate.fields)
   const payload: SuggestionPayload = {
     name,
@@ -670,6 +806,20 @@ function numberFieldOrNull(fields: Record<string, unknown>, keys: string[]): num
     if (typeof v === 'number' && Number.isFinite(v)) return v
   }
   return null
+}
+
+/**
+ * A reading's value as the tracker wants it: a number for a number/scale tracker, converted
+ * between hours and minutes when the units differ. Null when it does not apply (the caller then
+ * reads the model's fields as before).
+ */
+function readingValueFor(reading: Reading | null, config: TrackerConfig): number | null {
+  if (!reading) return null
+  if (config.input_type === 'scale') return reading.value
+  if (config.input_type !== 'number') return null
+  const want = config.unit ?? null
+  if (want === null || reading.unit === null) return reading.value
+  return convertDuration(reading.value, reading.unit, want) ?? reading.value
 }
 
 /** Read a task priority (P1..P4) if present, else null. */

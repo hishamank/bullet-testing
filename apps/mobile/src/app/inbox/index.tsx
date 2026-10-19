@@ -14,6 +14,7 @@ import {
   dismissNotice,
   flushDecisions,
   skipQuestion,
+  startTracking,
   UNDO_MESSAGES,
   undoApplied,
   undoDecision,
@@ -74,6 +75,7 @@ export default function Inbox() {
                 }
                 onUndo={(i) => onUndo(i.id)}
                 onAcceptAll={(items) => acceptAll(items.map((i) => i.id))}
+                onStartTracking={(i, name) => startTracking(i.id, name)}
               />
             ))}
           </>

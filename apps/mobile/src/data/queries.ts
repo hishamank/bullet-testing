@@ -49,14 +49,63 @@ export function listBullets(db: PhoneDb, limit = 200): BulletView[] {
     }))
 }
 
-/** Suggestions waiting for the user, oldest first. */
-export function listPendingSuggestions(db: PhoneDb) {
+type SuggestionRow = typeof suggestions.$inferSelect
+
+/** Ids of proposed trackers not created yet ("Start tracking Sleep?", waiting or just decided). */
+function proposedTrackerIds(db: PhoneDb): Set<string> {
+  return new Set(
+    db
+      .select({ id: suggestions.id })
+      .from(suggestions)
+      .where(
+        and(
+          eq(suggestions.state, 'active'),
+          eq(suggestions.target_kind, 'tracker'),
+          eq(suggestions.operation, 'create'),
+          isNull(suggestions.applied_entity_id),
+        ),
+      )
+      .all()
+      .map((r) => r.id),
+  )
+}
+
+/**
+ * A reading logged under a tracker that is itself only proposed: it is decided together with that
+ * tracker ("Start tracking Sleep?" logs it; "Not now" dismisses it), never on its own.
+ */
+export function waitsOnProposedTracker(s: SuggestionRow, proposed: ReadonlySet<string>): boolean {
+  return (
+    s.target_kind === 'tracker_entry' &&
+    s.operation === 'create' &&
+    typeof s.payload.tracker_id === 'string' &&
+    proposed.has(s.payload.tracker_id)
+  )
+}
+
+/** Pending suggestions, oldest first (readings waiting on a proposed tracker included). */
+function allPending(db: PhoneDb): SuggestionRow[] {
   return db
     .select()
     .from(suggestions)
     .where(and(eq(suggestions.state, 'active'), eq(suggestions.status, 'pending')))
     .orderBy(suggestions.created_at)
     .all()
+}
+
+/**
+ * Suggestions waiting for the user's decision, oldest first. A reading waiting on a proposed
+ * tracker is not one: it goes with that tracker's decision.
+ */
+export function listPendingSuggestions(db: PhoneDb): SuggestionRow[] {
+  const proposed = proposedTrackerIds(db)
+  return allPending(db).filter((s) => !waitsOnProposedTracker(s, proposed))
+}
+
+/** Pending readings that wait on a proposed tracker (shown on that tracker's card). */
+export function listReadingsWaitingOnTrackers(db: PhoneDb): SuggestionRow[] {
+  const proposed = proposedTrackerIds(db)
+  return allPending(db).filter((s) => waitsOnProposedTracker(s, proposed))
 }
 
 /** A capture's thoughts, in order. */
@@ -69,14 +118,39 @@ export function listThoughts(db: PhoneDb, bulletId: string) {
     .all()
 }
 
-/** Clarifying questions still open, oldest first. */
+/**
+ * Clarifying questions still open, oldest first. "Start tracking …?" is asked on the tracker's own
+ * Inbox card (Start tracking / Not now), so it is not repeated as a question while that
+ * suggestion is on the phone.
+ */
 export function listOpenQuestions(db: PhoneDb) {
-  return db
+  const open = db
     .select()
     .from(questions)
     .where(and(eq(questions.state, 'active'), eq(questions.status, 'open')))
     .orderBy(questions.created_at)
     .all()
+  const onCard = open.filter((q) => q.topic === 'new_tracker' && q.suggestion_id !== null)
+  if (onCard.length === 0) return open
+  const present = new Set(
+    db
+      .select({ id: suggestions.id })
+      .from(suggestions)
+      .where(
+        and(
+          eq(suggestions.state, 'active'),
+          inArray(
+            suggestions.id,
+            onCard.map((q) => q.suggestion_id as string),
+          ),
+        ),
+      )
+      .all()
+      .map((r) => r.id),
+  )
+  return open.filter(
+    (q) => !(q.topic === 'new_tracker' && q.suggestion_id !== null && present.has(q.suggestion_id)),
+  )
 }
 
 /** Open loops: unresolved `to_check` / `question` thoughts, oldest first. */

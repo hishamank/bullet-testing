@@ -32,7 +32,10 @@ export const EXTRACTABLE_THOUGHT_KINDS: readonly ThoughtKind[] = [
   'to_check',
 ]
 
-/** A suggestion draft plus the thought (by position) it was extracted from. */
+/**
+ * A suggestion draft plus the thought (by position) it was extracted from. `dependsOn` indexes
+ * into the capture's `things` (a reading's proposed tracker).
+ */
 export interface ThingDraft extends ResolvedSuggestion {
   thoughtPosition: number
 }
@@ -61,16 +64,51 @@ const QUESTION_PRIORITY: Record<QuestionDraft['topic'], number> = {
   other: 2,
 }
 
+/** A thought this capture had before (it is being processed again), with its kind. */
+export interface PriorThought {
+  text: string
+  kind: ThoughtKind
+}
+
+const normThought = (s: string) => s.normalize('NFC').toLowerCase().trim().replace(/\s+/g, ' ')
+
+/**
+ * Re-processing (an edit, a retry) asks the model again, and a small model's kind wobbles
+ * (`to_check` one run, `task` the next). A thought whose text is unchanged keeps its previous
+ * kind — the user's re-classification included — so extraction runs on the same reading.
+ */
+export function keepPriorKinds(
+  thoughts: SegmentedThought[],
+  prior: readonly PriorThought[],
+): SegmentedThought[] {
+  if (prior.length === 0) return thoughts
+  const byText = new Map(prior.map((p) => [normThought(p.text), p.kind]))
+  return thoughts.map((t) => {
+    const kind = byText.get(normThought(t.text))
+    return kind && kind !== t.kind ? { ...t, kind } : t
+  })
+}
+
+const trackerKey = (s: ResolvedSuggestion): string | null =>
+  s.target_kind === 'tracker' && s.operation === 'create' && typeof s.payload.name === 'string'
+    ? normThought(s.payload.name)
+    : null
+
 export async function processCapture(
   deps: { llm: LlmClient; config: EngineConfig },
-  input: CaptureContext & { text: string },
+  input: CaptureContext & { text: string; priorThoughts?: readonly PriorThought[] },
   snapshot: ExtractionSnapshot,
   opts: { chunkChars?: number } = {},
 ): Promise<CaptureOutcome> {
   const ctx: CaptureContext = { capturedAt: input.capturedAt, timezone: input.timezone }
-  const thoughts = await segmentCapture(deps, input, opts)
+  const thoughts = keepPriorKinds(
+    await segmentCapture(deps, input, opts),
+    input.priorThoughts ?? [],
+  )
   const things: ThingDraft[] = []
   const questions: CaptureQuestionDraft[] = []
+  // New trackers offered so far in this capture, by name: "mood 3 … mood 4 later" offers one.
+  const offeredTrackers = new Map<string, number>()
   let skipped = 0
   let duplicates = 0
 
@@ -78,16 +116,42 @@ export async function processCapture(
     if (!EXTRACTABLE_THOUGHT_KINDS.includes(thought.kind)) continue
     const candidates = await extractCandidates(deps, { text: thought.text, ...ctx }, snapshot)
     // The model sometimes repeats a candidate; one thought never yields the same thing twice.
-    const outcome = dedupeOutcome(resolveCandidates(candidates, snapshot, deps.config, ctx))
-    const base = things.length
-    things.push(...outcome.suggestions.map((s) => ({ ...s, thoughtPosition: thought.position })))
+    const outcome = dedupeOutcome(
+      resolveCandidates(candidates, snapshot, deps.config, ctx, {
+        kind: thought.kind,
+        text: thought.text,
+      }),
+    )
+    // Local index → index in `things` (or the earlier offer of the same tracker it merges into).
+    const at: (number | null)[] = []
+    for (const s of outcome.suggestions) {
+      const key = trackerKey(s)
+      const earlier = key === null ? undefined : offeredTrackers.get(key)
+      if (earlier !== undefined) {
+        at.push(earlier)
+        duplicates += 1
+        continue
+      }
+      const dependsOn = s.dependsOn === undefined ? undefined : (at[s.dependsOn] ?? undefined)
+      if (key !== null) offeredTrackers.set(key, things.length)
+      at.push(things.length)
+      things.push({
+        ...s,
+        ...(dependsOn === undefined ? {} : { dependsOn }),
+        thoughtPosition: thought.position,
+      })
+    }
     for (const q of outcome.questions) {
       const { suggestionIndex, ...rest } = q
-      questions.push({
-        ...rest,
-        thoughtPosition: thought.position,
-        thingIndex: suggestionIndex === null ? null : base + suggestionIndex,
-      })
+      const thingIndex = suggestionIndex === null ? null : (at[suggestionIndex] ?? null)
+      // The merged offer already has its "Start tracking …?" question.
+      if (
+        thingIndex !== null &&
+        questions.some((x) => x.thingIndex === thingIndex && x.text === rest.text)
+      ) {
+        continue
+      }
+      questions.push({ ...rest, thoughtPosition: thought.position, thingIndex })
     }
     skipped += outcome.skipped
     duplicates += outcome.duplicates

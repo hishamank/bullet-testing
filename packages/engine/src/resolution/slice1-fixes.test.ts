@@ -29,6 +29,16 @@ function candidate(overrides: Partial<Candidate>): Candidate {
   }
 }
 
+/** The record (activity or reading) a 'happened' candidate produced, next to any tracker offer. */
+function record(c: Candidate, snapshot: ExtractionSnapshot = EMPTY): ResolvedSuggestion {
+  const { suggestions } = resolveCandidates([c], snapshot, config, CTX)
+  const r = suggestions.find((s) => s.target_kind !== 'tracker')
+  expect(r).toBeDefined()
+  return r as ResolvedSuggestion
+}
+
+const recordTime = (s: ResolvedSuggestion) => s.payload.occurred_at ?? s.payload.logged_at
+
 function one(c: Candidate, snapshot: ExtractionSnapshot = EMPTY): ResolvedSuggestion {
   const { suggestions } = resolveCandidates([c], snapshot, config, CTX)
   expect(suggestions).toHaveLength(1)
@@ -303,32 +313,36 @@ describe('record timestamps default to capture time, not processing time', () =>
   })
 
   test('"ran 5k yesterday" → occurred yesterday at noon, not at its midnight', () => {
-    const s = one(
+    const s = record(
       candidate({ text: 'ran 5k yesterday', fields: { name: 'ran 5k', when: 'yesterday' } }),
     )
-    expect(s.payload.occurred_at).toBe(paris(10, 14, 12))
+    expect(recordTime(s)).toBe(paris(10, 14, 12))
   })
 
   // Qwen3.5-4B, 2026-10-18: "mood 3/10 today" / "slept 6 hours" were dated at local midnight.
   test('a record dated "today" (no time of day) → the capture time, not midnight', () => {
-    const s = one(
+    const s = record(
       candidate({ text: 'mood 3/10 today', fields: { name: 'mood', value: 3, when: 'today' } }),
     )
-    expect(s.payload.occurred_at).toBe(CAPTURED)
-    const slept = one(candidate({ text: 'slept 6 hours', fields: { name: 'sleep', when: 'lyom' } }))
-    expect(slept.payload.occurred_at).toBe(CAPTURED)
+    expect(recordTime(s)).toBe(CAPTURED)
+    const slept = record(
+      candidate({ text: 'slept 6 hours', fields: { name: 'sleep', when: 'lyom' } }),
+    )
+    expect(recordTime(slept)).toBe(CAPTURED)
   })
 
   test('"slept 6 hours last night" keeps its time of day (yesterday 20:00)', () => {
-    const s = one(
+    const s = record(
       candidate({ text: 'slept 6 hours', fields: { name: 'sleep', value: 6, when: 'last night' } }),
     )
-    expect(s.payload.occurred_at).toBe(paris(10, 14, 20))
+    expect(recordTime(s)).toBe(paris(10, 14, 20))
   })
 
   test('a French / Arabizi date phrase dates a record', () => {
-    const s = one(candidate({ text: 'rkadet 5k mbere7', fields: { name: 'run', when: 'mbere7' } }))
-    expect(s.payload.occurred_at).toBe(paris(10, 14, 12))
+    const s = record(
+      candidate({ text: 'rkadet 5k mbere7', fields: { name: 'run', when: 'mbere7' } }),
+    )
+    expect(recordTime(s)).toBe(paris(10, 14, 12))
   })
 
   test('"ran at 7am" → 07:00 today local', () => {
@@ -465,8 +479,8 @@ describe('a reading names its tracker in a field (live Qwen3.5-4B output)', () =
     ]) {
       const { suggestions, questions } = resolveCandidates([sleep(fields)], EMPTY, config, CTX)
       const tracker = suggestions.find((s) => s.target_kind === 'tracker')
-      expect(tracker?.payload.name).toBe('sleep')
-      expect(questions[0]?.text).toBe('Start tracking "sleep"?')
+      expect(tracker?.payload.name).toBe('Sleep')
+      expect(questions[0]?.text).toBe('Start tracking Sleep?')
     }
   })
 

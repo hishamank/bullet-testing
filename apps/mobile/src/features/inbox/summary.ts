@@ -140,6 +140,8 @@ export interface Summary {
   pill: { kind: ThoughtKind; label: string }
   /** The row text. */
   text: string
+  /** The row as the decision it asks for ("Start tracking Mood?", "Log 6 h to Sleep?"). */
+  ask: string
   /** The row for VoiceOver ("Dentist, Thursday 15:00"). */
   spoken: string
   /** Short name used in notices ("Dentist"). */
@@ -167,6 +169,7 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
       const w = when(num(p.starts_at), p.all_day === true)
       return {
         pill: { kind: 'event', label: 'event' },
+        ask: join([name, w?.text], ' · '),
         text: join([name, w?.text], ' · '),
         spoken: join([name, w?.spoken], ', '),
         name,
@@ -179,6 +182,7 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
       const w = when(num(p.due_at))
       return {
         pill: { kind: 'task', label: 'task' },
+        ask: join([name, w ? `due ${w.text}` : null], ' · '),
         text: join([name, w ? `due ${w.text}` : null], ' · '),
         spoken: join([name, w ? `due ${w.spoken}` : null], ', '),
         name,
@@ -190,6 +194,7 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
       const shape = trackerShape(p.config as TrackerConfig | undefined)
       return {
         pill: { kind: 'tracker', label: 'new tracker' },
+        ask: `Start tracking ${name}?`,
         text: join([name, shape], ' · '),
         spoken: join([`New tracker ${name}`, shape?.replace(' · ', ', ')], ', '),
         name,
@@ -204,6 +209,7 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
       const shown = value === undefined ? null : formatValue(value, tracker?.config)
       return {
         pill: { kind: 'tracker', label: tracker ? tracker.name.toLowerCase() : 'reading' },
+        ask: shown && tracker ? `Log ${shown} to ${tracker.name}?` : join([name, shown], ' · '),
         text: join([name, shown], ' · '),
         spoken: join([name, shown?.replace(' / ', ' out of ')], ', '),
         name,
@@ -216,6 +222,7 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
       const amount = quantity === null ? null : join([String(quantity), str(p.unit)], ' ')
       return {
         pill: { kind: 'activity', label: 'activity' },
+        ask: join([name, amount], ' · '),
         text: join([name, amount], ' · '),
         spoken: join([name, amount], ', '),
         name,
@@ -252,6 +259,7 @@ function updateSummary(s: SuggestionLike, ctx: SummaryContext, kind: 'task' | 'e
   if (changes.length === 0) changes.push({ text: 'update', spoken: 'update', done: 'updated' })
   return {
     pill: { kind, label: kind },
+    ask: `${quoted} · ${changes.map((c) => c.text).join(', ')}`,
     text: `${quoted} · ${changes.map((c) => c.text).join(', ')}`,
     spoken: `${name}, ${changes.map((c) => c.spoken).join(', ')}`,
     name,

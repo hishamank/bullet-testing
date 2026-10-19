@@ -150,7 +150,8 @@ describe('orientation routing', () => {
     const s = first(suggestions)
     expect(s.target_kind).toBe('tracker')
     expect(s.operation).toBe('create')
-    expect(s.payload.name).toBe('pushups')
+    // A short Title Case noun (decision 4).
+    expect(s.payload.name).toBe('Pushups')
     expect(s.payload.input_type).toBe('number')
   })
 
@@ -528,7 +529,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
     openTasks: [],
   }
 
-  test('coffee-qty-3: a quantified activity create is capped to "suggest" (was auto)', () => {
+  test('coffee-qty-3: a quantity with no tracker is a reading, capped to "suggest" (was auto)', () => {
     const { suggestions } = resolveCandidates(
       [
         candidate({
@@ -538,17 +539,23 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
           fields: { name: 'drank coffee', quantity: 3 },
         }),
       ],
-      EMPTY, // no tracker match → activity-first
+      EMPTY, // no tracker yet → "Start tracking Coffee?" + the reading
       config,
       CTX,
     )
-    const s = first(suggestions)
-    expect(s.target_kind).toBe('activity')
-    expect(s.operation).toBe('create')
-    expect(s.payload.quantity).toBe(3)
+    expect(suggestions.map((s) => [s.target_kind, s.operation, s.tier])).toEqual([
+      ['tracker', 'create', 'suggest'],
+      ['tracker_entry', 'create', 'suggest'],
+    ])
+    const [tracker, entry] = suggestions
+    expect(tracker?.payload).toMatchObject({
+      name: 'Coffee',
+      config: { input_type: 'number', unit: 'coffees' },
+    })
+    expect(entry?.payload.value).toBe(3)
+    expect(entry?.dependsOn).toBe(0)
     // Auto-eligible by confidence, but value-bearing → capped to 'suggest'.
-    expect(s.confidence).toBeGreaterThanOrEqual(config.autoThreshold)
-    expect(s.tier).toBe('suggest')
+    expect(entry?.confidence).toBeGreaterThanOrEqual(config.autoThreshold)
   })
 
   test('mood-3: a tracker_entry append (value 3) is capped to "suggest" even on a STRONG link', () => {
@@ -649,7 +656,7 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
   test('flag on (autoApplyValueRecords): coffee-qty-3 and a STRONG mood-3 auto-apply again', () => {
     const promoted = { ...config, autoApplyValueRecords: true }
 
-    // A quantified activity → auto again.
+    // A reading whose tracker is only proposed can never apply on its own: still 'suggest'.
     const coffee = resolveCandidates(
       [
         candidate({
@@ -663,10 +670,9 @@ describe('value-bearing records are capped out of auto (§4.5)', () => {
       promoted,
       CTX,
     )
-    const c = first(coffee.suggestions)
-    expect(c.target_kind).toBe('activity')
-    expect(c.payload.quantity).toBe(3)
-    expect(c.tier).toBe('auto')
+    const c = coffee.suggestions.find((s) => s.target_kind === 'tracker_entry')
+    expect(c?.payload.value).toBe(3)
+    expect(c?.tier).toBe('suggest')
 
     // A STRONG-linked tracker_entry → auto again.
     const mood = resolveCandidates(
@@ -812,12 +818,11 @@ describe('model-nesting normalisation (small models wrap field values one level 
       config,
       CTX,
     )
-    const s = first(suggestions)
-    expect(s.target_kind).toBe('activity')
-    expect(s.operation).toBe('create')
-    expect(s.payload.name).toBe('drank coffee')
-    // Quantity is read from the unwrapped `value`; before the fix it was lost (null).
-    expect(s.payload.quantity).toBe(3)
+    const [tracker, entry] = suggestions
+    expect(tracker?.payload.name).toBe('Coffee')
+    expect(entry?.target_kind).toBe('tracker_entry')
+    // The value is read from the unwrapped `value`; before the fix it was lost (null).
+    expect(entry?.payload.value).toBe(3)
   })
 
   test('REGRESSION: already-flat fields are unchanged by normalisation', () => {
