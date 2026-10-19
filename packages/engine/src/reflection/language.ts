@@ -1,8 +1,9 @@
 /**
  * Which language a short quote is in, for templated reflective questions ("Still on your mind?"
  * worded like the thought it quotes). A small deterministic guess over the user's languages:
- * Arabic script, Arabizi (Lebanese Arabic in Latin letters, digits for sounds: "3a", "7ali"),
- * French and English. Unsure means English.
+ * Arabic script, Arabizi (Lebanese Arabic in Latin letters, digits for sounds: "3a", "7abibi"),
+ * French and English. Unsure means English: a non-English language needs at least two signals,
+ * so one ambiguous word ("ma", "law") or a time ("3pm") never flips it.
  */
 
 import type { ReflectiveLanguage } from '@bullet/core'
@@ -53,7 +54,13 @@ const FRENCH = new Set([
   'chez',
 ])
 
+/** Arabizi words that are not also common English words or names. */
 const ARABIZI = new Set([
+  '3a',
+  '3al',
+  '3am',
+  '2al',
+  'ma3',
   'ana',
   'enta',
   'enti',
@@ -68,7 +75,6 @@ const ARABIZI = new Set([
   'bidde',
   'eza',
   'iza',
-  'law',
   'lezem',
   'lazem',
   'lezim',
@@ -77,9 +83,7 @@ const ARABIZI = new Set([
   'hayda',
   'hayde',
   'hek',
-  'hal',
   'kenet',
-  'kent',
   'bukra',
   'bokra',
   'mbere7',
@@ -89,25 +93,17 @@ const ARABIZI = new Set([
   'khayef',
   'shuf',
   'chouf',
-  'ma3',
   'yalla',
   'habibi',
-  'ma',
   'mish',
   'msh',
-  'mesh',
   'wala',
-  'aw',
-  'shi',
   'chi',
   'ba3d',
   'ba3ed',
   'lessa',
-  'bass',
   'ya3ne',
   'ya3ni',
-  'ido',
-  'ida',
 ])
 
 const ENGLISH = new Set([
@@ -137,12 +133,23 @@ const ENGLISH = new Set([
   'before',
   'this',
   'that',
+  'by',
 ])
 
-/** A Latin word written with digits for Arabic sounds ("3a", "7ali", "su2al", "ba3d"). */
-const ARABIZI_DIGITS = /^(?=.*[a-z])(?=.*[235789])[a-z235789']+$/
+/**
+ * A Latin word written with digits for Arabic sounds ("7abibi", "su2al", "ba3do", "sale7"): a
+ * vowel, one of 2 3 5 7 8 9, no run of digits, three characters or more. Short forms ("3a",
+ * "ma3") are in the word list; "b2b", "mp3", "v2" have no vowel and never count.
+ */
+const ARABIZI_DIGITS = /^(?=.*[aeiouy])(?=.*[235789])(?!.*\d\d)[a-z235789']{3,}$/
+
+/** Times, ordinals and units ("3pm", "9am", "5k", "2nd", "5th"): never Arabizi. */
+const UNIT = /^\d+(?:am|pm|h|k|km|kg|g|m|x|st|nd|rd|th)$/
 
 const ACCENTED = /[àâçéèêëîïôûùüÿœæ]/
+
+/** A non-English language needs at least this score: one weak hit never flips it. */
+const MIN_SCORE = 2
 
 /** Guess the language of `text` (a thought or a quote). Unsure means English. */
 export function quoteLanguage(text: string): ReflectiveLanguage {
@@ -160,13 +167,13 @@ export function quoteLanguage(text: string): ReflectiveLanguage {
     const elided = /^(?:j|l|d|qu|n|s|c|m)'(.+)$/.exec(raw)
     if (elided) fr += 1
     const w = elided?.[1] ?? raw
-    if (ARABIZI_DIGITS.test(w)) az += 2
-    else if (ARABIZI.has(w)) az += 1
+    if (UNIT.test(w)) continue
+    if (ARABIZI.has(w) || ARABIZI_DIGITS.test(w)) az += 1
     if (FRENCH.has(w)) fr += 1
     if (ACCENTED.test(w)) fr += 1
     if (ENGLISH.has(w)) en += 1
   }
-  const best = Math.max(fr, az, en)
-  if (best === 0 || en === best) return 'en'
-  return az >= fr ? 'arabizi' : 'fr'
+  if (az >= MIN_SCORE && az > en && az >= fr) return 'arabizi'
+  if (fr >= MIN_SCORE && fr > en) return 'fr'
+  return 'en'
 }

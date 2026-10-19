@@ -197,8 +197,27 @@ describe('quoteLanguage', () => {
     ['shu baddi a3mel bi hal sheghel', 'arabizi'],
     ['lezem shuf eza l passport ba3do sale7', 'arabizi'],
     ['إتصل بالبنك بكرا', 'ar'],
+    ['ba3do 3a balak l mawdou3', 'arabizi'],
+    ['ma3 7abibi bukra', 'arabizi'],
+    ["appeler l'école", 'fr'],
     ['', 'en'],
     ['Karim', 'en'],
+    // Times, ordinals, units and English words that look like Arabizi stay English.
+    ['call dentist 3pm', 'en'],
+    ['gym 9am', 'en'],
+    ['ran 5k', 'en'],
+    ['jan 3rd', 'en'],
+    ['check 7pm flight', 'en'],
+    ['pay rent by the 5th', 'en'],
+    ['book 2nd slot', 'en'],
+    ['law school', 'en'],
+    ['bass strings', 'en'],
+    ['email Hal', 'en'],
+    ['ask Kent', 'en'],
+    ['ma birthday', 'en'],
+    ['pitch deck v2 for the b2b client', 'en'],
+    ['find the mp3', 'en'],
+    ['café with Sam', 'en'],
   ])('%s → %s', (text, lang) => {
     expect(quoteLanguage(text)).toBe(lang)
   })
