@@ -14,7 +14,15 @@ import {
   listReadingsWaitingOnTrackers,
 } from '../../data/queries'
 import { listRejections, type SyncRejection } from '../../data/rejections'
-import { bullets, events, questions, suggestions, tasks, trackers } from '../../data/schema'
+import {
+  bullets,
+  events,
+  questions,
+  suggestions,
+  tasks,
+  thoughts,
+  trackers,
+} from '../../data/schema'
 import { PICK_REFUSED_TEXT } from '../reflect/model'
 import { formatValue, type Summary, type SummaryContext, snippet, summarize } from './summary'
 import type { Decision, UndoState } from './undo'
@@ -188,7 +196,13 @@ export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {
   }))
 
   const done: DoneItem[] = rows.appliedToday
-    .filter((s) => s.auto_applied || rows.answeredSuggestionIds.has(s.id))
+    // A closed loop ("Did this close it?" → Close it) shows here too, with Undo to reopen it.
+    .filter(
+      (s) =>
+        s.auto_applied ||
+        rows.answeredSuggestionIds.has(s.id) ||
+        s.target_kind === 'thought_resolve',
+    )
     .map((s) => ({
       suggestionId: s.id,
       ...capture(s.source_bullet_id),
@@ -225,6 +239,10 @@ export function noticeText(
 ): string | null {
   const s = r.suggestion_id ? named.get(r.suggestion_id) : undefined
   const name = s ? `“${summarize(s, ctx).name}”` : null
+  if (r.type === 'suggestion.accept' && s?.target_kind === 'thought_resolve') {
+    // "Close it" refused: the loop was closed another way meanwhile.
+    return `Already closed: «${summarize(s, ctx).name}». Nothing changed.`
+  }
   switch (r.type) {
     case 'suggestion.accept':
       return `${name ? `Couldn't add ${name}` : "Couldn't add that"}: things changed since it was suggested, so nothing was changed.`
@@ -378,6 +396,14 @@ export function summaryContext(
         .all()) {
         titles.set(r.id, r.title)
       }
+    }
+    // "Did this close it?" names the open loop in the user's words.
+    for (const r of db
+      .select({ id: thoughts.id, text: thoughts.text })
+      .from(thoughts)
+      .where(inArray(thoughts.id, targetIds))
+      .all()) {
+      titles.set(r.id, r.text)
     }
   }
   return { now, timezone, trackers: trackerMap, titles }

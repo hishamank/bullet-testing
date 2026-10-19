@@ -24,6 +24,10 @@ export interface Palette {
   accentText: string
   warning: string
   destructive: string
+  /** Something that comes up again: the Stream's dot and the theme pill's text (slice 3). */
+  again: string
+  /** The theme pill's background. */
+  againSoft: string
 }
 
 export const dark: Palette = {
@@ -43,6 +47,8 @@ export const dark: Palette = {
   accentText: '#6ED3B4',
   warning: '#E3B062',
   destructive: '#F08A80',
+  again: '#B7B0F0',
+  againSoft: '#2A2540',
 }
 
 export const light: Palette = {
@@ -62,6 +68,8 @@ export const light: Palette = {
   accentText: '#0F6B54',
   warning: '#8A5E0F',
   destructive: '#A8402F',
+  again: '#4B3FA8',
+  againSoft: '#E7E3F8',
 }
 
 export interface KindStyle {

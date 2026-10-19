@@ -4,13 +4,14 @@
  * Layout only: the screen passes what each tap does.
  */
 
+import { CONNECTION_OPTIONS } from '@bullet/core'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { Disclosure } from '@/components/journal/parts'
 import type { AnsweredCard, ThinkCard as Card } from '@/features/reflect/model'
 import { space, type, useTheme } from '@/theme'
 import { Label, QuestionText, TextButton, touch } from '../ui'
-import { card } from './parts'
+import { card, OptionButton } from './parts'
 
 /** The accent pill "Journal about it" (44pt). */
 function JournalButton({
@@ -45,13 +46,17 @@ export function ThinkCard({
   onJournal,
   onLater,
   onNotThisOne,
+  onSame,
 }: {
   question: Card
   onJournal: () => void
   onLater: () => void
   onNotThisOne: () => void
+  /** A connection question's "Same thing" (true) / "Different" (false). */
+  onSame?: (same: boolean) => void
 }) {
   const t = useTheme()
+  const connection = question.origin === 'connection' && onSame
   return (
     <View style={[card(t.card), styles.card]}>
       <QuestionText size={type.body} accessibilityRole="header">
@@ -61,6 +66,20 @@ export function ThinkCard({
         <Label tone="secondary" size={type.label}>
           {question.sourceLine}
         </Label>
+      ) : null}
+      {connection ? (
+        <View style={styles.actions}>
+          <OptionButton
+            title={CONNECTION_OPTIONS[0]}
+            label={`${CONNECTION_OPTIONS[0]}: ${question.text}`}
+            onPress={() => onSame(true)}
+          />
+          <OptionButton
+            title={CONNECTION_OPTIONS[1]}
+            label={`${CONNECTION_OPTIONS[1]}: ${question.text}`}
+            onPress={() => onSame(false)}
+          />
+        </View>
       ) : null}
       <View style={styles.actions}>
         <JournalButton

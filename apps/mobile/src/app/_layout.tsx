@@ -43,6 +43,7 @@ export default function RootLayout() {
           <Stack.Screen name="journal" options={{ animation: 'slide_from_left' }} />
           <Stack.Screen name="inbox" />
           <Stack.Screen name="capture/[id]" />
+          <Stack.Screen name="theme/[id]" />
           <Stack.Screen name="answer" />
           <Stack.Screen name="record" options={{ presentation: 'fullScreenModal' }} />
         </Stack.Protected>

@@ -25,6 +25,11 @@ describe('night calm contrast (WCAG AA)', () => {
         expect(contrastRatio(p.onAccent, p.accent)).toBeGreaterThanOrEqual(4.5)
       })
 
+      it('the theme pill passes 4.5:1, and the "again" dot 3:1 on a card', () => {
+        expect(contrastRatio(p.again, p.againSoft)).toBeGreaterThanOrEqual(4.5)
+        expect(contrastRatio(p.again, p.card)).toBeGreaterThanOrEqual(3)
+      })
+
       it('every kind label passes 4.5:1 on its pill', () => {
         for (const kind of KINDS) {
           const k = kindStyle(kind, p.scheme)

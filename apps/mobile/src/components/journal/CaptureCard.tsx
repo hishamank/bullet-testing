@@ -1,7 +1,9 @@
 /** A capture in the stream: source, time, state, and its thoughts with kind labels. */
 
 import { Pressable, StyleSheet, View } from 'react-native'
+import { AgainDot } from '@/components/connections/parts'
 import { Icon } from '@/components/Icon'
+import { COPY } from '@/features/connections/copy'
 import { KindPill, Label, QuestionText, TextButton } from '@/components/ui'
 import {
   AUDIO_READ_ERROR_TEXT,
@@ -22,9 +24,12 @@ export function CaptureCard({
   onWriteDown,
   onKeepAudio,
   onOpenSource,
+  onOpenTheme,
 }: {
   card: Card
   onOpen: () => void
+  /** The "again" dot on a thought in an active theme: open that theme. */
+  onOpenTheme: (themeId: string) => void
   /** An answer's "Thinking about" header: open the capture the question is about. */
   onOpenSource: (bulletId: string) => void
   onRetry: () => void
@@ -45,6 +50,7 @@ export function CaptureCard({
   const showThoughts = card.thoughts.length > 0
   const about = card.thinkingAbout
   const sourceId = about?.sourceBulletId ?? null
+  const themed = showThoughts ? card.thoughts.filter((th) => th.themeId) : []
   const actions = [
     ...(state.retry ? [{ name: 'retry', label: 'Retry' }] : []),
     ...(state.untranscribable
@@ -54,6 +60,11 @@ export function CaptureCard({
         ]
       : []),
     ...(sourceId ? [{ name: 'source', label: 'Open the capture it is about' }] : []),
+    // The "again" dots are inside the card's one VoiceOver element: offer them as actions.
+    ...themed.map((th, i) => ({
+      name: `theme:${i}`,
+      label: `${COPY.openTheme}: «${th.text}»`,
+    })),
   ]
   return (
     <Pressable
@@ -67,6 +78,10 @@ export function CaptureCard({
         else if (action === 'write') onWriteDown()
         else if (action === 'keep') onKeepAudio()
         else if (action === 'source' && sourceId) onOpenSource(sourceId)
+        else if (action.startsWith('theme:')) {
+          const themeId = themed[Number(action.slice(6))]?.themeId
+          if (themeId) onOpenTheme(themeId)
+        }
       }}
       onPress={onOpen}
       style={({ pressed }) => [
@@ -103,6 +118,12 @@ export function CaptureCard({
             <Label size={type.bodySmall} style={styles.thoughtText}>
               {th.text}
             </Label>
+            {th.themeId ? (
+              <AgainDot
+                label={`${COPY.openTheme}: «${th.text}»`}
+                onPress={() => th.themeId && onOpenTheme(th.themeId)}
+              />
+            ) : null}
           </View>
         ))
       ) : (

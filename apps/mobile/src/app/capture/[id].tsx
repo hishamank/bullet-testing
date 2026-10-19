@@ -2,6 +2,7 @@ import type { ThoughtKind } from '@bullet/core'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
+import { RelatedList } from '@/components/connections/RelatedList'
 import { AudioPlayer } from '@/components/journal/AudioPlayer'
 import { KindPicker } from '@/components/journal/KindPicker'
 import { Divider, Group, SectionTitle } from '@/components/journal/parts'
@@ -30,7 +31,8 @@ import { AUDIO_READ_ERROR_TEXT, untranscribableCopy } from '@/features/journal/s
 import { clock, whenLabel } from '@/features/journal/format'
 import { thinkingAboutLabel } from '@/features/reflect/model'
 import { type LinkedThing, THING_STATE_LABELS } from '@/features/journal/things'
-import { useLocalQuery } from '@/hooks'
+import { notRelated } from '@/features/connections/actions'
+import { useLocalQuery, useRelated } from '@/hooks'
 import { deviceDeps } from '@/sync/runtime'
 import { kindStyle, radius, size, space, type, useTheme } from '@/theme'
 
@@ -47,6 +49,7 @@ export default function CaptureDetailScreen() {
   const { id, write } = useLocalSearchParams<{ id: string; write?: string }>()
   const tz = deviceDeps.timezone()
   const c = useLocalQuery((db) => loadCaptureDetail(db, id, Date.now(), tz), id)
+  const related = useRelated(id)
   const [tab, setTab] = useState<TranscriptTab | null>(null)
   const [draft, setDraft] = useState<string | null>(() =>
     write === '1' && c ? writeDownStart(c) : null,
@@ -385,6 +388,8 @@ export default function CaptureDetailScreen() {
             </Group>
           </>
         ) : null}
+
+        <RelatedList items={related} onOpen={openCapture} onNotRelated={notRelated} />
 
         {c.thoughtAbout.length > 0 ? (
           <>

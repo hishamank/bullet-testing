@@ -105,7 +105,12 @@ export default function OpenLoops() {
                   <View style={journalStyles.row}>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityHint="Opens the capture"
+                      accessibilityLabel={`${l.text}. ${l.closedLine ?? ''}`}
+                      accessibilityHint={
+                        l.resolvedByBulletId
+                          ? 'Opens the capture that closed it'
+                          : 'Opens the capture'
+                      }
                       onPress={() =>
                         l.resolvedByBulletId
                           ? router.push({
@@ -122,8 +127,8 @@ export default function OpenLoops() {
                       <Label tone="secondary" style={{ textDecorationLine: 'line-through' }}>
                         {l.text}
                       </Label>
-                      <Label tone="muted" size={type.label}>
-                        {l.resolvedByBulletId ? 'Closed with a note' : 'Checked off'}
+                      <Label tone="muted" size={type.label} numberOfLines={2}>
+                        {l.closedLine}
                       </Label>
                     </Pressable>
                     <TextButton

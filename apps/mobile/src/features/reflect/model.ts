@@ -92,10 +92,13 @@ function toCard(v: ReflectiveQuestionView, now: number): ThinkCard {
 export function loadThinkView(db: PhoneDb, now: number): ThinkView {
   return {
     toThink: listQuestionsToThinkAbout(db, now).map((v) => toCard(v, now)),
-    answered: listAnsweredReflective(db).items.map((v) => ({
-      ...toCard(v, now),
-      answers: v.answers.length,
-    })),
+    // A connection question answered with "Same thing" / "Different" alone has nothing to add to.
+    answered: listAnsweredReflective(db)
+      .items.filter((v) => v.question.answer_option === null || v.answers.length > 0)
+      .map((v) => ({
+        ...toCard(v, now),
+        answers: v.answers.length,
+      })),
   }
 }
 
