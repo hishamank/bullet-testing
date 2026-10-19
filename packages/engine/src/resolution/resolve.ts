@@ -471,7 +471,7 @@ function readingActivityName(
         ' ',
       )
     : said
-  const name = cleanTitle(without, ctx, { direction: 'past' })
+  const name = cleanTitle(without.replace(/\s+/g, ' '), ctx, { direction: 'past' })
   return /[\p{L}]/u.test(name) ? name : fallback
 }
 

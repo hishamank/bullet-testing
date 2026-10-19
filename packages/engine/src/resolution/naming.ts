@@ -211,6 +211,14 @@ const FILLER = new Set(
     'quite',
     'good',
     'bad',
+    'low',
+    'high',
+    'fine',
+    'tired',
+    'fatigué',
+    'fatigue',
+    'mnih',
+    'mni7',
     'ok',
     'okay',
     'great',
@@ -400,4 +408,10 @@ const VERB_TARGETS = new Set(VERB_NOUNS.map(([, n]) => n.toLowerCase()))
 export function isKnownMeasure(name: string): boolean {
   const n = name.toLowerCase().trim()
   return KNOWN_MEASURES.has(n) || VERB_TARGETS.has(n) || KNOWN_MEASURES.has(n.replace(/s$/, ''))
+}
+
+/** A word that never names or measures anything (filler, a clause break). */
+export function isNameFiller(word: string): boolean {
+  const w = word.toLowerCase()
+  return FILLER.has(w) || CLAUSE_BREAK.has(w)
 }

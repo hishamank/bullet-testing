@@ -502,6 +502,63 @@ describe('review follow-ups (2026-10-19)', () => {
     expect(readingFromText('3 days ago I called mom', { allowBare: false })).toBeNull()
   })
 
+  test('a word after the number is not a unit unless it is a counted thing', () => {
+    for (const text of [
+      'slept 7 this morning',
+      'energy 3 was ok',
+      'note 3 mais fatigué',
+      'mood 4 thanks',
+    ]) {
+      expect(readingFromText(text, { allowBare: true })?.unit ?? null, text).toBeNull()
+    }
+    for (const [text, unit] of [
+      ['did 30 pushups', 'pushups'],
+      ['ate 2 pizzas', 'pizzas'],
+      ['answered 3 emails', 'emails'],
+    ] as const) {
+      expect(readingFromText(text, { allowBare: false })?.unit, text).toBe(unit)
+    }
+    expect(readingFromText('went 3 fois au sport', { allowBare: false })).toBeNull()
+    const snapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 't-sleep',
+          name: 'Sleep',
+          input_type: 'number',
+          config: { input_type: 'number', unit: 'h' },
+        },
+        {
+          id: 't-mood',
+          name: 'Mood',
+          input_type: 'scale',
+          config: { input_type: 'scale', min: 1, max: 5 },
+        },
+      ],
+      openTasks: [],
+    }
+    const sleep = resolve(candidate({ text: 'slept 7 this morning' }), snapshot, {
+      kind: 'tracker',
+    }).suggestions
+    expect(sleep[0]).toMatchObject({ target_id: 't-sleep', payload: { value: 7 } })
+    const mood = resolve(
+      candidate({ kind: 'tracker_entry', text: 'mood 3 this morning' }),
+      snapshot,
+      {
+        kind: 'tracker',
+      },
+    ).suggestions
+    expect(mood[0]).toMatchObject({ target_id: 't-mood', payload: { value: 3 } })
+    // No tracker yet: no stray unit, and the kept activity's name reads cleanly.
+    const fresh = resolve(
+      candidate({ text: 'slept 7 this morning', fields: { name: 'slept 7 this morning' } }),
+      EMPTY,
+      { kind: 'tracker' },
+    ).suggestions
+    expect(fresh[0]?.payload.config).toEqual({ input_type: 'number' })
+    expect(fresh[1]?.payload.activity_name).not.toMatch(/\s{2}/)
+    expect(trackerNounFrom('mood 2 is low')).toBe('Mood')
+  })
+
   test('a declined tracker keeps its reading as an activity with the value', () => {
     const { suggestions } = resolve(
       candidate({ text: 'Slept 6 hours.', fields: { name: 'Slept 6 hours.' } }),

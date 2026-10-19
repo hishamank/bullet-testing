@@ -5,6 +5,8 @@
  * the resolver did not read (`duration`), it is recovered here deterministically.
  */
 
+import { isNameFiller } from './naming'
+
 export interface Reading {
   value: number
   /** Normalised unit ("h", "min", "km", "kg", "glasses", …), or null for a bare number / scale. */
@@ -81,7 +83,74 @@ const COUNT_NOUNS =
 
 /** Plural nouns that are spans of time or filler, never a count of something done. */
 const NOT_COUNTS =
-  /^(seconds|days|weeks|months|years|ages|jours|semaines|mois|ans|années|annees|nights|mornings|evenings|others|things|ones|minutes|hours|heures)$/
+  /^(fois|seconds|days|weeks|months|years|ages|jours|semaines|mois|ans|années|annees|nights|mornings|evenings|others|things|ones|minutes|hours|heures)$/
+
+/** Words ending in s/x that are not things counted ("7 this morning", "3 was ok", "3 mais"). */
+const FUNCTION_WORDS = new Set([
+  'this',
+  'was',
+  'has',
+  'yes',
+  'thanks',
+  'plus',
+  'as',
+  'us',
+  'is',
+  'its',
+  'his',
+  'hers',
+  'ours',
+  'yours',
+  'theirs',
+  'always',
+  'perhaps',
+  'besides',
+  'afterwards',
+  'towards',
+  'mais',
+  'pas',
+  'puis',
+  'alors',
+  'dans',
+  'sans',
+  'sous',
+  'très',
+  'tres',
+  'après',
+  'apres',
+  'depuis',
+  'jamais',
+  'toujours',
+  'moins',
+  'vers',
+  'bas',
+  'fois',
+  'mes',
+  'tes',
+  'ses',
+  'les',
+  'des',
+  'ces',
+  'nous',
+  'vous',
+  'deux',
+  'trois',
+  'six',
+  'dix',
+  'mieux',
+  'ailleurs',
+  'parfois',
+])
+
+/** A date or part of day right after: "7 this morning" is not "7 this". */
+const DATE_AFTER =
+  /^\s*(?:morning|afternoon|evening|night|week|weekend|today|tonight|tomorrow|yesterday|matin|soir|nuit|semaine|aujourd|demain|hier)\b/
+
+/** A plural noun that can be the unit of a count ("pushups", "pizzas", "emails"). */
+function isCountNoun(word: string): boolean {
+  const w = word.toLowerCase()
+  return w.length >= 3 && !NOT_COUNTS.test(w) && !FUNCTION_WORDS.has(w) && !isNameFiller(w)
+}
 
 /** A clock time is not a duration: "at 11pm", "à 15h", "vers 7h". */
 const AT_TIME = /(?:^|\s)(?:at|à|vers|3al|3a|@)\s*$/
@@ -180,7 +249,12 @@ export function readingFromText(text: string, opts: { allowBare: boolean }): Rea
   // Any other counted thing ("did 30 pushups", "ate 2 pizzas"): the noun is the unit. Last, so a
   // known measure said at the same place wins; spans of time ("3 days ago") are not readings.
   const generic = new RegExp(`${NUM}\\s+(\\p{L}{2,}(?:s|x))(?![\\p{L}\\d])`, 'u').exec(s)
-  if (generic && !NOT_COUNTS.test(generic[2] ?? '') && !AT_TIME.test(s.slice(0, generic.index))) {
+  if (
+    generic &&
+    isCountNoun(generic[2] ?? '') &&
+    !AT_TIME.test(s.slice(0, generic.index)) &&
+    !DATE_AFTER.test(s.slice(generic.index + generic[0].length))
+  ) {
     found.push({
       at: generic.index,
       reading: {
