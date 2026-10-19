@@ -199,7 +199,7 @@ describe('grouping and wording', () => {
       errorCode: null,
       attempts: 0,
       nextRetryAt: null,
-      thoughts: [{ id: 't', kind: 'to_check' as const, text: 'passport expiry' }],
+      thoughts: [{ id: 't', kind: 'to_check' as const, text: 'passport expiry', themeId: null }],
       autoApplied: 0,
       pending: 0,
       thinkingAbout: null,

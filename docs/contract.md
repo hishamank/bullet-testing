@@ -332,7 +332,7 @@ capture.
   Refused (`conflict`) when the loop was closed meanwhile: show **Already closed**.
 - **Dismiss** remembers the pair: it is never proposed again, even after re-processing.
 - **Undo** opens the loop again (the link stays, no longer called an answer).
-- A loop you closed by hand is never touched; nothing is proposed from a sensitive answer.
+- A loop you closed by hand is never touched; nothing is proposed from a capture with any sensitive thought (the answer is quoted where it closes the loop: "Closed by «…»" quotes only that answering thought, never the capture).
 - It is about another capture's loop, so it never puts the answering capture in `needs_review`;
   it does count in the Inbox badge while it waits.
 - Withdrawn when the loop or the answer is deleted, or turns sensitive.
@@ -380,7 +380,7 @@ withdrawn when its thought turns sensitive). A theme made half or more of them i
 (no card, no name) and doesn't count toward the 8.
 
 **On the phone** (data layer: `apps/mobile/src/data/connections.ts`): Capture detail **Related · N**
-(each row: date, quote, small word: same person / related / answers / again; `listRelated` honours
+(each row: date, quote, small word: same one / related / answers / again — "same one" because the server keeps no entity kind, so a place is never called a person; `listRelated` honours
 `visible_from`), the Inbox's
 **Noticed**, the Stream's "again" dot (a thought in an active theme), "Did this close it?" cards,
 and "Closed by «…»" on open loops (`resolved_by_bullet_id`).

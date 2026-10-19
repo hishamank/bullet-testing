@@ -10,6 +10,18 @@ import type { PhoneDb } from '@/data/db'
 import { getDb } from '@/data/open'
 import { type CaptureCounts, captureCounts, inboxCount } from '@/features/capture/counts'
 import {
+  type LoopAnswerCard,
+  loadLoopAnswers,
+  loadNoticed,
+  loadRelated,
+  loadTheme,
+  type MergeChoice,
+  mergeChoices,
+  type NoticedCard,
+  type RelatedItem,
+  type ThemeView,
+} from '@/features/connections/model'
+import {
   lastSyncedAt,
   pendingLine,
   serverRowTitle,
@@ -21,9 +33,10 @@ import {
   loadThinkView,
   type ThinkView,
 } from '@/features/reflect/model'
+import { undoStore } from '@/features/inbox/actions'
 import type { Store } from '@/features/store'
 import { changeStore, monitorStore, type Pairing, pairingStore } from '@/features/sync/engine'
-import { currentServerSettings } from '@/sync/runtime'
+import { currentServerSettings, deviceDeps } from '@/sync/runtime'
 import {
   cannotReachServer,
   dismissUnreachableNote,
@@ -126,6 +139,39 @@ export function useThinkView(): ThinkView {
   // Re-read every minute too, so a question whose "Later" week ends while open shows up.
   const now = useNow(60_000)
   return useLocalQuery((db) => loadThinkView(db, now), now)
+}
+
+// ---- slice 3: connections, themes, Noticed (never in the badge, never notified) ----
+
+/** The Inbox's Noticed cards, newest first. */
+export function useNoticed(): NoticedCard[] {
+  const now = useNow(60_000)
+  return useLocalQuery((db) => loadNoticed(db, now), now)
+}
+
+/** "Did this close it?" cards waiting (these do count in the badge). */
+export function useLoopAnswers(): LoopAnswerCard[] {
+  const undo = useStore(undoStore)
+  const held = useMemo(() => new Map(undo.map((e) => [e.suggestionId, e.decision])), [undo])
+  return useLocalQuery((db) => loadLoopAnswers(db, held), held)
+}
+
+/** "Merge with…": the other themes (empty while no theme is picked). */
+export function useMergeChoices(themeId: string | null): MergeChoice[] {
+  return useLocalQuery((db) => (themeId ? mergeChoices(db, themeId) : []), themeId)
+}
+
+/** "Related · N" on a capture. */
+export function useRelated(bulletId: string): RelatedItem[] {
+  return useLocalQuery(
+    (db) => loadRelated(db, bulletId, Date.now(), deviceDeps.timezone()),
+    bulletId,
+  )
+}
+
+/** A theme and its captures (null once it stops showing). */
+export function useThemeView(themeId: string): ThemeView | null {
+  return useLocalQuery((db) => loadTheme(db, themeId, Date.now()), themeId)
 }
 
 /** The "Pick a question" list. */

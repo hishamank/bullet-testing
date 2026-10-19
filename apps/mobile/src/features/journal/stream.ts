@@ -17,6 +17,8 @@ import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
 import { audioAttachments, bullets, suggestions, syncState, thoughts } from '../../data/schema'
 import { audioReadErrorKey } from '../../sync/client'
+import { COPY } from '../connections/copy'
+import { themeOfThoughts } from '../connections/model'
 import { thinkingAboutFor, thinkingAboutLabel } from '../reflect/model'
 import { keptAsAudio } from './audio-only'
 import { clock, dayKey, dayTitle, duration, spokenDuration } from './format'
@@ -25,6 +27,8 @@ export interface CardThought {
   id: string
   kind: ThoughtKind
   text: string
+  /** The active theme it belongs to: the small "again" dot opens it. */
+  themeId: string | null
 }
 
 export interface CaptureCard {
@@ -80,8 +84,17 @@ export function listCaptureCards(db: PhoneDb, limit: number, now = Date.now()): 
     .orderBy(thoughts.position)
     .all()) {
     const list = thoughtsBy.get(t.source_bullet_id) ?? []
-    list.push({ id: t.id, kind: t.kind, text: t.text })
+    list.push({ id: t.id, kind: t.kind, text: t.text, themeId: null })
     thoughtsBy.set(t.source_bullet_id, list)
+  }
+  const themed = themeOfThoughts(
+    db,
+    [...thoughtsBy.values()].flatMap((l) => l.map((t) => t.id)),
+  )
+  if (themed.size > 0) {
+    for (const list of thoughtsBy.values()) {
+      for (const t of list) t.themeId = themed.get(t.id) ?? null
+    }
   }
   const durationBy = new Map<string, number>()
   const audioBy = new Map<string, string>()
@@ -343,7 +356,12 @@ export function cardAccessibilityLabel(c: CaptureCard): string {
       : 'Typed note'
   const thoughtsText =
     c.thoughts.length > 0
-      ? c.thoughts.map((t) => `${t.kind.replace('_', ' ')}: ${t.text}`).join('. ')
+      ? c.thoughts
+          .map(
+            (t) =>
+              `${t.kind.replace('_', ' ')}: ${t.text}${t.themeId ? `, ${COPY.againLabel}` : ''}`,
+          )
+          .join('. ')
       : c.text
   return [
     c.thinkingAbout ? thinkingAboutLabel(c.thinkingAbout.text) : null,

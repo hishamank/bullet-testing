@@ -406,6 +406,14 @@ describe('a later capture answering an open loop', () => {
     expect(resolves()).toHaveLength(0)
     expect(llm.chatCalls.filter((c) => sys(c) === ANSWER_CHECK_SYSTEM_PROMPT)).toHaveLength(1)
   })
+
+  test('nothing is proposed from a capture with any sensitive thought, even another one', async () => {
+    const { capture, resolves, h } = setup(table, { answers })
+    await capture('to_check: check if the passport expires')
+    h.clock.now += DAY
+    await capture('note: passport valid until 2029 | sensitive note: everything feels too much')
+    expect(resolves()).toHaveLength(0)
+  })
 })
 
 // --- connection questions ---

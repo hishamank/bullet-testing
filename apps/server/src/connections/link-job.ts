@@ -382,7 +382,8 @@ function reflectPending(db: Db, bulletId: string): boolean {
 /**
  * Propose closing `loopId` because `answerId` (a thought of `bullet`) answers it: one
  * `thought_resolve` suggestion at tier `suggest`. Nothing when the loop is closed or gone, either
- * thought is sensitive, the user dismissed this pair, or a proposal for the loop is waiting.
+ * thought (or any thought of the answering capture) is sensitive, the user dismissed this pair, or
+ * a proposal for the loop is waiting.
  */
 export function createThoughtResolve(
   db: Db,
@@ -398,6 +399,9 @@ export function createThoughtResolve(
   if (!loop || !answer || answer.bulletId !== bullet.id) return false
   if (loop.resolvedAt !== null || loop.sensitive || answer.sensitive) return false
   if (loop.kind !== 'to_check' && loop.kind !== 'question') return false
+  // The answering capture is quoted where it closes the loop: none of its thoughts may be
+  // sensitive (as for connection questions).
+  if (activeThoughtInfo(db, ownerId, bullet.id).some((t) => t.sensitive)) return false
   if (isVetoed(db, ownerId, loopId, answerId, 'resolve')) return false
   if (proposedBefore(db, ownerId, loopId, bullet.id)) return false
   if (pendingResolveFor(db, ownerId, loopId).length > 0) return false

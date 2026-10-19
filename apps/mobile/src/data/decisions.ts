@@ -8,7 +8,7 @@ import type { SuggestionPayload } from '@bullet/core'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import { acceptSuggestion, type LocalDeps, rejectSuggestion } from './local'
-import { outbox, suggestions } from './schema'
+import { outbox, suggestions, thoughts } from './schema'
 
 const DECISION_OPS: ('suggestion.accept' | 'suggestion.reject')[] = [
   'suggestion.accept',
@@ -100,8 +100,27 @@ export function restoreSuggestion(
   payload: SuggestionPayload,
   now: number,
 ): void {
+  const s = db.select().from(suggestions).where(eq(suggestions.id, suggestionId)).get()
   db.update(suggestions)
-    .set({ status: 'pending', resolved_at: null, payload, updated_at: now })
+    .set({
+      status: 'pending',
+      resolved_at: null,
+      payload,
+      updated_at: now,
+      // A "Did this close it?" accept also recorded what it applied: take that back too.
+      ...(s?.target_kind === 'thought_resolve'
+        ? { applied_entity_id: null, applied_at: null }
+        : {}),
+    })
     .where(eq(suggestions.id, suggestionId))
     .run()
+  // ...and the loop it closed on the phone is open again.
+  if (s?.target_kind === 'thought_resolve' && s.target_id) {
+    db.update(thoughts)
+      .set({ resolved_at: null, resolved_by_bullet_id: null, updated_at: now })
+      .where(
+        and(eq(thoughts.id, s.target_id), eq(thoughts.resolved_by_bullet_id, s.source_bullet_id)),
+      )
+      .run()
+  }
 }

@@ -230,7 +230,7 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
       }
     }
     case 'thought_resolve': {
-      // "Did this close it?" — the UI pass shows «loop» ← «answer» (data/connections.ts).
+      // "Did this close it?" — its Inbox card shows «loop» ← «answer» (features/connections).
       const name = (s.target_id && ctx.titles.get(s.target_id)) || 'Open loop'
       return {
         pill: { kind: 'to_check', label: 'open loop' },
@@ -238,7 +238,7 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
         text: name,
         spoken: `Did this close it? ${name}`,
         name,
-        done: `${name} closed`,
+        done: `Closed «${name}»`,
       }
     }
   }
