@@ -222,9 +222,10 @@ about one thing. Examples: "Which Thursday: today or next week?", "Start trackin
     task or event the question is about (keeping its time of day), and it is **applied**. It then
     shows as applied, with **Undo**, like anything done for you.
   - **"Start tracking X?"**: **Yes** creates the tracker (your tap is the OK a new tracker always
-    needs) and logs the reading you gave with it. **No** dismisses the tracker and that reading
-    (your words stay in the capture's thought). The Inbox shows the same decision on the
-    tracker's own card (see §3), and deciding there answers this question too.
+    needs) and logs the reading you gave with it. **No** declines the tracker for good (it is
+    never offered again for that capture) and keeps the reading as a plain activity with its
+    value ("Slept · 6 h", no tracker), applied as a record. The Inbox shows the same decision on
+    the tracker's own card (see §3), and deciding there answers this question too.
 - **Or answer with a capture** (typed or spoken) that points at the question.
 - Either way the question becomes `answered` (with the option you tapped, if any).
 - There are no open-ended or reflective questions in slice 1. Those come later, are optional, and
@@ -241,8 +242,18 @@ event). Each suggestion is one proposed change:
   (change something that exists, such as marking a task done). A `tracker_entry` **`create`** is
   a reading of a tracker that is itself only proposed: its `payload.tracker_id` is that `tracker`
   suggestion's id (which becomes the tracker's id once created). It is decided **with** the
-  tracker, never on its own: accepting the tracker logs it, dismissing the tracker dismisses it,
-  undoing the tracker undoes it. _Added 2026-10-19._
+  tracker, never on its own: accepting the tracker logs it, "Not now" turns it into an applied
+  activity with the value (the suggestion's kind becomes `activity`), undoing the tracker undoes
+  it. _Added 2026-10-19._
+- **The same new tracker from two captures.** Each capture offers it on its own, and deciding one
+  never decides the other until a tracker of that name exists. Once one is accepted (on any
+  phone), every other open offer of that name is **linked** to it: it shows as `accepted` with
+  `applied_entity_id` = the existing tracker (it created nothing), its question is answered, and
+  its reading becomes an ordinary pending reading of that tracker ("Log 7 h to Sleep?"), one per
+  capture. Accepting an offer whose (edited) name matches an existing tracker links it the same
+  way rather than refusing. Undoing a linked offer never deletes the tracker. Undoing a new
+  tracker is refused (`conflict`) when a reading logged with it was edited by hand, or when the
+  tracker has readings from other captures.
 - **Tier:** how sure the system is. This is what to show, rather than a percentage:
   - `auto`: applied automatically. The UI should offer **Undo**.
   - `suggest`: probably right; one tap to confirm.
@@ -260,19 +271,23 @@ Rules the design can rely on:
 - **A reading is never a value-less activity.** "Slept 6 hours", "meditated 20 minutes",
   "mood 2 sur 5" always carry their value: logged under an existing tracker ("Log 6 h to
   Sleep?"), or, for something not tracked yet, a new tracker plus the reading ("Start tracking
-  Sleep?"). Only a value-less activity ("meditated", "went for a walk") may be applied
-  automatically.
+  Sleep?"). A new tracker is offered only for a reading or a thing people track (sleep, mood,
+  water, a run…): "spent 2 hours at the dentist" keeps its value on an activity. A reading on
+  another scale or unit than its tracker ("mood 7/10" for a 1–5 tracker, "5 miles" for a km
+  one) is never clamped or converted: it waits as an activity with its value. Only a value-less
+  activity ("meditated", "went for a walk") may be applied automatically.
 - **Titles are a short phrase in your own words**: "Dentist" (with Thu 15:00 in the event's
   start), "Pay the electricity bill". The date and time go into the structured fields
   (`due_at`, `starts_at`) and out of the title, as do a reminder lead-in ("Remind me to",
   "Need to", "Il faut") and trailing punctuation. Your spelling and language are kept: never
   paraphrased or translated. A date phrase the app can't read yet ("this weekend") stays in the
-  title.
+  title, and so does a possessive ("Prepare the slides for Monday's meeting").
 - **Tracker names are a short noun** for the measured thing, 1–2 words, Title Case, in your
   language: "Mood", "Sleep", "Sommeil". Never the reading, its unit or its value.
 - **Inbox wording.** A new tracker: "Start tracking Mood?", its name in an editable field
   (pre-filled), buttons **Start tracking** (accept, with the edited name as the payload's
-  `name`) and **Not now** (dismiss), and under it what it logs ("Logs 6 h from this capture").
+  `name`) and **Not now** (dismiss), and under it what each does with the reading ("Start
+  tracking logs 6 h. Not now keeps 6 h as an activity.").
   A later reading: "Log 6 h to Sleep?".
 - Accepting a suggestion that's been waiting a while checks it against what's there **now**. If
   it no longer makes sense (say, the task it would mark done was deleted), you'll be told and

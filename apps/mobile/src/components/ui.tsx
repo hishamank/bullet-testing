@@ -127,18 +127,21 @@ export function TextButton({
   onPress,
   tone = 'accent',
   accessibilityLabel,
+  accessibilityHint,
   disabled,
 }: {
   title: string
   onPress: () => void
   tone?: Tone
   accessibilityLabel?: string
+  accessibilityHint?: string
   disabled?: boolean
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       disabled={disabled}
       onPress={onPress}
       hitSlop={4}

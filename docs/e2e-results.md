@@ -188,18 +188,37 @@ of ~23 minutes of retries. llama-server outage: `llm_unavailable` in 1 s, recove
 
 ### Still open
 
-- **Tracker offers per capture.** Two captures that both say "slept 6 hours" before either offer
-  is accepted each offer "Start tracking Sleep?"; accepting the second one is refused
-  (`conflict`, a tracker of that name exists) and its reading stays waiting. Remapping it to the
-  existing tracker is not done.
-- **"Not now" drops the reading.** Dismissing a new tracker dismisses the reading that waited on
-  it (the words stay in the capture's thought); it is not kept as an activity.
+- ~~Tracker offers per capture~~ and ~~"Not now" drops the reading~~: fixed after review (see
+  "Review follow-ups" below).
 - **"this weekend"** still has no date, so it stays in the title ("Buy running shoes this
   weekend"), as designed.
 - **Whisper's silence phrases** are matched against a short list (English, French, Arabic);
   whisper-server's `--vad` is still untested.
 - The phone UI (Inbox tracker card, capture detail, status line) is unit-tested on its read
   models only; it was not run on a device in this pass.
+
+### Review follow-ups (2026-10-19)
+
+From the PR review, with two product decisions from the designer:
+
+- **The same new tracker from two captures.** Once one offer is accepted, every other open offer
+  of that name is linked to the new tracker, and its reading becomes an ordinary pending reading
+  ("Log 7 h to Sleep?"), one per capture. An accept that finds a tracker of that name links
+  instead of failing with `conflict`. Undoing a linked offer never deletes the tracker.
+- **"Not now"** keeps the waiting reading as an applied activity with its value; the declined
+  offer never comes back on re-processing.
+- A wrong model reference no longer hides the right tracker: number/scale trackers the words
+  don't name are filtered out _before_ matching ("slept 7 hours" with Meditation and Sleep →
+  Sleep).
+- Scale or unit mismatches ("mood 7/10" on 1–5, "5 miles" on km) are no longer clamped or
+  converted: the value waits on an activity. "ran 5k in 30 min" reads 5 km (first said wins).
+- A new tracker is offered only for readings or things people track; "spent 2 hours at the
+  dentist" stays an activity with 2 h. "Start tracking my mood from tomorrow" stays a tracker.
+- Titles keep possessives ("Prepare the slides for Monday's meeting") and lose "on the 1st of
+  November" and "tomorrow night". Drafts made of repeats or hesitations ("thank you thank you
+  thank you", "um uh like") don't count as usable.
+
+These are covered by unit tests; the live harness was not re-run for them.
 
 ## Extraction-quality problems (Qwen3.5-4B)
 

@@ -114,9 +114,14 @@ export function trackerNameOrNull(typed: string): string | null {
   return name === '' ? null : name.slice(0, 60)
 }
 
-/** The quiet line under a new tracker: what accepting it logs ("Logs 6 h from this capture"). */
+/**
+ * The quiet line under a new tracker: what each answer does with the reading it waits on.
+ * "Start tracking" logs it; "Not now" keeps it as an activity with its value (never lost).
+ */
 export function logsLine(logs: readonly string[]): string | null {
-  return logs.length === 0 ? null : `Logs ${logs.join(', ')} from this capture`
+  if (logs.length === 0) return null
+  const what = logs.join(', ')
+  return `Start tracking logs ${what}. Not now keeps ${what} as an activity.`
 }
 
 export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {

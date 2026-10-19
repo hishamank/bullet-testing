@@ -102,6 +102,7 @@ function NewTrackerRow({
           title="Not now"
           tone="secondary"
           accessibilityLabel={`Not now: don't track ${shown}`}
+          accessibilityHint={item.logs.length > 0 ? 'Keeps the reading as an activity' : undefined}
           onPress={() => onDismiss(item)}
         />
         <TextButton

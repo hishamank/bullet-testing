@@ -60,7 +60,9 @@ describe('a new tracker card', () => {
       logs: ['6 h'],
     })
     expect(item?.summary.ask).toBe('Start tracking Sleep?')
-    expect(logsLine(item?.logs ?? [])).toBe('Logs 6 h from this capture')
+    expect(logsLine(item?.logs ?? [])).toBe(
+      'Start tracking logs 6 h. Not now keeps 6 h as an activity.',
+    )
     // The card asks it: no separate "Start tracking Sleep?" question, and one waiting decision.
     expect(view.questions).toEqual([])
     expect(listOpenQuestions(db)).toEqual([])
