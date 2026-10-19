@@ -35,7 +35,7 @@ import {
   updateTask,
   updateTrackerEntry,
 } from '../../data/local'
-import { listThoughts } from '../../data/queries'
+import { listOpenQuestions, listThoughts } from '../../data/queries'
 import {
   activities,
   audioAttachments,
@@ -150,6 +150,11 @@ function expectProcessedContract(p: Phone, r: Awaited<ReturnType<typeof captureA
 }
 
 const SPLIT = (s: string) => s.toLowerCase()
+/** What a suggested thing is called (its title or name). */
+const label = (payload: unknown) => {
+  const p = payload as { title?: string | null; name?: string | null }
+  return p.title ?? p.name ?? ''
+}
 
 describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
   const p = createPhone()
@@ -198,7 +203,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
       quality('ramble: ran 5k is an activity', kindOf('5k') === 'activity', kindOf('5k'))
 
       const dentist = ramble.suggestions.find(
-        (s) => s.target_kind === 'event' && SPLIT(JSON.stringify(s.payload)).includes('dentist'),
+        (s) => s.target_kind === 'event' && SPLIT(label(s.payload)).includes('dentist'),
       )
       const at = dentist ? Number((dentist.payload as { starts_at?: number }).starts_at) : NaN
       const z = Number.isFinite(at) ? zoned(at) : null
@@ -208,13 +213,12 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         { payload: dentist?.payload, local: z },
       )
       const run = ramble.suggestions.find(
-        (s) => s.target_kind === 'activity' && /run|ran|5/.test(SPLIT(JSON.stringify(s.payload))),
+        (s) => s.target_kind === 'activity' && /\b(run|ran|5k)\b/.test(SPLIT(label(s.payload))),
       )
       quality('ramble: ran 5k → activity (5 km)', Boolean(run), run?.payload)
       const sleep = ramble.suggestions.find(
         (s) =>
-          SPLIT(JSON.stringify(s.payload)).includes('sleep') ||
-          SPLIT(JSON.stringify(s.payload)).includes('slept'),
+          SPLIT(label(s.payload)).includes('sleep') || SPLIT(label(s.payload)).includes('slept'),
       )
       quality('ramble: slept 6 hours → a reading / tracker offer', Boolean(sleep), sleep?.payload)
     },
@@ -247,7 +251,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
       const coiffeur = r.suggestions.find(
         (s) =>
           (s.target_kind === 'event' || s.target_kind === 'task') &&
-          SPLIT(JSON.stringify(s.payload)).includes('coiffeur'),
+          SPLIT(label(s.payload)).includes('coiffeur'),
       )
       const at = coiffeur
         ? Number(
@@ -261,7 +265,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         z?.weekday === 'Thursday' && z.hour === 15,
         { payload: coiffeur?.payload, local: z },
       )
-      const report = r.suggestions.find((s) => SPLIT(JSON.stringify(s.payload)).includes('report'))
+      const report = r.suggestions.find((s) => SPLIT(label(s.payload)).includes('report'))
       quality(
         'mixed: "bukra lazem eb3at el report" → a task due tomorrow',
         Boolean(report),
@@ -512,7 +516,17 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         expect(() => updateEvent(p.db, ev!.id, { ends_at: starts - 1 }, p.deps)).toThrow()
       }
 
-      // A tracker reading: log one against an existing tracker, accept, then correct it.
+      // A tracker reading: log one against an existing tracker, accept, then correct it. No
+      // tracker yet: say Yes to any "Start tracking …?" another capture raised.
+      const offer = listOpenQuestions(p.db).find((q) => q.topic === 'new_tracker')
+      if (
+        p.db.select().from(trackers).where(eq(trackers.state, 'active')).all().length === 0 &&
+        offer
+      ) {
+        answerQuestion(p.db, offer.id, 'Yes', p.deps)
+        await p.sync()
+        record({ type: 'note', name: 'answered Yes to a tracker offer', question: offer.text })
+      }
       const tr = p.db.select().from(trackers).where(eq(trackers.state, 'active')).all()
       record({
         type: 'note',
@@ -620,7 +634,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
       }
       // "Ran 5k" is gone from the text: its suggestion is withdrawn (pending → gone; applied → undone).
       const runBefore = before.find(
-        (s) => s.target_kind === 'activity' && /5|ran|run/.test(SPLIT(JSON.stringify(s.payload))),
+        (s) => s.target_kind === 'activity' && /\b(run|ran|5k)\b/.test(SPLIT(label(s.payload))),
       )
       if (runBefore) {
         const now = p.db.select().from(suggestions).where(eq(suggestions.id, runBefore.id)).get()
@@ -632,7 +646,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
       }
       quality(
         'edit: the new "running shoes" task is added',
-        after.some((s) => SPLIT(JSON.stringify(s.payload)).includes('shoe')),
+        after.some((s) => SPLIT(label(s.payload)).includes('shoe')),
         after.map((s) => s.payload),
       )
     },
@@ -793,6 +807,53 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
   )
 
   test(
+    'tracker readings: Yes to "Start tracking?", a later reading appends, the value is corrected',
+    async () => {
+      // A name no earlier run used, so this test stands alone on a shared database.
+      const name = `energy${crypto.randomUUID().slice(0, 4).replace(/\d/g, 'x')}`
+      const first = await captureAndProcess(p, 'tracker offer', `${name} level 3 out of 5 today`)
+      const offer = questionsOf(p, first.id).find((q) => q.topic === 'new_tracker')
+      if (
+        !quality('tracker: a reading offers "Start tracking …?"', Boolean(offer), first.suggestions)
+      )
+        return
+      answerQuestion(p.db, offer!.id, 'Yes', p.deps)
+      await p.sync()
+      const s = suggestion(p, offer!.suggestion_id!)
+      expect(s?.status).toBe('accepted')
+      const tracker = p.db
+        .select()
+        .from(trackers)
+        .where(eq(trackers.id, String(s?.applied_entity_id)))
+        .get()
+      expect(tracker).toBeTruthy()
+      record({ type: 'note', name: 'tracker created', tracker: tracker?.name, offer: offer!.text })
+
+      const second = await captureAndProcess(p, 'tracker reading', `${tracker!.name} 4 today`)
+      const entry = second.suggestions.find((x) => x.target_kind === 'tracker_entry')
+      if (
+        !quality(
+          'tracker: the next reading appends to it',
+          entry?.operation === 'append' && entry.target_id === tracker!.id,
+          second.suggestions,
+        )
+      )
+        return
+      if (entry!.status === 'pending') acceptSuggestion(p.db, entry!.id, p.deps)
+      await p.sync()
+      const id = String(suggestion(p, entry!.id)?.applied_entity_id)
+      expect(p.db.select().from(trackerEntries).where(eq(trackerEntries.id, id)).get()).toBeTruthy()
+      updateTrackerEntry(p.db, id, 5, p.deps)
+      await p.sync()
+      const after = p.db.select().from(trackerEntries).where(eq(trackerEntries.id, id)).get()
+      expect(after?.value).toBe(5)
+      expect(after?.user_edited_at).toBeTruthy()
+      record({ type: 'note', name: 'tracker_entry.update applied', value: after?.value })
+    },
+    2 * CAPTURE_TIMEOUT,
+  )
+
+  test(
     'idempotency: resent ops and a lost push response create no duplicates',
     async () => {
       // A push whose response is lost: the server applied it, the phone resends.
@@ -810,7 +871,9 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
           },
         }),
       })
-      const id = captureBullet(lossy.db, { text: 'Water the plants on Sunday.' }, lossy.deps)
+      // Unique per run: the server database may hold earlier runs.
+      const text = `Water the plants on Sunday (${crypto.randomUUID().slice(0, 8)}).`
+      const id = captureBullet(lossy.db, { text }, lossy.deps)
       const op = lossy.db.select().from(outbox).get()!.op as PushOp
       expect((await lossy.client.sync())?.ok).toBe(false)
       expect(lossy.client.pendingCount()).toBe(1)
@@ -823,11 +886,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
       // A fresh phone pulling everything sees exactly one such bullet.
       const fresh = createPhone()
       await fresh.sync()
-      const same = fresh.db
-        .select()
-        .from(bullets)
-        .where(eq(bullets.text, 'Water the plants on Sunday.'))
-        .all()
+      const same = fresh.db.select().from(bullets).where(eq(bullets.text, text)).all()
       expect(same).toHaveLength(1)
       // Resending decision ops is harmless too.
       const s = suggestionsOf(fresh, id).find((x) => x.status === 'pending')
