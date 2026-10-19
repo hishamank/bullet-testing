@@ -37,7 +37,7 @@ export interface CaptureBoxProps {
   placeholder?: string
   label?: string
   /** Save the capture. Resolves once it is stored in this browser; rejects if it could not be. */
-  onSend: (text: string) => Promise<unknown>
+  onSend: (text: string, attempt: string) => Promise<unknown>
   /** A card pinned above the text (the question or loop being answered). */
   pinned?: ReactNode
   /** The quiet line next to Send when nothing was just saved. */
@@ -58,6 +58,9 @@ export function CaptureBox(p: CaptureBoxProps) {
   const input = useRef<HTMLTextAreaElement>(null)
   const inputId = useId()
   const sending = useRef(false)
+  // Names this send until it succeeds, so a retry after a failed store is the same capture.
+  const instance = useId()
+  const attempt = useRef(0)
   const [problem, setProblem] = useState(false)
   const { savedAt } = state
   const shown = useRef(p.onSavedShown)
@@ -81,9 +84,10 @@ export function CaptureBox(p: CaptureBoxProps) {
     if (!canSend(state.text) || sending.current) return
     sending.current = true
     setProblem(false)
-    p.onSend(state.text).then(
+    p.onSend(state.text, `${instance}:${attempt.current}`).then(
       () => {
         sending.current = false
+        attempt.current += 1
         writeDraft(draftKey, '')
         dispatch({ type: 'sent', at: Date.now() })
         input.current?.focus()

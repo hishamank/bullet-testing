@@ -63,7 +63,10 @@ export interface Runtime {
   run<T>(write: () => T): T
   /** Save the mirror now. Resolves true only when it is stored in this browser. */
   flush: () => Promise<boolean>
-  /** Anything not yet stored in this browser (guards closing the tab)? */
+  /**
+   * Any user write (an op still to send) not yet stored in this browser, or being stored right
+   * now? Guards closing the tab. A sync outcome waiting for its debounced save does not count.
+   */
   dirty: () => boolean
   /** Keep this browser's token and pair with the server. */
   pair: (settings: ServerSettings) => void
@@ -90,10 +93,25 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   let transport: SyncTransport | null = server ? makeTransport(server) : null
   let client: SyncClient = makeClient()
 
+  /**
+   * User writes (the ones that queue an op for the server) are counted as they happen and again
+   * when a saved image is known to contain them. A sync outcome waiting for its debounced save is
+   * not a user write: the server has it, so closing the tab loses nothing.
+   */
+  let writes = 0
+  let savedWrites = 0
+  let snapshotWrites = 0
+
   function makePersister(m: Mirror): Persister {
     return createPersister({
       store: o.store,
-      snapshot: () => m.snapshot(),
+      snapshot: () => {
+        snapshotWrites = writes
+        return m.snapshot()
+      },
+      onSaved: () => {
+        savedWrites = Math.max(savedWrites, snapshotWrites)
+      },
       delayMs: o.persistDelayMs,
       setTimer: o.setTimer,
       clearTimer: o.clearTimer,
@@ -127,6 +145,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
   }
   /** A local write (it queued something for the server): save right away, not after a delay. */
   const notifyNow = () => {
+    writes += 1
     persister.markDirty()
     void persister.flush()
     sync.bump()
@@ -165,6 +184,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
     client.dispose()
     mirror.close()
     mirror = next
+    savedWrites = writes
     persister = makePersister(mirror)
     client = makeClient()
     try {
@@ -193,7 +213,7 @@ export async function createRuntime(o: RuntimeOptions): Promise<Runtime> {
       return result
     },
     flush: () => persister.flush(),
-    dirty: () => persister.dirty,
+    dirty: () => writes > savedWrites,
     pair(settings) {
       o.settings.save(settings)
       server = settings

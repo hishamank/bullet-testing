@@ -291,7 +291,7 @@ every request.
    change that had not reached the server is lost with it, and the buttons say so first.
    Only one tab of a browser opens the local copy at a time (Web Locks on https/localhost, a
    BroadcastChannel ping on plain http). A capture shows "Saved" only once it is stored in
-   IndexedDB, and the browser asks before the tab closes with anything unsaved. If a stored copy
+   IndexedDB, and the browser asks before the tab closes while one of your changes is not stored yet. If a stored copy
    cannot be read, a backup of it is kept and a fresh one is rebuilt from the server.
 4. **The token lives in this browser's `localStorage`**, so a script injected into the page could
    read it; XSS is the remaining exposure. The page ships no third-party scripts and its

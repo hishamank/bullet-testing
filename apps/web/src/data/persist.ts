@@ -140,6 +140,8 @@ export interface PersisterOptions {
   setTimer?: (fn: () => void, ms: number) => unknown
   clearTimer?: (handle: unknown) => void
   onError?: (err: unknown) => void
+  /** An image was stored (called after every successful save, including retries). */
+  onSaved?: () => void
 }
 
 export interface Persister {
@@ -182,6 +184,7 @@ export function createPersister(opts: PersisterOptions): Persister {
       try {
         await opts.store.save(opts.snapshot())
         failures = 0
+        opts.onSaved?.()
         return true
       } catch (err) {
         dirty = true

@@ -72,7 +72,7 @@ export function Shell() {
             size={route.view === 'capture' ? 'page' : 'bar'}
             keepDraft
             status={<StatusLine />}
-            onSend={(text) => actions.sendCapture(text)}
+            onSend={(text, attempt) => actions.sendCapture(text, attempt)}
           />
         </div>
       </div>

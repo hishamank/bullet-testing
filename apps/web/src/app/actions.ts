@@ -51,15 +51,35 @@ export function createActions(rt: Runtime) {
     if (message) rt.announcements.set(message)
   }
 
-  /** A capture written but not yet stored: sending it again only retries the store. */
-  let unstored: { key: string; id: string } | null = null
-  async function durable(key: string, write: () => string): Promise<string> {
-    const id = unstored?.key === key ? unstored.id : rt.run(write)
+  /**
+   * Captures written but not yet stored in this browser, by send attempt (the composer's id for
+   * the thing it is sending, which stays the same until it succeeds). Sending an attempt again,
+   * with the same text or with edited text, retries that capture: the store is retried, and
+   * changed text goes through `editBullet`, so nothing is written twice.
+   */
+  const unstored = new Map<string, { id: string; text: string }>()
+  async function durable(
+    attempt: string,
+    text: string,
+    write: () => string,
+    edit: (id: string) => void,
+  ): Promise<string> {
+    const pending = unstored.get(attempt)
+    let id: string
+    if (pending) {
+      id = pending.id
+      if (pending.text !== text.trim()) {
+        rt.run(() => edit(id))
+        pending.text = text.trim()
+      }
+    } else {
+      id = rt.run(write)
+    }
     if (!(await rt.flush())) {
-      unstored = { key, id }
+      unstored.set(attempt, { id, text: text.trim() })
       throw new Error('could not store the capture in this browser')
     }
-    unstored = null
+    unstored.delete(attempt)
     return id
   }
 
@@ -68,11 +88,15 @@ export function createActions(rt: Runtime) {
     /**
      * Save here first (always works, offline included): the capture is written, the local copy is
      * saved to IndexedDB, and only then does this resolve (and "Saved" show). If storing it fails
-     * this rejects, and sending the same text again does not write it twice.
+     * this rejects, and sending the same attempt again (edited text or not) does not write a second
+     * capture. `attempt` identifies the composer's current send; it changes after a success.
      */
-    sendCapture: (text: string, opts: { answersQuestionId?: string } = {}) =>
-      durable(`q:${opts.answersQuestionId ?? ''}|${text}`, () =>
-        captureBullet(rt.db(), { text, answersQuestionId: opts.answersQuestionId }, rt.deps),
+    sendCapture: (text: string, attempt: string, opts: { answersQuestionId?: string } = {}) =>
+      durable(
+        attempt,
+        text,
+        () => captureBullet(rt.db(), { text, answersQuestionId: opts.answersQuestionId }, rt.deps),
+        (id) => editBullet(rt.db(), id, text, rt.deps),
       ),
     retryCaptures(ids: readonly string[]): void {
       if (ids.length === 0) return
@@ -89,9 +113,12 @@ export function createActions(rt: Runtime) {
     resolveLoop: (thoughtId: string) => rt.run(() => resolveThought(rt.db(), thoughtId, rt.deps)),
     reopenLoop: (thoughtId: string) => rt.run(() => unresolveThought(rt.db(), thoughtId, rt.deps)),
     /** "Close with a note": the note is an ordinary capture that resolves the thought. */
-    sendLoopNote: (text: string, thoughtId: string) =>
-      durable(`t:${thoughtId}|${text}`, () =>
-        captureBullet(rt.db(), { text, resolvesThoughtId: thoughtId }, rt.deps),
+    sendLoopNote: (text: string, thoughtId: string, attempt: string) =>
+      durable(
+        attempt,
+        text,
+        () => captureBullet(rt.db(), { text, resolvesThoughtId: thoughtId }, rt.deps),
+        (id) => editBullet(rt.db(), id, text, rt.deps),
       ),
     changeKind: (thoughtId: string, kind: ThoughtKind) =>
       rt.run(() => reclassifyThought(rt.db(), thoughtId, kind, rt.deps)),
