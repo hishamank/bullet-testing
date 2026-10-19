@@ -8,8 +8,8 @@ import { Icon } from '../Icon'
 import { Label, touch } from '../ui'
 
 /**
- * The capture a row came from: its quoted snippet (or "Open capture" when the text isn't on the
- * phone), linking to Capture detail.
+ * The capture a row came from: its quoted snippet, linking to Capture detail. Nothing when the
+ * capture isn't on the phone (there would be nothing to open).
  */
 export function CaptureLink({
   bulletId,
@@ -24,18 +24,18 @@ export function CaptureLink({
 }) {
   const t = useTheme()
   const voice = source === 'voice'
-  const text = snippet || 'Open capture'
+  if (!snippet) return null
   return (
     <Link href={{ pathname: '/capture/[id]', params: { id: bulletId } }} asChild>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel={snippet ? `${voice ? 'Voice capture' : 'Capture'} ${snippet}` : text}
+        accessibilityLabel={`${voice ? 'Voice capture' : 'Capture'} ${snippet}`}
         accessibilityHint={voice ? 'Opens the capture, where you can play it' : 'Opens the capture'}
         style={({ pressed }) => [styles.source, { opacity: pressed ? 0.6 : 1 }]}
       >
         <Icon name={voice ? 'play' : 'text'} color={t.textSecondary} size={14} />
         <Label tone="secondary" size={type.label} style={{ flex: 1 }} numberOfLines={lines}>
-          {text}
+          {snippet}
         </Label>
       </Pressable>
     </Link>

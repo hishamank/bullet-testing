@@ -1,6 +1,6 @@
 import type { ThoughtKind } from '@bullet/core'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native'
 import { AudioPlayer } from '@/components/journal/AudioPlayer'
 import { KindPicker } from '@/components/journal/KindPicker'
@@ -43,6 +43,16 @@ export default function CaptureDetailScreen() {
   const [picking, setPicking] = useState<{ id: string; text: string; kind: ThoughtKind } | null>(
     null,
   )
+  // Undos tapped but not yet reflected (guards a double tap). An id leaves once its thing stops
+  // being undoable; if the server refuses and it comes back, Undo is offered again.
+  const [undoing, setUndoing] = useState<readonly string[]>([])
+  const things = c?.things
+  useEffect(() => {
+    setUndoing((u) => {
+      const still = u.filter((id) => things?.some((x) => x.suggestionId === id && x.undoable))
+      return still.length === u.length ? u : still
+    })
+  }, [things])
   const back = () => router.back()
 
   if (!c) {
@@ -133,7 +143,12 @@ export default function CaptureDetailScreen() {
           <TextButton
             title="Undo"
             accessibilityLabel={`Undo: ${thing.label}`}
-            onPress={() => undoApplied(thing.suggestionId, thing.label)}
+            disabled={undoing.includes(thing.suggestionId)}
+            onPress={() => {
+              if (undoing.includes(thing.suggestionId)) return
+              setUndoing((u) => [...u, thing.suggestionId])
+              undoApplied(thing.suggestionId, thing.label)
+            }}
           />
         ) : null}
       </View>

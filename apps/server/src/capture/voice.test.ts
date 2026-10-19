@@ -330,6 +330,14 @@ describe('voice notes: transcription', () => {
         edited_at: h.clock.now,
       },
     ])
+    // The first failure after the edit still gets its normal retry…
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'synced',
+      proc_error_code: 'transcription_failed',
+    })
+    // …and once it is confirmed, their words are read instead of failing again.
+    h.clock.now += DEFAULT_RETRY_POLICY.maxDelayMs
     await h.worker.drain()
     expect(bullet(h, bulletId)).toMatchObject({
       proc_status: 'processed',
@@ -338,6 +346,27 @@ describe('voice notes: transcription', () => {
     })
     expect(llm.chatCalls.at(-1)?.messages[1]?.content).toContain('call the plumber about the sink')
     expect(h.db.select().from(transcripts).where(eq(transcripts.kind, 'server')).all()).toEqual([])
+  })
+
+  test('a user-edited bullet whose first transcription fails keeps the transcript once it works', async () => {
+    let calls = 0
+    const h = createHarness(llmByText({}), {
+      transcriber: createScriptedTranscriber(() => {
+        calls += 1
+        if (calls === 1) throw new EngineError('TRANSCRIPTION_FAILED', 'whisper 400')
+        return { text: 'call mom tomorrow' }
+      }),
+    })
+    const { bulletId, audioId } = await captureVoice(h, { edited: true, text: 'call Mom' })
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    expect(bullet(h, bulletId)?.proc_status).toBe('synced')
+    h.clock.now += DEFAULT_RETRY_POLICY.maxDelayMs
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({ proc_status: 'processed', text: 'call Mom' })
+    expect(h.db.select().from(transcripts).where(eq(transcripts.kind, 'server')).get()?.text).toBe(
+      'call mom tomorrow',
+    )
   })
 
   test('a retry after extraction failed does not transcribe again', async () => {

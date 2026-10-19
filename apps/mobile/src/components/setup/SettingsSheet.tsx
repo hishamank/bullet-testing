@@ -1,6 +1,7 @@
 /** Settings, kept minimal: the home server's status, pair/change it, and what waits on the phone. */
 
 import { useRouter } from 'expo-router'
+import { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { Sheet, SheetButton } from '@/components/journal/parts'
 import { Label } from '@/components/ui'
@@ -10,6 +11,13 @@ import { radius, size, space, type, useTheme } from '@/theme'
 export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const t = useTheme()
   const router = useRouter()
+  // Re-render now and then while open, so "last synced … ago" stays true.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (!visible) return
+    const id = setInterval(() => setTick((n) => n + 1), 30_000)
+    return () => clearInterval(id)
+  }, [visible])
   const s = useServerStatus()
   return (
     <Sheet visible={visible} title="Settings" closeLabel="Done" onClose={onClose}>

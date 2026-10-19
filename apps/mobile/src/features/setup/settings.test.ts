@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test'
+import { setState } from '../../data/mirror'
 import { openTestDb, T0 } from '../../test/db'
 import {
   deferSetup,
@@ -6,7 +7,6 @@ import {
   isSetupDeferred,
   lastSyncedAt,
   pendingLine,
-  recordSynced,
   relativeTime,
   serverRowTitle,
   serverStatusLine,
@@ -65,7 +65,7 @@ describe('the Home server status line', () => {
   it('the last sync is remembered on the phone', () => {
     const db = openTestDb()
     expect(lastSyncedAt(db)).toBeNull()
-    recordSynced(db, T0)
+    setState(db, 'last_sync_at', String(T0)) // as the sync client writes it
     expect(lastSyncedAt(db)).toBe(T0)
   })
 })

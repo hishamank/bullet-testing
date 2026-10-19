@@ -1,14 +1,15 @@
 /**
  * The Settings sheet's "Home server" section (pure): one status line, the pair/change row, and
- * what is still waiting on this phone. The last successful sync is kept in `sync_state` so the
- * status survives a restart.
+ * what is still waiting on this phone. The last successful sync comes from `sync_state` (the sync
+ * client's `last_sync_at`), so the status survives a restart.
  */
 
 import type { PhoneDb } from '../../data/db'
 import { getState, setState } from '../../data/mirror'
 import type { Reachability } from '../sync/monitor'
 
-export const LAST_SYNCED_KEY = 'last_synced_at'
+/** Written by the sync client after every successful sync. */
+export const LAST_SYNCED_KEY = 'last_sync_at'
 /** Set when the user tapped "Not yet" at setup: Capture works, sync stays off until paired. */
 export const SETUP_DEFERRED_KEY = 'setup_deferred'
 
@@ -23,10 +24,6 @@ export function deferSetup(db: PhoneDb): void {
 export function lastSyncedAt(db: PhoneDb): number | null {
   const v = Number(getState(db, LAST_SYNCED_KEY))
   return Number.isFinite(v) && v > 0 ? v : null
-}
-
-export function recordSynced(db: PhoneDb, at: number): void {
-  setState(db, LAST_SYNCED_KEY, String(at))
 }
 
 /** "just now", "5 min ago", "3 h ago", "2 days ago". */

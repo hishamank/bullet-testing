@@ -25,7 +25,7 @@ import {
 } from '../../sync/runtime'
 import { loadServerSettings, type ServerSettings, saveServerSettings } from '../../sync/settings'
 import { captureCounts } from '../capture/counts'
-import { deferSetup, isSetupDeferred, recordSynced } from '../setup/settings'
+import { deferSetup, isSetupDeferred } from '../setup/settings'
 import { createStore } from '../store'
 import { createCoalescer } from './live'
 import { initialMonitor, nextSyncDelay, recordOutcome, resetForNewServer } from './monitor'
@@ -80,7 +80,6 @@ function scheduleNext() {
 
 function onOutcome(outcome: SyncOutcome) {
   const now = Date.now()
-  if (outcome.ok) recordSynced(getDb(), now)
   monitorStore.set((s) =>
     recordOutcome(
       s,
