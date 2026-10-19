@@ -104,7 +104,10 @@ mkdir -p ~/.cache/whisper-server && chmod 700 ~/.cache/whisper-server
   clips with the eval script before relying on it.
 - `--tmp-dir`: where `--convert` writes each recording while converting it. The default is the
   directory you started the server from, and a recording ffmpeg can't decode is **left there**
-  (a copy of a journal recording in a random directory). Use a private directory.
+  (a copy of a journal recording in a random directory). Use a private directory. It must be
+  writable: an unwritable `--tmp-dir`, or ffmpeg missing from whisper-server's `PATH`, fails
+  every recording with the same `"FFmpeg conversion failed."` a damaged file gets, so each voice
+  note shows `transcription_failed`.
 - `-t 8`: CPU threads for the parts that do not run on the GPU.
 
 ## 5. Start the bullet server
@@ -143,8 +146,10 @@ Start:
 pnpm --filter server start
 ```
 
-It logs the LLM and Whisper endpoints it will use. Every route needs the token, `/health`
-included:
+It logs the LLM and Whisper endpoints it will use. With `WHISPER_BASE_URL` set, it also warns at
+startup when `ffmpeg` is not on its own `PATH` (whisper-server usually shares it), and logs
+`[whisper] WARNING: 3 recordings in a row failed ffmpeg conversion…` when conversions keep
+failing: that is the setup, not the recordings. Every route needs the token, `/health` included:
 
 ```bash
 curl -s -H "authorization: Bearer $BULLET_TOKEN" http://127.0.0.1:3001/health
