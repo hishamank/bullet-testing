@@ -14,6 +14,16 @@ import { nonEmptyString, timestampMs, uuid } from './primitives'
 import type { SuggestionPayload } from './suggestion'
 
 /**
+ * A `thought_resolve` suggestion's payload: close the open loop `thought_id` (its `target_id`),
+ * recording the capture that answered it.
+ */
+export const thoughtResolvePayloadSchema = z.object({
+  thought_id: uuid(),
+  resolved_by_bullet_id: uuid(),
+})
+export type ThoughtResolvePayload = z.infer<typeof thoughtResolvePayloadSchema>
+
+/**
  * Registry mapping each `TargetKind` to that kind's INSERT schema. This is the bridge
  * between a Suggestion's `target_kind` and the concrete shape its `payload` must satisfy
  * (CLAUDE.md §4.3: the payload is validated against that kind's Zod schema).
@@ -27,6 +37,7 @@ export const targetKindInsertSchemas = {
   tracker: trackerInsertSchema,
   tracker_entry: trackerEntryInsertSchema,
   activity: activityInsertSchema,
+  thought_resolve: thoughtResolvePayloadSchema,
 } as const satisfies Record<TargetKind, z.ZodTypeAny>
 
 export type TargetKindInsertSchemas = typeof targetKindInsertSchemas
@@ -72,6 +83,7 @@ export const targetKindUpdateSchemas = {
     quantity: z.number().nullable(),
     unit: z.string().nullable(),
   }),
+  thought_resolve: thoughtResolvePayloadSchema,
 } as const satisfies Record<TargetKind, z.ZodTypeAny>
 
 export type TargetKindUpdateSchemas = typeof targetKindUpdateSchemas

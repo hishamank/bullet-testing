@@ -43,6 +43,8 @@ export function editFormFor(s: SuggestionLike): EditForm | null {
       const q = num(p.quantity)
       return { kind, name: text(p.name), quantity: q === null ? '' : String(q) }
     }
+    case 'thought_resolve':
+      return null
   }
 }
 

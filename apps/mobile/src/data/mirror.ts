@@ -6,7 +6,7 @@
  * the cursor update, so a crash can never skip or half-apply a page.
  */
 
-import type { PullResponse, SyncedBullet, TargetKind } from '@bullet/core'
+import type { PullResponse, SyncedBullet, ThingKind } from '@bullet/core'
 import { eq, isNotNull } from 'drizzle-orm'
 import type { PhoneDb } from './db'
 import {
@@ -14,10 +14,14 @@ import {
   audioAttachments,
   bullets,
   events,
+  noticedCards,
   outbox,
   suggestions,
   syncState,
   tasks,
+  themes,
+  themeThoughts,
+  thoughtLinks,
   trackerEntries,
   questions,
   thoughts,
@@ -31,7 +35,7 @@ export const ENTITY_TABLES = {
   tracker: trackers,
   tracker_entry: trackerEntries,
   activity: activities,
-} as const satisfies Record<TargetKind, unknown>
+} as const satisfies Record<ThingKind, unknown>
 
 export const CURSOR_KEY = 'pull_cursor'
 
@@ -152,6 +156,13 @@ export function applyPull(db: PhoneDb, page: PullResponse): void {
       const row = local(q)
       tx.insert(questions).values(row).onConflictDoUpdate({ target: questions.id, set: row }).run()
     }
+
+    // Connections (slice 3): a local "Not related", rename, retire, merge, open or dismiss wins
+    // until the server has it (its op carries the link / theme / card id as `entity_id`).
+    upsert(tx, t(thoughtLinks), page.changes.thought_links.map(local), pendingEntities)
+    upsert(tx, t(themes), page.changes.themes.map(local), pendingEntities)
+    upsert(tx, t(themeThoughts), page.changes.theme_thoughts.map(local), pendingEntities)
+    upsert(tx, t(noticedCards), page.changes.noticed_cards.map(local), pendingEntities)
 
     setState(tx, CURSOR_KEY, page.cursor)
   })

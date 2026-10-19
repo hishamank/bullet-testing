@@ -40,9 +40,13 @@ export function llmByText(script: Record<string, Candidate[]>) {
   })
 }
 
-export type SegmentScript = (
-  capture: string,
-) => { text: string; quote?: string; kind: ThoughtKind; sensitive?: boolean }[]
+export type SegmentScript = (capture: string) => {
+  text: string
+  quote?: string
+  kind: ThoughtKind
+  sensitive?: boolean
+  entities?: string[]
+}[]
 
 /**
  * Answer the engine's SEGMENTATION calls (capture → thoughts) so tests can keep scripting just
@@ -77,6 +81,7 @@ export interface Harness {
   pull(cursor?: string, limit?: number): Promise<PullResponse>
   request(path: string, init?: RequestInit): Promise<Response>
   worker: ReturnType<typeof createWorker>
+  engine: typeof ENGINE_CONFIG_DEFAULTS
   /** Capture a bullet through the API; returns its id. */
   capture(
     text: string,
@@ -114,6 +119,7 @@ export function createHarness(
     token: device.token,
     ownerId: device.ownerId,
     worker,
+    engine: ENGINE_CONFIG_DEFAULTS,
     request,
     async push(ops, token = device.token) {
       const res = await request('/sync/push', {

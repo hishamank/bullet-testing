@@ -31,6 +31,10 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
     activities: [],
     audio_attachments: [],
     transcripts: [],
+    thought_links: [],
+    themes: [],
+    theme_thoughts: [],
+    noticed_cards: [],
     thoughts: [
       {
         ...base,
@@ -77,6 +81,7 @@ const page = (over: Partial<PullResponse['changes']> = {}): PullResponse => ({
         snoozed_until: null,
         snooze_count: 0,
         template_id: null,
+        related_thought_id: null,
         resolved_at: null,
       },
     ],
@@ -151,7 +156,8 @@ describe('the sensitive flag is server-only', () => {
           'engine', 1)`,
       )
       .run(T1, B)
-    expect(migrate(db)).toBe(1)
+    expect(migrate(db, MIGRATIONS.slice(0, 8))).toBe(1)
+    migrate(db)
     expect(raw.prepare('SELECT sensitive FROM thoughts WHERE id = ?').get(T1)).toEqual({
       sensitive: 0,
     })

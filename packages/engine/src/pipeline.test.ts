@@ -113,6 +113,7 @@ describe('segmentCapture', () => {
         kind: 'note',
         span: { start: 2, end: 19 },
         sensitive: false,
+        entities: [],
       },
     ])
   })
@@ -140,14 +141,39 @@ describe('segmentCapture', () => {
   })
 })
 
+describe('named entities (slice 3)', () => {
+  test('kept only when they are in the user’s words, de-duplicated', async () => {
+    const llm = scripted(() => [
+      {
+        text: 'dinner with Karim at the Hamra flat',
+        quote: 'dinner with Karim at the Hamra flat',
+        kind: 'event',
+        entities: ['Karim', 'karim', 'the Hamra flat', 'Paris'],
+      } as Seg,
+    ])
+    const [t] = await segmentCapture(
+      { llm, config },
+      { text: 'dinner with Karim at the Hamra flat', ...CTX },
+    )
+    expect(t?.entities).toEqual(['Karim', 'the Hamra flat'])
+    expect(SEGMENTATION_SYSTEM_PROMPT).toMatch(/"entities"/)
+  })
+
+  test('an answer without entities reads as none', async () => {
+    const llm = scripted(() => [{ text: 'call the bank', quote: 'call the bank', kind: 'task' }])
+    const [t] = await segmentCapture({ llm, config }, { text: 'call the bank', ...CTX })
+    expect(t?.entities).toEqual([])
+  })
+})
+
 // Replays of Qwen3.5-4B Q4_K_M on llama-server (2026-10-18): it translated mixed
 // Arabizi / French / English captures to English (and mistranslated them) in `text`, while
 // `quote` stayed verbatim.
 describe("segmentation keeps the user's own words", () => {
   test('the wire schema asks for the verbatim quote first, then the text', () => {
     const item = (segmentationJsonSchema as any).properties.thoughts.items
-    expect(Object.keys(item.properties)).toEqual(['quote', 'text', 'kind', 'sensitive'])
-    expect(item.required).toEqual(['quote', 'text', 'kind', 'sensitive'])
+    expect(Object.keys(item.properties)).toEqual(['quote', 'text', 'kind', 'sensitive', 'entities'])
+    expect(item.required).toEqual(['quote', 'text', 'kind', 'sensitive', 'entities'])
     expect(SEGMENTATION_SYSTEM_PROMPT).toMatch(/NEVER TRANSLATE/)
   })
 

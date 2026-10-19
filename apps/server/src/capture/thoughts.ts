@@ -12,6 +12,7 @@ import type { Db } from '../db/client'
 import { questions, thoughts } from '../db/schema'
 import { ApplyError } from '../apply/apply'
 import { touch } from '../sync/changes'
+import { retireConnectionsOfThought } from '../connections/store'
 
 const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ')
 
@@ -47,6 +48,7 @@ export function reconcileThoughts(
           ...(e.kind_source === 'user' ? {} : { kind: t.kind }),
           // Once read as distress, the thought stays so (it only keeps reflective questions away).
           sensitive: e.sensitive || t.sensitive,
+          entities: t.entities,
           updated_at: now,
         })
         .where(eq(thoughts.id, e.id))
@@ -66,6 +68,7 @@ export function reconcileThoughts(
           kind: t.kind,
           kind_source: 'engine',
           sensitive: t.sensitive,
+          entities: t.entities,
           created_at: now,
           updated_at: now,
         })
@@ -80,6 +83,7 @@ export function reconcileThoughts(
       .where(eq(thoughts.id, gone.id))
       .run()
     touch(db, bullet.owner_id, 'thoughts', gone.id)
+    retireConnectionsOfThought(db, bullet.owner_id, gone.id, now)
   }
   return ids
 }
@@ -278,6 +282,7 @@ export function retireThoughtsAndQuestions(db: Db, ownerId: string, bulletId: st
     for (const r of rows) {
       db.update(table).set({ state: 'deleted', updated_at: now }).where(eq(table.id, r.id)).run()
       touch(db, ownerId, table === thoughts ? 'thoughts' : 'questions', r.id)
+      if (table === thoughts) retireConnectionsOfThought(db, ownerId, r.id, now)
     }
   }
 }

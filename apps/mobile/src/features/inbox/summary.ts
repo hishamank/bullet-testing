@@ -229,6 +229,18 @@ export function summarize(s: SuggestionLike, ctx: SummaryContext): Summary {
         done: `${join([name, amount], ' · ')} logged`,
       }
     }
+    case 'thought_resolve': {
+      // "Did this close it?" — the UI pass shows «loop» ← «answer» (data/connections.ts).
+      const name = (s.target_id && ctx.titles.get(s.target_id)) || 'Open loop'
+      return {
+        pill: { kind: 'to_check', label: 'open loop' },
+        ask: 'Did this close it?',
+        text: name,
+        spoken: `Did this close it? ${name}`,
+        name,
+        done: `${name} closed`,
+      }
+    }
   }
 }
 

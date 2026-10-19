@@ -117,6 +117,25 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
   "Still on your mind?" for 7-day-old open loops or an evergreen question. Every source goes
   through `reflectiveRefusal` (3 open, 2 a day, 14 days quiet; evergreen alone, every 3 days,
   paused 7 days after a `sensitive` thought). One reflective question per capture, ever.
+- **Connections** (slice 3, `apps/server/src/connections`, engine `connections/`, contract §2f):
+  embeddings through the `Embedder` interface (`/v1/embeddings` of a second llama-server started
+  with `--embeddings`; scripted in tests), one vector per thought stored with the embedder key
+  (model + template; another key re-embeds). A `link_jobs` row per capture runs after extraction
+  and before the reflect job: `planLinks` (10 nearest, profile thresholds, ≤ 5 links per thought,
+  vetoes respected), a live yes/no "answers?" check for close open loops → one `thought_resolve`
+  suggestion (tier suggest, never auto, never counts toward `needs_review`, ignored by reconcile),
+  and maybe a `connection` question that waits for the reflect job (one question per capture). The
+  nightly run (`connections/nightly.ts`, 02:00 server `TZ`, in the worker when idle, one catch-up
+  run after downtime) reviews links, clusters themes on uncapped similarity + links, names them
+  (validated to be the user's words, Noticed denylist) and writes ≤ 2 Noticed cards a day. A chat
+  model as embedder needs the `llm` profile (template + centring; calibrated thresholds in
+  `docs/home-server.md`). Corrections (`link_vetoes`, `themes.vetoed_thought_ids`, aliases) are
+  keyed by thought id, which survives edits while the text matches. Sensitive thoughts never
+  appear outside their capture: a link carries `visible_from` (shown only from the capture whose
+  other end isn't sensitive; never named after the flag), memberships, mostly-sensitive themes and
+  quote-less cards are pulled as `deleted`, and a card's headline is rebuilt when its
+  `headline_thought_id` turns sensitive. The nightly run yields (`shouldYield`) whenever a capture
+  job is ready; it must never hold a capture back. A waiting `thought_resolve` counts in the badge.
 - **Apply engine** (`apps/server/src/apply`): revalidates against current state at apply time;
   a created entity's id **is** the suggestion id (idempotent); `update` payloads are field-level
   patches validated by `targetKindUpdateSchemas` (never a snapshot); undo restores `before`

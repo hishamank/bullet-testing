@@ -35,6 +35,11 @@ import type {
   ThoughtKind,
   TrackerInputType,
   TranscriptKind,
+  LinkType,
+  LinkVisibility,
+  NoticedQuote,
+  NoticedStatus,
+  ThemeStatus,
 } from '@bullet/core'
 import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -263,9 +268,71 @@ export const questions = sqliteTable(
     snooze_count: integer('snooze_count').notNull().default(0),
     /** Evergreen questions: which template (`EVERGREEN_QUESTIONS`). */
     template_id: text('template_id'),
+    /** Connection questions ("Is this the same thing?"): the earlier thought. */
+    related_thought_id: text('related_thought_id'),
   },
   (t) => [index('questions_bullet_idx').on(t.source_bullet_id)],
 )
+
+/**
+ * Links between thoughts of two captures (slice 3): "Related" on either capture. `a` is the
+ * earlier one. Links touching a sensitive thought never reach the phone.
+ */
+export const thoughtLinks = sqliteTable(
+  'thought_links',
+  {
+    ...rowFields(),
+    a_thought_id: text('a_thought_id').notNull(),
+    a_bullet_id: text('a_bullet_id').notNull(),
+    b_thought_id: text('b_thought_id').notNull(),
+    b_bullet_id: text('b_bullet_id').notNull(),
+    type: text('type').$type<LinkType>().notNull(),
+    /** Which capture(s) show it: `both`, or only `a`'s / `b`'s. */
+    visible_from: text('visible_from').$type<LinkVisibility>().notNull().default('both'),
+  },
+  (t) => [
+    index('thought_links_a_bullet_idx').on(t.a_bullet_id),
+    index('thought_links_b_bullet_idx').on(t.b_bullet_id),
+  ],
+)
+
+/** Recurring themes (named in the user's words, or by them). */
+export const themes = sqliteTable('themes', {
+  ...rowFields(),
+  name: text('name'),
+  named_by_user: integer('named_by_user', { mode: 'boolean' }).notNull().default(false),
+  status: text('status').$type<ThemeStatus>().notNull(),
+  merged_into_theme_id: text('merged_into_theme_id'),
+  thought_count: integer('thought_count').notNull().default(0),
+  day_count: integer('day_count').notNull().default(0),
+  first_seen_at: integer('first_seen_at'),
+  last_seen_at: integer('last_seen_at'),
+})
+
+/** Which thoughts belong to a theme (the Stream's "again" dot). */
+export const themeThoughts = sqliteTable(
+  'theme_thoughts',
+  {
+    ...rowFields(),
+    theme_id: text('theme_id').notNull(),
+    thought_id: text('thought_id').notNull(),
+    bullet_id: text('bullet_id').notNull(),
+  },
+  (t) => [index('theme_thoughts_thought_idx').on(t.thought_id)],
+)
+
+/** Noticed cards: "«quote» · came up N times in M days" (never in the badge, never notified). */
+export const noticedCards = sqliteTable('noticed_cards', {
+  ...rowFields(),
+  theme_id: text('theme_id').notNull(),
+  headline: text('headline').notNull(),
+  quotes: text('quotes', { mode: 'json' }).$type<NoticedQuote[]>().notNull(),
+  count: integer('count').notNull(),
+  days: integer('days').notNull(),
+  status: text('status').$type<NoticedStatus>().notNull(),
+  opened_at: integer('opened_at'),
+  resolved_at: integer('resolved_at'),
+})
 
 export const syncState = sqliteTable('sync_state', {
   key: text('key').primaryKey(),
@@ -285,5 +352,9 @@ export const schema = {
   transcripts,
   thoughts,
   questions,
+  thoughtLinks,
+  themes,
+  themeThoughts,
+  noticedCards,
   syncState,
 }

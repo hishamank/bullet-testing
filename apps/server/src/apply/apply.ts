@@ -17,17 +17,21 @@
 
 import {
   entryValueFits,
+  isThingKind,
+  type ThingKind,
   type PushRejectCode,
   type TrackerEntryValue,
   targetKindInsertSchemas,
   targetKindUpdateSchemas,
+  thoughtResolvePayloadSchema,
   taskSelectSchema,
   eventSelectSchema,
 } from '@bullet/core'
 import { readingAsActivity, yesNoAnswer } from '@bullet/engine'
 import { and, eq, ne, sql } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { bullets, questions, suggestions, trackerEntries, trackers } from '../db/schema'
+import { bullets, questions, suggestions, thoughts, trackerEntries, trackers } from '../db/schema'
+import { linkBetween, setLinkType, vetoPair } from '../connections/store'
 import { touch } from '../sync/changes'
 import { getEntity, insertEntity, patchEntity, softDeleteEntity } from './entities'
 
@@ -64,6 +68,13 @@ export function updateSuggestionRow(
     .run()
   touch(db, s.owner_id, 'suggestions', s.id)
   return next
+}
+
+/** The thing a suggestion is about (a `thought_resolve` is handled on its own, never here). */
+function thingKindOf(s: SuggestionRow): ThingKind {
+  if (!isThingKind(s.target_kind))
+    throw new ApplyError('invalid', `${s.target_kind} is not a thing`)
+  return s.target_kind
 }
 
 /** Re-exported from `@bullet/core`, where the phone shares it. */
@@ -132,7 +143,7 @@ function applyCreate(db: Db, s: SuggestionRow, payload: Record<string, unknown>,
     if (dup) return { entityId: dup.id, before: null, after: { [LINKED_TO]: dup.id } }
   }
 
-  insertEntity(db, s.target_kind, { ...data, id: s.id, owner_id: s.owner_id }, now)
+  insertEntity(db, thingKindOf(s), { ...data, id: s.id, owner_id: s.owner_id }, now)
   return { entityId: s.id, before: null, after: null }
 }
 
@@ -310,7 +321,8 @@ function applyUpdate(db: Db, s: SuggestionRow, payload: Record<string, unknown>,
   }
   const patch = parsed.data as Record<string, unknown>
   if (s.target_id === null) throw new ApplyError('invalid', 'update without a target')
-  const current = getEntity(db, s.target_kind, s.owner_id, s.target_id)
+  const kind = thingKindOf(s)
+  const current = getEntity(db, kind, s.owner_id, s.target_id)
   if (!current) throw new ApplyError('not_found', `${s.target_kind} ${s.target_id} not found`)
   if (current.state !== 'active') throw new ApplyError('conflict', `${s.target_kind} was deleted`)
 
@@ -338,7 +350,7 @@ function applyUpdate(db: Db, s: SuggestionRow, payload: Record<string, unknown>,
     before[k] = current[k] ?? null
     after[k] = patch[k]
   }
-  patchEntity(db, s.target_kind, s.owner_id, s.target_id, after, now)
+  patchEntity(db, kind, s.owner_id, s.target_id, after, now)
   return { entityId: s.target_id, before, after }
 }
 
@@ -415,6 +427,7 @@ function applyOne(db: Db, s: SuggestionRow, now: number, opts: ApplyOptions = {}
   if (s.applied_entity_id !== null && (s.status === 'accepted' || s.status === 'edited')) return s
   if (s.state !== 'active') throw new ApplyError('invalid', 'suggestion was withdrawn')
   if (s.status !== 'pending') throw new ApplyError('invalid', `suggestion is ${s.status}`)
+  if (s.target_kind === 'thought_resolve') return applyThoughtResolve(db, s, now)
 
   const edited = opts.payload !== undefined && !sameValue(opts.payload, s.payload)
   const payload = opts.payload ?? s.payload
@@ -438,6 +451,110 @@ function applyOne(db: Db, s: SuggestionRow, now: number, opts: ApplyOptions = {}
   )
 }
 
+// --- "Did this close it?" (thought_resolve, slice 3) ---
+
+function loopOf(db: Db, s: SuggestionRow) {
+  if (s.target_id === null) throw new ApplyError('invalid', 'thought_resolve without a target')
+  const loop = db
+    .select()
+    .from(thoughts)
+    .where(and(eq(thoughts.id, s.target_id), eq(thoughts.owner_id, s.owner_id)))
+    .get()
+  if (!loop) throw new ApplyError('not_found', `thought ${s.target_id} not found`)
+  return loop
+}
+
+/**
+ * Accept "Did this close it?": the open loop is resolved, recording the capture that answered it.
+ * Refused (`conflict`) when the loop is gone, no longer an open loop, or already closed (by hand,
+ * a note or another answer): the phone shows "Already closed". Never applied automatically.
+ */
+function applyThoughtResolve(db: Db, s: SuggestionRow, now: number): SuggestionRow {
+  const parsed = thoughtResolvePayloadSchema.safeParse(s.payload)
+  if (!parsed.success) throw new ApplyError('invalid', 'thought_resolve payload invalid')
+  const loop = loopOf(db, s)
+  if (loop.state !== 'active') throw new ApplyError('conflict', 'the thought was deleted')
+  if (loop.kind !== 'to_check' && loop.kind !== 'question') {
+    throw new ApplyError('conflict', 'the thought is no longer an open loop')
+  }
+  if (loop.resolved_at !== null) throw new ApplyError('conflict', 'already closed')
+  const after = { resolved_at: now, resolved_by_bullet_id: parsed.data.resolved_by_bullet_id }
+  db.update(thoughts)
+    .set({ ...after, updated_at: now })
+    .where(eq(thoughts.id, loop.id))
+    .run()
+  touch(db, s.owner_id, 'thoughts', loop.id)
+  return updateSuggestionRow(
+    db,
+    s,
+    {
+      status: 'accepted',
+      resolved_at: now,
+      applied_entity_id: loop.id,
+      applied_at: now,
+      auto_applied: false,
+      applied_before: { resolved_at: null, resolved_by_bullet_id: null },
+      applied_after: after,
+    },
+    now,
+  )
+}
+
+/**
+ * Undo "Did this close it?": the loop opens again. Refused (`conflict`) when it was since closed
+ * another way; already open again (re-opened by hand) just records the undo.
+ */
+function undoThoughtResolve(db: Db, s: SuggestionRow, now: number): SuggestionRow {
+  const loop = loopOf(db, s)
+  const after = s.applied_after ?? {}
+  const ours =
+    loop.resolved_at === after.resolved_at &&
+    loop.resolved_by_bullet_id === after.resolved_by_bullet_id
+  if (loop.resolved_at !== null && !ours) {
+    throw new ApplyError('conflict', 'the loop was closed another way since; not undone')
+  }
+  if (ours) {
+    db.update(thoughts)
+      .set({ resolved_at: null, resolved_by_bullet_id: null, updated_at: now })
+      .where(eq(thoughts.id, loop.id))
+      .run()
+    touch(db, s.owner_id, 'thoughts', loop.id)
+  }
+  // "It didn't close it after all": the link stays, no longer called an answer (like dismiss,
+  // without remembering the pair: the user may still accept it from a later capture).
+  unanswerLink(db, s, now)
+  return updateSuggestionRow(
+    db,
+    s,
+    {
+      status: 'rejected',
+      resolved_at: now,
+      applied_entity_id: null,
+      applied_at: null,
+      applied_before: null,
+      applied_after: null,
+    },
+    now,
+  )
+}
+
+/**
+ * Dismissing "Did this close it?" vetoes that pair for good, and the link between them is no
+ * longer called an answer.
+ */
+function dismissThoughtResolve(db: Db, s: SuggestionRow, now: number): void {
+  if (s.target_id === null || s.source_thought_id === null) return
+  vetoPair(db, s.owner_id, s.target_id, s.source_thought_id, 'resolve', 'user', now)
+  unanswerLink(db, s, now)
+}
+
+/** The link between the loop and the answer is no longer called an answer. */
+function unanswerLink(db: Db, s: SuggestionRow, now: number): void {
+  if (s.target_id === null || s.source_thought_id === null) return
+  const link = linkBetween(db, s.owner_id, s.target_id, s.source_thought_id)
+  if (link?.state === 'active' && link.type === 'answers') setLinkType(db, link, 'same_topic', now)
+}
+
 /**
  * Dismiss a pending suggestion. "Not now" on a new tracker keeps each reading that waited on it
  * as a plain activity with its value ("Slept · 6 h", no tracker), applied as a record: the
@@ -448,6 +565,7 @@ export function rejectSuggestion(db: Db, s: SuggestionRow, now: number): Suggest
   if (s.status !== 'pending') throw new ApplyError('invalid', `suggestion is ${s.status}`)
   const readings = dependentReadings(db, s)
   const rejected = updateSuggestionRow(db, s, { status: 'rejected', resolved_at: now }, now)
+  if (s.target_kind === 'thought_resolve') dismissThoughtResolve(db, s, now)
   for (const r of readings) {
     if (r.status !== 'pending') continue
     keepReadingAsActivity(db, r, s, now)
@@ -483,6 +601,7 @@ export function undoSuggestion(db: Db, s: SuggestionRow, now: number): Suggestio
   if (s.applied_entity_id === null || s.applied_at === null) {
     throw new ApplyError('invalid', 'suggestion is not applied')
   }
+  if (s.target_kind === 'thought_resolve') return undoThoughtResolve(db, s, now)
   // A tracker offer linked to an existing tracker created nothing: undoing it never touches that
   // tracker (nor the readings now logged to it).
   if (linkedTracker(s)) {
@@ -570,7 +689,9 @@ export function undoSuggestion(db: Db, s: SuggestionRow, now: number): Suggestio
 
 /**
  * Keep a processed bullet's status honest after a review action: `needs_review` while any of its
- * suggestions is pending, otherwise `processed`. Bullets not yet processed are left alone.
+ * suggestions is pending, otherwise `processed`. Bullets not yet processed are left alone. A
+ * waiting "Did this close it?" is about another capture's loop: it never holds a capture in
+ * `needs_review`.
  */
 export function refreshReviewStatus(db: Db, ownerId: string, bulletId: string, now: number): void {
   const b = db
@@ -587,6 +708,7 @@ export function refreshReviewStatus(db: Db, ownerId: string, bulletId: string, n
         eq(suggestions.source_bullet_id, bulletId),
         eq(suggestions.state, 'active'),
         eq(suggestions.status, 'pending'),
+        ne(suggestions.target_kind, 'thought_resolve'),
       ),
     )
     .get()

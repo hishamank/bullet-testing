@@ -12,6 +12,7 @@
  * The question becomes `answered` with `answer_option`. The same answer again is a `duplicate`.
  */
 
+import { CONNECTION_OPTIONS } from '@bullet/core'
 import { dateAnswerFields, yesNoAnswer } from '@bullet/engine'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
@@ -29,6 +30,7 @@ import {
   updateSuggestionRow,
 } from './apply'
 import { getEntity, patchEntity } from './entities'
+import { answerConnection } from '../connections/actions'
 
 function linkedSuggestion(db: Db, ownerId: string, id: string | null): SuggestionRow {
   const s = id === null ? undefined : getSuggestion(db, ownerId, id)
@@ -97,7 +99,8 @@ export function answerQuestionWithOption(
   now: number,
 ): 'applied' | 'duplicate' {
   const q = getQuestion(db, ownerId, questionId)
-  if (q.kind === 'reflective') {
+  // A connection question ("Is this the same thing?") is the one reflective question with options.
+  if (q.kind === 'reflective' && q.origin !== 'connection') {
     throw new ApplyError('invalid', 'a reflective question is answered with a capture')
   }
   if (q.state !== 'active') throw new ApplyError('invalid', 'question was withdrawn')
@@ -108,7 +111,10 @@ export function answerQuestionWithOption(
   if (q.status === 'dismissed') throw new ApplyError('invalid', 'question was dismissed')
   if (!q.options.includes(option)) throw new ApplyError('invalid', `"${option}" is not an option`)
 
-  if (q.topic === 'date') {
+  if (q.origin === 'connection') {
+    const same = option === CONNECTION_OPTIONS[0]
+    answerConnection(db, ownerId, q.source_thought_id, q.related_thought_id, same, now)
+  } else if (q.topic === 'date') {
     answerDate(db, ownerId, linkedSuggestion(db, ownerId, q.suggestion_id), option, now)
   } else if (q.topic === 'new_tracker') {
     answerNewTracker(db, ownerId, linkedSuggestion(db, ownerId, q.suggestion_id), option, now)

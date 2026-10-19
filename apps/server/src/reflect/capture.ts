@@ -17,11 +17,12 @@
 
 import type { ReflectableThought } from '@bullet/engine'
 import { type EngineConfig, isReflectable, type LlmClient, reflectOnThoughts } from '@bullet/engine'
-import { and, asc, eq, lte } from 'drizzle-orm'
+import { and, asc, eq, inArray, lte } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { bullets, questions, reflectJobs, thoughts } from '../db/schema'
 import { type BulletRow, DEFAULT_RETRY_POLICY, type RetryPolicy, retryDelay } from '../queue/jobs'
 import { createReflectiveQuestion, refusalNow, withdrawLiveReflective } from './questions'
+import { askDeferredConnectionQuestion, queueLinkJob } from '../connections/link-job'
 
 export type ReflectJobRow = typeof reflectJobs.$inferSelect
 
@@ -55,7 +56,8 @@ export function reflectableThoughts(db: Db, bullet: BulletRow): ReflectableThoug
       and(
         eq(questions.source_bullet_id, bullet.id),
         eq(questions.kind, 'reflective'),
-        eq(questions.origin, 'capture'),
+        // One per capture, whichever asked it: its own reflection or a connection question.
+        inArray(questions.origin, ['capture', 'connection']),
         // A question withdrawn because an edit reworded its thought (`deleted`) doesn't count:
         // the new wording may get one. Dismissed and answered ones stay active, so they do.
         eq(questions.state, 'active'),
@@ -89,6 +91,8 @@ export function afterCaptureProcessed(db: Db, bullet: BulletRow, now: number): v
   if (all.some((t) => t.state === 'active' && t.sensitive)) {
     withdrawLiveReflective(db, bullet.owner_id, eq(questions.source_bullet_id, bullet.id), now)
   }
+  // Links (slice 3) run next, before the reflect job; they never wait on it.
+  queueLinkJob(db, bullet, now)
   if (reflectableThoughts(db, bullet) === null) {
     cancelReflectJob(db, bullet.id, now)
     return
@@ -210,7 +214,10 @@ export async function runReflectJob(
   const thoughtsBefore = reflectableThoughts(db, claimed.bullet)
   // Nothing to ask about any more, or the limits are reached: no model call at all.
   if (thoughtsBefore === null || refusalNow(db, ownerId, 'capture', deps.now()) !== null) {
-    finishReflectJob(db, claimed.bullet.id, deps.now())
+    db.transaction((tx) => {
+      finishReflectJob(tx, claimed.bullet.id, deps.now())
+      askDeferredConnectionQuestion(tx, claimed.bullet.id, deps.now())
+    })
     return thoughtsBefore === null ? 'none' : 'capped'
   }
   const draft = await reflectOnThoughts({ llm: deps.llm, config: deps.engine }, thoughtsBefore)
@@ -219,11 +226,16 @@ export async function runReflectJob(
     const bullet = isReflectJobCurrent(tx, claimed)
     if (!bullet) return 'stale'
     finishReflectJob(tx, bullet.id, now)
-    if (!draft) return 'none'
+    // No question of its own: a connection question held back by the link job may take the slot.
+    const noneOfItsOwn = (outcome: ReflectOutcome): ReflectOutcome => {
+      askDeferredConnectionQuestion(tx, bullet.id, now)
+      return outcome
+    }
+    if (!draft) return noneOfItsOwn('none')
     // Re-check everything: the user may have acted, or another question arrived, meanwhile.
     const usable = reflectableThoughts(tx, bullet)
-    if (!usable?.some((t) => t.position === draft.thoughtPosition)) return 'none'
-    if (refusalNow(tx, ownerId, 'capture', now) !== null) return 'capped'
+    if (!usable?.some((t) => t.position === draft.thoughtPosition)) return noneOfItsOwn('none')
+    if (refusalNow(tx, ownerId, 'capture', now) !== null) return noneOfItsOwn('capped')
     const thought = tx
       .select({ id: thoughts.id })
       .from(thoughts)
@@ -271,6 +283,7 @@ export function markReflectJobFailed(
       })
       .where(eq(reflectJobs.bullet_id, claimed.job.bullet_id))
       .run()
+    if (giveUp) askDeferredConnectionQuestion(tx, claimed.job.bullet_id, now)
     return giveUp ? 'failed' : 'retry'
   })
 }

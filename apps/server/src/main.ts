@@ -1,13 +1,18 @@
 import { serve } from '@hono/node-server'
-import { createOpenAiCompatibleClient, createWhisperCppTranscriber } from '@bullet/engine'
+import {
+  createOpenAiCompatibleClient,
+  createOpenAiCompatibleEmbedder,
+  createWhisperCppTranscriber,
+} from '@bullet/engine'
 import { createApp } from './app'
-import { engineConfig, loadServerConfig } from './config'
+import { engineConfig, loadServerConfig, nightlyEngineConfig } from './config'
 import { openDb } from './db/client'
 import { recoverStuckJobs } from './queue/jobs'
 import { createWorker } from './queue/worker'
 import { ffmpegAvailable, watchConversionFailures } from './ops/whisper-health'
 import { createFileAudioStore } from './storage/audio-store'
 import { recoverStuckReflectJobs } from './reflect/capture'
+import { recoverStuckLinkJobs } from './connections/link-job'
 import { scheduleReflectionPass } from './reflect/pass'
 
 const config = loadServerConfig(process.env)
@@ -17,6 +22,15 @@ const audioStore = createFileAudioStore(config.audioDir)
 const recovered = recoverStuckJobs(db, Date.now())
 if (recovered > 0) console.log(`recovered ${recovered} job(s) interrupted by the last shutdown`)
 recoverStuckReflectJobs(db, Date.now())
+recoverStuckLinkJobs(db, Date.now())
+
+const embedder = createOpenAiCompatibleEmbedder({
+  baseUrl: config.embedBaseUrl,
+  model: config.embedModel,
+  apiKey: config.embedApiKey,
+  template: config.embedProfile.template,
+  timeoutMs: config.embedTimeoutMs + 5_000,
+})
 
 const worker = createWorker({
   db,
@@ -42,6 +56,21 @@ const worker = createWorker({
     : undefined,
   transcriberTimeoutMs: config.transcribeTimeoutMs,
   audioStore,
+  embedder,
+  embedProfile: config.embedProfile,
+  embedTimeoutMs: config.embedTimeoutMs,
+  // Themes, link review and Noticed at 02:00 server time, with the nightly model if set.
+  nightly: {
+    llm: config.llmNightlyBaseUrl
+      ? createOpenAiCompatibleClient({
+          baseUrl: config.llmNightlyBaseUrl,
+          apiKey: config.llmApiKey,
+          timeoutMs: config.llmTimeoutMs + 5_000,
+        })
+      : undefined,
+    engine: nightlyEngineConfig(config),
+    timezone: config.timezone,
+  },
   // Processing failures are recorded on the bullet; the log line is for the operator.
   onError: (err) => console.error('[worker]', err instanceof Error ? err.message : err),
 })
@@ -59,6 +88,19 @@ const app = createApp({
 })
 
 console.log(`llm: ${config.llmBaseUrl} (model ${config.llmModel})`)
+console.log(
+  `nightly: 02:00 ${config.timezone} (model ${config.llmNightlyModel ?? config.llmModel})`,
+)
+console.log(
+  `embeddings: ${config.embedBaseUrl} (model ${config.embedModel}, ${config.embedProfile.name} profile, link at ${config.embedProfile.thresholds.link})`,
+)
+// A quick probe: llama-server only answers /v1/embeddings when started with --embeddings.
+embedder.embed(['probe']).catch((err: unknown) => {
+  console.warn(
+    `[embed] WARNING: ${config.embedBaseUrl}/v1/embeddings is not answering (${err instanceof Error ? err.message : String(err)}). ` +
+      'Connections wait until it does; see docs/home-server.md.',
+  )
+})
 if (config.whisperBaseUrl && !ffmpegAvailable()) {
   // whisper-server --convert needs ffmpeg; usually it runs on this same machine and PATH.
   console.warn(

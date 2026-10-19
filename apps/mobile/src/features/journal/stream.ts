@@ -12,7 +12,7 @@ import {
   type ProcessingErrorCode,
   type ThoughtKind,
 } from '@bullet/core'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
 import { audioAttachments, bullets, suggestions, syncState, thoughts } from '../../data/schema'
@@ -108,7 +108,14 @@ export function listCaptureCards(db: PhoneDb, limit: number, now = Date.now()): 
       applied: suggestions.applied_at,
     })
     .from(suggestions)
-    .where(and(inArray(suggestions.source_bullet_id, ids), eq(suggestions.state, 'active')))
+    .where(
+      and(
+        inArray(suggestions.source_bullet_id, ids),
+        eq(suggestions.state, 'active'),
+        // "Did this close it?" is about another capture's loop (the Inbox lists it).
+        ne(suggestions.target_kind, 'thought_resolve'),
+      ),
+    )
     .all()) {
     const c = counts.get(s.bullet) ?? { auto: 0, pending: 0 }
     if (s.status === 'pending') c.pending += 1

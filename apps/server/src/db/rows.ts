@@ -1,7 +1,29 @@
 /** Row ↔ contract mapping: what a database row looks like on the wire (`@bullet/core` shapes). */
 
-import type { AudioAttachment, Suggestion, SyncedBullet, SyncedThought } from '@bullet/core'
-import type { audioAttachments, bullets, suggestions, thoughts } from './schema'
+import {
+  type AudioAttachment,
+  CONNECTION_RULES,
+  type NoticedCard,
+  type NoticedQuote,
+  noticedHeadline,
+  shortQuote,
+  type Suggestion,
+  type SyncedBullet,
+  type SyncedThought,
+  type Theme,
+  type ThemeThought,
+  type ThoughtLink,
+} from '@bullet/core'
+import type {
+  audioAttachments,
+  bullets,
+  noticedCards,
+  suggestions,
+  themes,
+  themeThoughts,
+  thoughtLinks,
+  thoughts,
+} from './schema'
 
 type BulletRow = typeof bullets.$inferSelect
 type SuggestionRow = typeof suggestions.$inferSelect
@@ -48,12 +70,121 @@ export function toAudioAttachment(row: typeof audioAttachments.$inferSelect): Au
   return rest
 }
 
-/** A thought for the phone: `sensitive` is server-only and never leaves the home server. */
+/**
+ * A thought for the phone: `sensitive` is server-only and never leaves the home server, and its
+ * named entities are only for linking.
+ */
 export function toThought(row: typeof thoughts.$inferSelect): SyncedThought {
-  const { span_start, span_end, sensitive, ...rest } = row
+  const { span_start, span_end, sensitive, entities, ...rest } = row
   void sensitive
+  void entities
   return {
     ...rest,
     span: span_start === null || span_end === null ? null : { start: span_start, end: span_end },
+  }
+}
+
+/**
+ * Sensitive thoughts never appear outside their own capture: a link shows only from the capture
+ * whose OTHER end is not sensitive (`visible_from`), and a link between two sensitive thoughts is
+ * sent as deleted. The field never names the reason.
+ */
+export function toThoughtLink(
+  row: typeof thoughtLinks.$inferSelect,
+  sensitive: ReadonlySet<string>,
+): ThoughtLink {
+  const aHidden = sensitive.has(row.a_thought_id)
+  const bHidden = sensitive.has(row.b_thought_id)
+  const hidden = aHidden && bHidden
+  // `a` sensitive: only `a`'s own capture may show the link (its other end, b, is fine).
+  const visible_from = aHidden ? 'a' : bHidden ? 'b' : 'both'
+  return {
+    visible_from,
+    id: row.id,
+    owner_id: row.owner_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    state: hidden ? 'deleted' : row.state,
+    a_thought_id: row.a_thought_id,
+    a_bullet_id: row.a_bullet_id,
+    b_thought_id: row.b_thought_id,
+    b_bullet_id: row.b_bullet_id,
+    type: row.type,
+  }
+}
+
+/** A theme made half or more of sensitive thoughts is not surfaced at all (sent as deleted). */
+export const isHiddenTheme = (row: Pick<typeof themes.$inferSelect, 'sensitive_share'>) =>
+  row.sensitive_share >= CONNECTION_RULES.sensitiveShare
+
+export function toTheme(row: typeof themes.$inferSelect): Theme {
+  const hidden = isHiddenTheme(row)
+  return {
+    id: row.id,
+    owner_id: row.owner_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    state: hidden ? 'deleted' : row.state,
+    name: hidden ? null : (row.user_name ?? row.model_name),
+    named_by_user: row.user_name !== null,
+    status: row.status,
+    merged_into_theme_id: row.merged_into_theme_id,
+    thought_count: row.thought_count,
+    day_count: row.day_count,
+    first_seen_at: row.first_seen_at,
+    last_seen_at: row.last_seen_at,
+  }
+}
+
+export function toThemeThought(
+  row: typeof themeThoughts.$inferSelect,
+  hidden: boolean,
+): ThemeThought {
+  return {
+    id: row.id,
+    owner_id: row.owner_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    state: hidden ? 'deleted' : row.state,
+    theme_id: row.theme_id,
+    thought_id: row.thought_id,
+    bullet_id: row.bullet_id,
+  }
+}
+
+/** A card never quotes a sensitive thought; one with nothing left to quote is sent as deleted. */
+export function toNoticedCard(
+  row: typeof noticedCards.$inferSelect,
+  sensitive: ReadonlySet<string>,
+  themeHidden: boolean,
+): NoticedCard {
+  const kept = row.quotes.filter((q) => !sensitive.has(q.thought_id))
+  const hidden = themeHidden || kept.length === 0
+  const quotes = hidden ? [] : kept
+  // The headline quotes one thought (always one of the quotes). If that thought is sensitive now,
+  // the headline is rebuilt from the first quote still shown; a hidden card sends no words at all.
+  const headlineHidden =
+    row.headline_thought_id === null
+      ? row.quotes.some((q) => sensitive.has(q.thought_id))
+      : sensitive.has(row.headline_thought_id)
+  const headline = hidden
+    ? noticedHeadline('…', row.count, row.days)
+    : headlineHidden
+      ? noticedHeadline(shortQuote((quotes[0] as NoticedQuote).text, 60), row.count, row.days)
+      : row.headline
+  return {
+    id: row.id,
+    owner_id: row.owner_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    state: hidden ? 'deleted' : row.state,
+    theme_id: row.theme_id,
+    headline,
+    quotes,
+    count: row.count,
+    days: row.days,
+    status: row.status,
+    opened_at: row.opened_at,
+    resolved_at: row.resolved_at,
   }
 }

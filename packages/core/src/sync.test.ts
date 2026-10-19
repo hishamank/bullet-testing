@@ -49,6 +49,12 @@ describe('push', () => {
       { op_id: OP, type: 'event.delete', event_id: BULLET },
       { op_id: OP, type: 'tracker_entry.update', tracker_entry_id: BULLET, patch: { value: 4 } },
       { op_id: OP, type: 'tracker_entry.delete', tracker_entry_id: BULLET },
+      { op_id: OP, type: 'link.veto', link_id: BULLET },
+      { op_id: OP, type: 'theme.rename', theme_id: BULLET, name: 'Flat money' },
+      { op_id: OP, type: 'theme.retire', theme_id: BULLET },
+      { op_id: OP, type: 'theme.merge', theme_id: BULLET, into_theme_id: OP },
+      { op_id: OP, type: 'noticed.open', card_id: BULLET },
+      { op_id: OP, type: 'noticed.dismiss', card_id: BULLET },
       { ...createOp, bullet: { ...createOp.bullet, resolves_thought_id: BULLET } },
     ]
     for (const op of ops) expect(pushOpSchema.safeParse(op).success, op.type).toBe(true)
@@ -187,5 +193,76 @@ describe('pull', () => {
       },
     }
     expect(pullResponseSchema.safeParse(bad).success).toBe(false)
+    // An older server's pull (no slice 3 collections) still reads, with them empty.
+    const parsed = pullResponseSchema.parse(ok)
+    expect(parsed.changes.thought_links).toEqual([])
+    expect(parsed.changes.noticed_cards).toEqual([])
+  })
+
+  test('slice 3 collections: links, themes, memberships, Noticed cards', () => {
+    const own = { owner_id: OP, created_at: 1, updated_at: 1, state: 'active' as const }
+    const changes = {
+      bullets: [],
+      suggestions: [],
+      tasks: [],
+      events: [],
+      trackers: [],
+      tracker_entries: [],
+      activities: [],
+      audio_attachments: [],
+      transcripts: [],
+      thoughts: [],
+      questions: [],
+      thought_links: [
+        {
+          ...own,
+          id: OP,
+          a_thought_id: OP,
+          a_bullet_id: OP,
+          b_thought_id: BULLET,
+          b_bullet_id: BULLET,
+          type: 'answers',
+        },
+      ],
+      themes: [
+        {
+          ...own,
+          id: OP,
+          name: 'the rent',
+          named_by_user: false,
+          status: 'active',
+          merged_into_theme_id: null,
+          thought_count: 4,
+          day_count: 3,
+          first_seen_at: 1,
+          last_seen_at: 2,
+        },
+      ],
+      theme_thoughts: [{ ...own, id: BULLET, theme_id: OP, thought_id: OP, bullet_id: OP }],
+      noticed_cards: [
+        {
+          ...own,
+          id: OP,
+          theme_id: OP,
+          headline: '«the rent» · came up 4 times in 9 days',
+          quotes: [{ thought_id: OP, bullet_id: OP, text: 'the rent again' }],
+          count: 4,
+          days: 9,
+          status: 'new',
+          opened_at: null,
+          resolved_at: null,
+        },
+      ],
+    }
+    const res = { cursor: '1', has_more: false, server_time: 1, changes }
+    expect(pullResponseSchema.safeParse(res).success).toBe(true)
+    const tooMany = {
+      ...changes.noticed_cards[0],
+      quotes: Array(4).fill(changes.noticed_cards[0]?.quotes[0]),
+    }
+    expect(
+      pullResponseSchema.safeParse({ ...res, changes: { ...changes, noticed_cards: [tooMany] } })
+        .success,
+    ).toBe(false)
   })
 })

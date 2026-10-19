@@ -1,5 +1,7 @@
 import { expect, test } from 'vite-plus/test'
 import {
+  CONNECTION_OPTIONS,
+  connectionQuestionText,
   EVERGREEN_QUESTIONS,
   evergreenQuestion,
   isReflectiveShowing,
@@ -75,10 +77,11 @@ test('question: clarifying with up to 4 quick options; older rows read as clarif
     snoozed_until: null,
     snooze_count: 0,
     template_id: null,
+    related_thought_id: null,
   }
   expect(questionSelectSchema.parse(q)).toEqual(q)
-  const { kind, origin, snoozed_until, snooze_count, template_id, ...older } = q
-  void [kind, origin, snoozed_until, snooze_count, template_id]
+  const { kind, origin, snoozed_until, snooze_count, template_id, related_thought_id, ...older } = q
+  void [kind, origin, snoozed_until, snooze_count, template_id, related_thought_id]
   expect(questionSelectSchema.parse(older)).toEqual(q)
   expect(questionSelectSchema.safeParse({ ...q, kind: 'rhetorical' }).success).toBe(false)
   expect(questionSelectSchema.safeParse({ ...q, options: ['a', 'b', 'c', 'd', 'e'] }).success).toBe(
@@ -110,6 +113,28 @@ test('question: reflective, snoozed, evergreen without a source capture', () => 
   expect(isReflectiveShowing({ ...q, status: 'open' }, 0)).toBe(true)
   expect(isReflectiveShowing({ ...q, kind: 'clarifying', status: 'open' }, 0)).toBe(false)
   expect(isReflectiveShowing({ ...q, status: 'dismissed' }, 200)).toBe(false)
+})
+
+test('question: a connection question offers Same thing / Different about two thoughts', () => {
+  const q = questionSelectSchema.parse({
+    ...base,
+    source_thought_id: base.id,
+    suggestion_id: null,
+    kind: 'reflective',
+    origin: 'connection',
+    topic: 'other',
+    text: connectionQuestionText('should I switch banks', 'moving my account'),
+    options: [...CONNECTION_OPTIONS],
+    status: 'open',
+    answer_bullet_id: null,
+    resolved_at: null,
+    related_thought_id: base.id,
+  })
+  expect(q.text).toBe('Is this the same thing? «should I switch banks» / «moving my account»')
+  expect(q.options).toEqual(['Same thing', 'Different'])
+  expect(connectionQuestionText('ma ba3ref', 'shu ba3mel', 'arabizi')).toMatch(
+    /^Hayda nafs l shi\?/,
+  )
 })
 
 test('evergreen questions: about 20, unique ids, calm questions', () => {

@@ -42,10 +42,27 @@ export type SuggestionOperation = z.infer<typeof suggestionOperationSchema>
 
 /**
  * Which entity/record type a Suggestion proposes. Designed extensibly — more kinds
- * (note, habit, goal, …) will be added later; slice 1 ships these five.
+ * (note, habit, goal, …) will be added later. Slice 1 ships the five THINGS; slice 3 adds
+ * `thought_resolve` ("Did this close it?"): an `update` of an open-loop thought, proposed when a
+ * later capture answers it. Never `auto`.
  */
-export const targetKindSchema = z.enum(['task', 'event', 'tracker', 'tracker_entry', 'activity'])
+export const targetKindSchema = z.enum([
+  'task',
+  'event',
+  'tracker',
+  'tracker_entry',
+  'activity',
+  'thought_resolve',
+])
 export type TargetKind = z.infer<typeof targetKindSchema>
+
+/** The target kinds that are things (entities extracted from a thought), not thought updates. */
+export const THING_KINDS = ['task', 'event', 'tracker', 'tracker_entry', 'activity'] as const
+export type ThingKind = (typeof THING_KINDS)[number]
+
+/** Is this suggestion kind a thing (task, event, tracker, reading, activity)? */
+export const isThingKind = (kind: TargetKind): kind is ThingKind =>
+  (THING_KINDS as readonly TargetKind[]).includes(kind)
 
 /** How a bullet was captured. Voice bullets carry the transcribed text. */
 export const bulletSourceSchema = z.enum(['text', 'voice'])

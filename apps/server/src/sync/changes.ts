@@ -8,14 +8,28 @@
 import type { PullChangeKind, PullChanges } from '@bullet/core'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { toAudioAttachment, toSuggestion, toSyncedBullet, toThought } from '../db/rows'
+import {
+  isHiddenTheme,
+  toAudioAttachment,
+  toNoticedCard,
+  toSuggestion,
+  toSyncedBullet,
+  toTheme,
+  toThemeThought,
+  toThought,
+  toThoughtLink,
+} from '../db/rows'
 import {
   activities,
   audioAttachments,
   bullets,
   events,
+  noticedCards,
   questions,
   suggestions,
+  themes,
+  themeThoughts,
+  thoughtLinks,
   syncChanges,
   syncCounter,
   tasks,
@@ -64,7 +78,38 @@ const emptyChanges = (): PullChanges => ({
   transcripts: [],
   thoughts: [],
   questions: [],
+  thought_links: [],
+  themes: [],
+  theme_thoughts: [],
+  noticed_cards: [],
 })
+
+/** Which of these thoughts are sensitive (server-only; decides what may leave the server). */
+function sensitiveAmong(db: Db, ids: readonly string[]): Set<string> {
+  if (ids.length === 0) return new Set()
+  return new Set(
+    db
+      .select({ id: thoughts.id })
+      .from(thoughts)
+      .where(and(inArray(thoughts.id, [...new Set(ids)]), eq(thoughts.sensitive, true)))
+      .all()
+      .map((r) => r.id),
+  )
+}
+
+/** Themes too sensitive to surface, among these. */
+function hiddenThemes(db: Db, ids: readonly string[]): Set<string> {
+  if (ids.length === 0) return new Set()
+  return new Set(
+    db
+      .select({ id: themes.id, sensitive_share: themes.sensitive_share })
+      .from(themes)
+      .where(inArray(themes.id, [...new Set(ids)]))
+      .all()
+      .filter(isHiddenTheme)
+      .map((r) => r.id),
+  )
+}
 
 /** Load the current rows for `ids` of one kind, already in contract shape. */
 function loadRows(db: Db, ownerId: string, kind: PullChangeKind, ids: string[], out: PullChanges) {
@@ -172,6 +217,69 @@ function loadRows(db: Db, ownerId: string, kind: PullChangeKind, ids: string[], 
           .all(),
       )
       return
+    case 'thought_links': {
+      const rows = db
+        .select()
+        .from(thoughtLinks)
+        .where(and(eq(thoughtLinks.owner_id, ownerId), inArray(thoughtLinks.id, ids)))
+        .all()
+      const sensitive = sensitiveAmong(
+        db,
+        rows.flatMap((r) => [r.a_thought_id, r.b_thought_id]),
+      )
+      out.thought_links.push(...rows.map((r) => toThoughtLink(r, sensitive)))
+      return
+    }
+    case 'themes':
+      out.themes.push(
+        ...db
+          .select()
+          .from(themes)
+          .where(and(eq(themes.owner_id, ownerId), inArray(themes.id, ids)))
+          .all()
+          .map(toTheme),
+      )
+      return
+    case 'theme_thoughts': {
+      const rows = db
+        .select()
+        .from(themeThoughts)
+        .where(and(eq(themeThoughts.owner_id, ownerId), inArray(themeThoughts.id, ids)))
+        .all()
+      const sensitive = sensitiveAmong(
+        db,
+        rows.map((r) => r.thought_id),
+      )
+      const hidden = hiddenThemes(
+        db,
+        rows.map((r) => r.theme_id),
+      )
+      out.theme_thoughts.push(
+        ...rows.map((r) =>
+          toThemeThought(r, sensitive.has(r.thought_id) || hidden.has(r.theme_id)),
+        ),
+      )
+      return
+    }
+    case 'noticed_cards': {
+      const rows = db
+        .select()
+        .from(noticedCards)
+        .where(and(eq(noticedCards.owner_id, ownerId), inArray(noticedCards.id, ids)))
+        .all()
+      const sensitive = sensitiveAmong(
+        db,
+        rows.flatMap((r) => r.quotes.map((q) => q.thought_id)),
+      )
+      const hidden = hiddenThemes(
+        db,
+        rows.map((r) => r.theme_id),
+      )
+      out.noticed_cards.push(
+        ...rows.map((r) => toNoticedCard(r, sensitive, hidden.has(r.theme_id))),
+      )
+      return
+    }
     default: {
       const never: never = kind
       throw new Error(`unknown change kind ${String(never)}`)

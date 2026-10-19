@@ -54,6 +54,7 @@ const question = (over: Partial<Question>): Question => ({
   snoozed_until: null,
   snooze_count: 0,
   template_id: null,
+  related_thought_id: null,
   ...over,
 })
 
@@ -105,6 +106,10 @@ const page = (over: Partial<PullResponse['changes']> = {}, cursor = '1'): PullRe
     activities: [],
     audio_attachments: [],
     transcripts: [],
+    thought_links: [],
+    themes: [],
+    theme_thoughts: [],
+    noticed_cards: [],
     thoughts: [worry],
     questions: [
       question({}),

@@ -87,6 +87,9 @@ export interface NewReflectiveQuestion {
   sourceBulletId: string | null
   sourceThoughtId: string | null
   templateId?: string | null
+  /** `connection` questions: the earlier thought, and the answers to offer. */
+  relatedThoughtId?: string | null
+  options?: string[]
 }
 
 /** Store an open reflective question (the caller has checked the limits). Returns its id. */
@@ -103,7 +106,7 @@ export function createReflectiveQuestion(db: Db, q: NewReflectiveQuestion, now: 
       origin: q.origin,
       topic: 'other',
       text: q.text,
-      options: [],
+      options: q.options ?? [],
       status: 'open',
       answer_bullet_id: null,
       answer_option: null,
@@ -111,6 +114,7 @@ export function createReflectiveQuestion(db: Db, q: NewReflectiveQuestion, now: 
       snoozed_until: null,
       snooze_count: 0,
       template_id: q.templateId ?? null,
+      related_thought_id: q.relatedThoughtId ?? null,
       created_at: now,
       updated_at: now,
     })

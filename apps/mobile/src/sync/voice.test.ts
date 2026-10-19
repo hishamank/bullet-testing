@@ -208,6 +208,10 @@ describe('pull merge for recordings', () => {
         ],
         thoughts: [],
         questions: [],
+        thought_links: [],
+        themes: [],
+        theme_thoughts: [],
+        noticed_cards: [],
         transcripts: [
           {
             ...base,

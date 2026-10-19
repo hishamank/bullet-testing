@@ -1,22 +1,31 @@
 /**
  * The processing worker: the single consumer of the queue. Strictly one job at a time (one GPU,
- * one model slot). Reflect jobs (a capture's reflective question) run only when no extraction
- * job is ready, so they never delay a capture's things. Every LLM call runs under a deadline, and every failure is recorded on the job
- * and the bullet — the loop itself never throws.
+ * one model slot), in priority order: extraction jobs, then link jobs (a capture's connections,
+ * right after its things), then reflect jobs (a capture's reflective question), then the nightly
+ * run when it is due. Every model call runs under a deadline, and every failure is recorded on
+ * the job and the bullet — the loop itself never throws.
  */
 
 import {
+  DEDICATED_PROFILE,
+  type EmbeddingProfile,
+  type Embedder,
   type EngineConfig,
   type LlmClient,
   type Transcriber,
+  withEmbedTimeout,
   withLlmTimeout,
   withTranscriberTimeout,
 } from '@bullet/engine'
 import type { AudioStore } from '../storage/audio-store'
+import { and, eq, lte } from 'drizzle-orm'
 import type { Db } from '../db/client'
+import { jobs, linkJobs, reflectJobs } from '../db/schema'
 import { claimNextJob, DEFAULT_RETRY_POLICY, markJobFailed, type RetryPolicy } from './jobs'
 import { processClaimedJob } from './process'
 import { claimNextReflectJob, markReflectJobFailed, runReflectJob } from '../reflect/capture'
+import { claimNextLinkJob, markLinkJobFailed, runLinkJob } from '../connections/link-job'
+import { nightlyDue, runNightly } from '../connections/nightly'
 
 export interface WorkerOptions {
   db: Db
@@ -30,6 +39,16 @@ export interface WorkerOptions {
   transcriber?: Transcriber
   audioStore?: AudioStore
   transcriberTimeoutMs?: number
+  /** Embeddings for connections (slice 3); without it, link jobs wait. */
+  embedder?: Embedder
+  /** How the embedder's scores are read (thresholds, centring). */
+  embedProfile?: EmbeddingProfile
+  embedTimeoutMs?: number
+  /**
+   * The nightly run (themes, link review, Noticed) at 02:00 in `timezone`, with its own model
+   * (or the live one). Without it, no nightly run.
+   */
+  nightly?: { llm?: LlmClient; engine?: EngineConfig; timezone: string }
   /** Called with each unexpected error, for logging. */
   onError?: (err: unknown) => void
 }
@@ -42,6 +61,17 @@ export interface Worker {
   kick(): void
   /** Process every job that is ready now, one by one; resolves with how many ran. */
   drain(): Promise<number>
+}
+
+/** Is a capture waiting: an extraction, link (when linking runs) or reflect job ready now? */
+export function hasReadyWork(db: Db, now: number, links: boolean): boolean {
+  const ready = (t: typeof jobs | typeof linkJobs | typeof reflectJobs) =>
+    db
+      .select({ id: t.bullet_id })
+      .from(t)
+      .where(and(eq(t.status, 'queued'), lte(t.run_after, now)))
+      .get() !== undefined
+  return ready(jobs) || (links && ready(linkJobs)) || ready(reflectJobs)
 }
 
 export function createWorker(opts: WorkerOptions): Worker {
@@ -60,10 +90,71 @@ export function createWorker(opts: WorkerOptions): Worker {
   let timer: ReturnType<typeof setInterval> | undefined
   let busy: Promise<number> | null = null
 
-  /** A reflective question, only when no capture is waiting to be read. */
-  async function runReflect(): Promise<boolean> {
-    const claimed = claimNextReflectJob(opts.db, now())
+  const embedder = opts.embedder
+    ? withEmbedTimeout(opts.embedder, opts.embedTimeoutMs ?? 60_000)
+    : undefined
+
+  /** The nightly run, when nothing else is waiting and its 02:00 slot is not covered yet. */
+  async function runNightlyIfDue(): Promise<boolean> {
+    const n = opts.nightly
+    if (!n) return false
+    const slot = nightlyDue(opts.db, now(), n.timezone)
+    if (slot === null) return false
+    try {
+      await runNightly(
+        {
+          db: opts.db,
+          llm: n.llm ? withLlmTimeout(n.llm, opts.llmTimeoutMs ?? 120_000) : deps.llm,
+          engine: n.engine ?? opts.engine,
+          embedder,
+          profile: opts.embedProfile ?? DEDICATED_PROFILE,
+          now,
+          // A capture never waits on the nightly run: it stops at its next yield point.
+          shouldYield: () => hasReadyWork(opts.db, now(), embedder !== undefined),
+        },
+        slot,
+      )
+    } catch (err) {
+      opts.onError?.(err)
+    }
+    return true
+  }
+
+  /** A capture's connections: right after extraction, before reflective questions. */
+  async function runLink(): Promise<boolean> {
+    if (!embedder) return false
+    const claimed = claimNextLinkJob(opts.db, now())
     if (!claimed) return false
+    const retry = opts.retry ?? DEFAULT_RETRY_POLICY
+    try {
+      await runLinkJob(
+        {
+          db: opts.db,
+          embedder,
+          profile: opts.embedProfile ?? DEDICATED_PROFILE,
+          llm: deps.llm,
+          engine: opts.engine,
+          now,
+          retry,
+        },
+        claimed,
+      )
+    } catch (err) {
+      try {
+        markLinkJobFailed(opts.db, claimed, err, now(), retry)
+      } catch (inner) {
+        opts.onError?.(inner)
+      }
+      opts.onError?.(err)
+    }
+    return true
+  }
+
+  /** A reflective question, only when no capture is waiting to be read or linked. */
+  async function runReflect(): Promise<boolean> {
+    if (await runLink()) return true
+    const claimed = claimNextReflectJob(opts.db, now())
+    if (!claimed) return runNightlyIfDue()
     try {
       await runReflectJob(deps, claimed)
     } catch (err) {

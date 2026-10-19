@@ -15,6 +15,7 @@ import { retireSuggestion } from '../apply/reconcile'
 import { touch } from '../sync/changes'
 import { type BulletRow, cancelJob, enqueue } from '../queue/jobs'
 import { cancelReflectJob } from '../reflect/capture'
+import { cancelLinkJob } from '../connections/link-job'
 
 type CreateOp = Extract<PushOp, { type: 'bullet.create' }>
 
@@ -148,6 +149,7 @@ export function deleteBullet(
   if (b.state === 'deleted') return
   cancelJob(db, b.id, now)
   cancelReflectJob(db, b.id, now)
+  cancelLinkJob(db, b.id, now)
   const own = db
     .select()
     .from(suggestions)

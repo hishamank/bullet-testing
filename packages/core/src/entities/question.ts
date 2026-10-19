@@ -29,8 +29,13 @@ export type QuestionKind = z.infer<typeof questionKindSchema>
  *                mind?"). Reflective only.
  *  - evergreen — one of the hand-written {@link EVERGREEN_QUESTIONS} (`template_id`), offered now
  *                and then or picked by the user. Reflective only; it has no source capture.
+ *  - connection — (slice 3) "Is this the same thing? «A» / «B»": a capture's thought
+ *                (`source_thought_id`) looked close to an earlier one (`related_thought_id`), not
+ *                close enough to link. Reflective, with the options {@link CONNECTION_OPTIONS}:
+ *                "Same thing" links them, "Different" remembers they are not. It takes the
+ *                capture's single reflective-question slot only when the capture got no other.
  */
-export const questionOriginSchema = z.enum(['capture', 'open_loop', 'evergreen'])
+export const questionOriginSchema = z.enum(['capture', 'open_loop', 'evergreen', 'connection'])
 export type QuestionOrigin = z.infer<typeof questionOriginSchema>
 
 /**
@@ -75,6 +80,8 @@ export const questionSelectSchema = z.object({
   snooze_count: z.number().int().nonnegative().default(0),
   /** `evergreen` questions: which {@link EVERGREEN_QUESTIONS} entry it is. */
   template_id: nonEmptyString().nullable().default(null),
+  /** `connection` questions: the earlier thought the capture's thought may be the same as. */
+  related_thought_id: uuid().nullable().default(null),
 })
 export type Question = z.infer<typeof questionSelectSchema>
 
@@ -127,6 +134,42 @@ export function staleLoopQuestionText(
   language: ReflectiveLanguage = 'en',
 ): string {
   return `${STALE_LOOP_PREFIX[language]} «${thoughtText.trim()}»`
+}
+
+/** The answers a `connection` question offers (the only reflective origin with options). */
+export const CONNECTION_OPTIONS = ['Same thing', 'Different'] as const
+export type ConnectionOption = (typeof CONNECTION_OPTIONS)[number]
+
+/** "Is this the same thing?" in the language of the words it quotes. */
+export const CONNECTION_PREFIX: Record<ReflectiveLanguage, string> = {
+  en: 'Is this the same thing?',
+  fr: 'C’est la même chose\u202F?',
+  arabizi: 'Hayda nafs l shi?',
+  ar: 'هيدا نفس الشي؟',
+}
+
+/** The longest quote a connection question shows of each thought (characters). */
+export const CONNECTION_QUOTE_CHARS = 80
+
+/** Shorten a thought to a quote: whole words, at most `max` characters, "…" when cut. */
+export function shortQuote(text: string, max = CONNECTION_QUOTE_CHARS): string {
+  const t = text.trim().replace(/\s+/g, ' ')
+  if (t.length <= max) return t
+  const cut = t.slice(0, max - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).replace(/[\s.,;:!?…،؟]+$/u, '')}…`
+}
+
+/**
+ * "Is this the same thing? «earlier» / «new»" (template, no model), the earlier thought first,
+ * its prefix in the language of the new thought.
+ */
+export function connectionQuestionText(
+  earlier: string,
+  later: string,
+  language: ReflectiveLanguage = 'en',
+): string {
+  return `${CONNECTION_PREFIX[language]} «${shortQuote(earlier)}» / «${shortQuote(later)}»`
 }
 
 /** Is a reflective question showing in "To think about" at `now` (open, or its snooze is over)? */
