@@ -107,7 +107,13 @@ describe('segmentCapture', () => {
       { text: '  hmm, nothing much  ', ...CTX },
     )
     expect(thoughts).toEqual([
-      { position: 0, text: 'hmm, nothing much', kind: 'note', span: { start: 2, end: 19 } },
+      {
+        position: 0,
+        text: 'hmm, nothing much',
+        kind: 'note',
+        span: { start: 2, end: 19 },
+        sensitive: false,
+      },
     ])
   })
 
@@ -140,8 +146,8 @@ describe('segmentCapture', () => {
 describe("segmentation keeps the user's own words", () => {
   test('the wire schema asks for the verbatim quote first, then the text', () => {
     const item = (segmentationJsonSchema as any).properties.thoughts.items
-    expect(Object.keys(item.properties)).toEqual(['quote', 'text', 'kind'])
-    expect(item.required).toEqual(['quote', 'text', 'kind'])
+    expect(Object.keys(item.properties)).toEqual(['quote', 'text', 'kind', 'sensitive'])
+    expect(item.required).toEqual(['quote', 'text', 'kind', 'sensitive'])
     expect(SEGMENTATION_SYSTEM_PROMPT).toMatch(/NEVER TRANSLATE/)
   })
 

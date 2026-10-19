@@ -9,3 +9,4 @@ export {
   type SegmentedThought,
   type TextChunk,
 } from './segment'
+export { looksSensitive } from './sensitive'

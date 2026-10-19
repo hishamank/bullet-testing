@@ -13,7 +13,7 @@ export {
   type ThoughtContext,
   withProvenance,
 } from './resolve'
-export { isKnownMeasure, trackerName, trackerNounFrom } from './naming'
+export { isKnownMeasure, trackerAlias, trackerName, trackerNounFrom } from './naming'
 export { cleanTitle, stripTrailingPunctuation, stripWhenPhrases } from './title'
 export {
   convertDuration,
