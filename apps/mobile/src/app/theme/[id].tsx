@@ -6,7 +6,7 @@ import { showThemeMenu, type ThemeSheet, ThemeSheets } from '@/components/connec
 import { SectionTitle } from '@/components/journal/parts'
 import { BackHeader, IconButton, Placeholder, Screen, TextButton } from '@/components/ui'
 import { mergeInto, notATheme, renameThemeTo } from '@/features/connections/actions'
-import { COPY, capturesHeading, themeTitle } from '@/features/connections/copy'
+import { capturesHeading, COPY, themeTitle } from '@bullet/client'
 import { useThemeView } from '@/hooks'
 import { space } from '@/theme'
 

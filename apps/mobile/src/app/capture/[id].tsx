@@ -16,21 +16,24 @@ import {
   TextButton,
 } from '@/components/ui'
 import { retryCaptures } from '@/features/capture/actions'
-import { captureStatusLabel } from '@/features/capture/notice'
-import { dismissNotice, undoApplied } from '@/features/inbox/actions'
 import {
+  AUDIO_READ_ERROR_TEXT,
+  captureStatusLabel,
+  clock,
   deleteChoices,
   editableText,
+  type LinkedThing,
   loadCaptureDetail,
+  THING_STATE_LABELS,
+  thinkingAboutLabel,
   type TranscriptTab,
   transcriptView,
+  untranscribableCopy,
+  whenLabel,
   writeDownStart,
-} from '@/features/journal/capture'
+} from '@bullet/client'
+import { dismissNotice, undoApplied } from '@/features/inbox/actions'
 import { changeKind, deleteCapture, editCapture, keepAsAudio } from '@/features/journal/actions'
-import { AUDIO_READ_ERROR_TEXT, untranscribableCopy } from '@/features/journal/stream'
-import { clock, whenLabel } from '@/features/journal/format'
-import { thinkingAboutLabel } from '@/features/reflect/model'
-import { type LinkedThing, THING_STATE_LABELS } from '@/features/journal/things'
 import { notRelated } from '@/features/connections/actions'
 import { useLocalQuery, useRelated } from '@/hooks'
 import { deviceDeps } from '@/sync/runtime'

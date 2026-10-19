@@ -1,7 +1,7 @@
 /**
  * Slice 1, end to end, against a REAL home server. Skipped unless BULLET_E2E_URL is set.
  *
- *   BULLET_E2E_URL=http://127.0.0.1:3001 BULLET_E2E_TOKEN=… pnpm --filter mobile exec vp test run src/test/e2e
+ *   BULLET_E2E_URL=http://127.0.0.1:3001 BULLET_E2E_TOKEN=… pnpm --filter @bullet/client exec vp test run src/test/e2e
  *
  * Optional: BULLET_E2E_SPEECH_WAV (+ BULLET_E2E_SPEECH_WORDS), BULLET_E2E_LLM_STOP /
  * BULLET_E2E_LLM_START, BULLET_E2E_REPORT, BULLET_E2E_TZ. Point it at a

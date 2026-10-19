@@ -151,8 +151,8 @@ export function sparkline(
     for (const e of entries) {
       const i = slot(e.logged_at, now, tz)
       if (i < 0 || typeof e.value !== 'number') continue
-      sums[i] += e.value
-      ns[i] += 1
+      sums[i] = (sums[i] ?? 0) + e.value
+      ns[i] = (ns[i] ?? 0) + 1
     }
     if (ns.every((n) => n === 0)) return { mode: 'none' }
     return { mode: 'line', values: sums.map((s, i) => (ns[i] ? s / ns[i] : null)) }
@@ -168,7 +168,7 @@ export function barsOf(times: readonly number[], now: number, tz: string): Spark
   const counts = Array.from({ length: SPARK_DAYS }, () => 0)
   for (const at of times) {
     const i = slot(at, now, tz)
-    if (i >= 0) counts[i] += 1
+    if (i >= 0) counts[i] = (counts[i] ?? 0) + 1
   }
   return counts.some((c) => c > 0) ? { mode: 'bars', counts } : { mode: 'none' }
 }

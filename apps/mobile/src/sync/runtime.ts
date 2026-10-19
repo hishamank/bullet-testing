@@ -7,7 +7,7 @@
  *  - iOS background task           → best-effort sync when the OS allows (often overnight);
  *                                    never relied upon.
  *
- * All the logic is in client.ts; this file only wires React Native / Expo events to it. Screens
+ * All the logic is in @bullet/client (sync/client.ts); this file only wires React Native / Expo events to it. Screens
  * hear every outcome through `addSyncOutcomeListener` instead of running syncs of their own.
  */
 
@@ -17,12 +17,17 @@ import { File, Paths } from 'expo-file-system'
 import * as Network from 'expo-network'
 import * as TaskManager from 'expo-task-manager'
 import { AppState } from 'react-native'
-import type { LocalDeps } from '../data/local'
+import {
+  createHttpTransport,
+  createSyncClient,
+  type LocalDeps,
+  resolveRecordingUri,
+  type SyncClient,
+  type SyncOutcome,
+  type SyncTransport,
+} from '@bullet/client'
 import { getDb } from '../data/open'
-import { resolveRecordingUri } from './audio-path'
-import { createSyncClient, type SyncClient, type SyncOutcome } from './client'
 import { loadServerSettings, type ServerSettings } from './settings'
-import { createHttpTransport, type SyncTransport } from './transport'
 
 const BACKGROUND_TASK = 'bullet-background-sync'
 

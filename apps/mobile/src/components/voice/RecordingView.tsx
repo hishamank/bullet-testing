@@ -6,7 +6,7 @@
 
 import { useRef } from 'react'
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
-import { formatTimer, pauseNote, spokenDuration } from '@/features/voice/format'
+import { formatTimer, pauseNote, recordingSpokenDuration as spokenDuration } from '@bullet/client'
 import { useReduceMotion } from '@/hooks'
 import { size, space, type, useTheme } from '@/theme'
 import { Icon } from '../Icon'

@@ -2,12 +2,7 @@
 
 import { useState } from 'react'
 import { Pressable, StyleSheet, TextInput, View } from 'react-native'
-import {
-  logsLine,
-  type CaptureGroup,
-  type DecideItem,
-  trackerNameOrNull,
-} from '@/features/inbox/model'
+import { type CaptureGroup, type DecideItem, logsLine, trackerNameOrNull } from '@bullet/client'
 import { radius, space, type, useTheme } from '@/theme'
 import { Label, TextButton, touch } from '../ui'
 import { CaptureLink, card, DecideButton, InboxPill } from './parts'

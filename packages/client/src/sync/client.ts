@@ -9,8 +9,8 @@
  *    recorded on its bullet, so one bad op can never wedge the outbox.
  *  - On network/server failure: back off exponentially (while something keeps asking).
  *
- * React Native stays out: triggers (foreground, network change, background task) live in
- * triggers.ts and just call `requestSync()`.
+ * React Native stays out: triggers (foreground, network change, background task) live in the
+ * app (apps/mobile/src/sync/runtime.ts) and just call `requestSync()`.
  */
 
 import {

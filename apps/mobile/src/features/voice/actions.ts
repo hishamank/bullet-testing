@@ -1,16 +1,20 @@
 /**
  * Device edge: what the recording screen's buttons do once audio exists. The writes themselves
- * live in save.ts / `src/data`.
+ * live in save.ts / `@bullet/client`.
  */
 
 import * as Haptics from 'expo-haptics'
-import type { CaptureLinks } from '../../data/local'
+import {
+  type CaptureLinks,
+  createRecovery,
+  discardSession,
+  type FinishedRecording,
+  saveVoiceNote,
+} from '@bullet/client'
 import { notifyLocalChange, syncNow } from '../sync/engine'
 import { voiceStoreDeps } from './device'
-import { createRecovery, discardSession, saveVoiceNote } from './save'
-import type { FinishedRecording } from './session'
 
-export { returnToCapture } from './return'
+export { returnToCapture } from '@bullet/client'
 
 function afterLocalWrite() {
   notifyLocalChange()

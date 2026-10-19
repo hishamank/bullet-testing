@@ -1,15 +1,19 @@
 /**
- * Device edge: what the reflective question buttons do. Writes live in `src/data` (change + op in
+ * Device edge: what the reflective question buttons do. Writes live in `@bullet/client` (change + op in
  * one transaction); this file only notifies the screens, syncs and announces.
  */
 
 import { AccessibilityInfo } from 'react-native'
-import { dismissQuestion, pickEvergreen, snoozeQuestion } from '../../data/local'
+import {
+  dismissQuestion,
+  evergreenChoices,
+  laterAnnouncement,
+  pickEvergreen,
+  snoozeQuestion,
+} from '@bullet/client'
 import { getDb } from '../../data/open'
 import { deviceDeps } from '../../sync/runtime'
 import { notifyLocalChange, syncNow } from '../sync/engine'
-import { evergreenChoices } from './model'
-import { laterAnnouncement } from './wording'
 
 function done(message: string | null) {
   notifyLocalChange()

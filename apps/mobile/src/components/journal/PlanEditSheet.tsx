@@ -10,18 +10,18 @@ import { Alert, Platform, StyleSheet, TextInput, View } from 'react-native'
 import { Chip, Sheet, SheetButton } from '@/components/journal/parts'
 import { Label } from '@/components/ui'
 import { editEvent, editTask, removeEvent, removeTask } from '@/features/journal/actions'
-import { fullWhen } from '@/features/journal/format'
 import {
   cleanTitle,
   DAY_CHOICES,
   type DayChoice,
   DEFAULT_EVENT_LENGTH_MS,
   eventEditPatch,
+  fullWhen,
   moveEventStart,
   moveToDay,
   type PlanEvent,
   type PlanTask,
-} from '@/features/journal/plans'
+} from '@bullet/client'
 import { deviceDeps } from '@/sync/runtime'
 import { radius, space, type, useTheme } from '@/theme'
 

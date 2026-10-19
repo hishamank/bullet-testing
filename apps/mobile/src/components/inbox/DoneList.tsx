@@ -1,7 +1,7 @@
 /** Done for you today: what was applied automatically or by a tapped answer, each with Undo. */
 
 import { StyleSheet, View } from 'react-native'
-import type { DoneItem } from '@/features/inbox/model'
+import type { DoneItem } from '@bullet/client'
 import { radius, space, type, useTheme } from '@/theme'
 import { Label, TextButton, touch } from '../ui'
 import { CaptureLink } from './parts'

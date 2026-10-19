@@ -13,7 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { textDirection } from '@/features/reflect/direction'
+import { textDirection } from '@bullet/client'
 import { kindStyle, radius, readingFont, size, space, type, useTheme } from '@/theme'
 import { Icon, type IconName } from './Icon'
 

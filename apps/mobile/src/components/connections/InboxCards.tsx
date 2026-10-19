@@ -8,8 +8,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { OptionButton } from '@/components/inbox/parts'
 import { IconButton, Label, TextButton, touch } from '@/components/ui'
-import { closeAskLabel, COPY, quote } from '@/features/connections/copy'
-import type { LoopAnswerCard, NoticedCard as Card } from '@/features/connections/model'
+import {
+  closeAskLabel,
+  COPY,
+  type LoopAnswerCard,
+  type NoticedCard as Card,
+  quote,
+} from '@bullet/client'
 import { readingFont, space, type, useTheme } from '@/theme'
 import { ConnectionCard, QuoteLink, Quoted, ThemePill } from './parts'
 

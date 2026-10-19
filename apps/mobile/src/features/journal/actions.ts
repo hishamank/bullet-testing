@@ -1,5 +1,5 @@
 /**
- * Device edge: what the Journal and Capture detail buttons do. Each write lives in `src/data`
+ * Device edge: what the Journal and Capture detail buttons do. Each write lives in `@bullet/client`
  * (change + outbox op in one transaction); here we run it, refresh live queries and sync.
  */
 
@@ -18,15 +18,15 @@ import {
   deleteTask,
   deleteTrackerEntry,
   editBullet,
+  keepAsAudioLocal,
   reclassifyThought,
   resolveThought,
   unresolveThought,
   updateEvent,
   updateTask,
   updateTrackerEntry,
-} from '../../data/local'
+} from '@bullet/client'
 import { getDb } from '../../data/open'
-import { keepAsAudioLocal } from './audio-only'
 import { deviceDeps } from '../../sync/runtime'
 import { notifyLocalChange, syncNow } from '../sync/engine'
 

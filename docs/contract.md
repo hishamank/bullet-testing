@@ -379,7 +379,7 @@ goes), and they never take part in a connection question or an answered loop (on
 withdrawn when its thought turns sensitive). A theme made half or more of them is not pulled at all
 (no card, no name) and doesn't count toward the 8.
 
-**On the phone** (data layer: `apps/mobile/src/data/connections.ts`): Capture detail **Related · N**
+**On the phone** (data layer: `packages/client/src/data/connections.ts`): Capture detail **Related · N**
 (each row: date, quote, small word: same one / related / answers / again — "same one" because the server keeps no entity kind, so a place is never called a person; `listRelated` honours
 `visible_from`), the Inbox's
 **Noticed**, the Stream's "again" dot (a thought in an active theme), "Did this close it?" cards,

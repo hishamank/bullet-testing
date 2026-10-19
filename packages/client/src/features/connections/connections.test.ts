@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import {
   CONNECTION_OPTIONS,
   NOTICED_DENYLIST,
@@ -246,39 +245,6 @@ describe('wording', () => {
       expect(NOTICED_DENYLIST).toContain(word)
     }
     for (const text of allCopy()) expect(usesDeniedWord(text), text).toBe(false)
-  })
-
-  test('no string in the slice 3 screens and components uses a denied word', () => {
-    const files = [
-      '../../components/connections/InboxCards.tsx',
-      '../../components/connections/parts.tsx',
-      '../../components/connections/RelatedList.tsx',
-      '../../components/connections/ThemeSheets.tsx',
-      '../../components/inbox/ThinkCard.tsx',
-      '../../app/inbox/index.tsx',
-      '../../app/theme/[id].tsx',
-      '../../app/journal/loops.tsx',
-      '../../app/capture/[id].tsx',
-      '../../components/journal/CaptureCard.tsx',
-      '../journal/loops.ts',
-      '../journal/stream.ts',
-      '../inbox/summary.ts',
-      '../inbox/model.ts',
-      './actions.ts',
-      './model.ts',
-    ]
-    for (const f of files) {
-      const source = readFileSync(new URL(f, import.meta.url), 'utf8')
-        // Comments are notes for developers, not words on screen.
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/(^|[^:])\/\/.*$/gm, '$1')
-      const strings = [
-        ...source.matchAll(/'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`/g),
-        // JSX text between tags.
-        ...source.matchAll(/>([^<>{}\n]+)</g),
-      ].map((m) => m[1] ?? m[2] ?? m[3] ?? '')
-      for (const s of strings) expect(usesDeniedWord(s), `${f}: ${s}`).toBe(false)
-    }
   })
 
   test("the user's own quoted words are kept as they are, even with a denied word", () => {

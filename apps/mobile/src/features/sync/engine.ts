@@ -16,7 +16,18 @@
 
 import { AppState } from 'react-native'
 import { getDb, onDataChanged } from '../../data/open'
-import type { SyncOutcome } from '../../sync/client'
+import {
+  captureCounts,
+  createCoalescer,
+  createStore,
+  deferSetup,
+  initialMonitor,
+  isSetupDeferred,
+  nextSyncDelay,
+  recordOutcome,
+  resetForNewServer,
+  type SyncOutcome,
+} from '@bullet/client'
 import {
   addSyncOutcomeListener,
   getSyncClient,
@@ -24,11 +35,6 @@ import {
   startSyncEngine,
 } from '../../sync/runtime'
 import { loadServerSettings, type ServerSettings, saveServerSettings } from '../../sync/settings'
-import { captureCounts } from '../capture/counts'
-import { deferSetup, isSetupDeferred } from '../setup/settings'
-import { createStore } from '../store'
-import { createCoalescer } from './live'
-import { initialMonitor, nextSyncDelay, recordOutcome, resetForNewServer } from './monitor'
 
 /**
  * `deferred`: the user chose "Not yet" at setup. Capture and the Journal work and captures queue

@@ -21,8 +21,8 @@ import {
   composerReducer,
   initialComposer,
   SAVED_MS,
-} from '@/features/capture/composer'
-import { voiceReturnStore } from '@/features/voice/return'
+  voiceReturnStore,
+} from '@bullet/client'
 import { useReduceMotion, useStore } from '@/hooks'
 import { size, space, type, useTheme } from '@/theme'
 import { Icon } from '../Icon'

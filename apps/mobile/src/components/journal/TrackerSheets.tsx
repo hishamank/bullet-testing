@@ -18,17 +18,17 @@ import {
 } from '@/components/journal/parts'
 import { Label } from '@/components/ui'
 import { fixReading, removeReading } from '@/features/journal/actions'
-import { whenLabel } from '@/features/journal/format'
-import { entryValueText } from '@/features/journal/things'
 import {
   activityText,
   type EntryData,
+  entryValueText,
   loadActivityHistory,
   loadTrackerHistory,
   parseEntryValue,
   type ValueInput,
   valueToInput,
-} from '@/features/journal/trackers'
+  whenLabel,
+} from '@bullet/client'
 import { useLocalQuery } from '@/hooks'
 import { deviceDeps } from '@/sync/runtime'
 import { radius, space, type, useTheme } from '@/theme'

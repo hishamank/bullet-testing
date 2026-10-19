@@ -1,5 +1,5 @@
 /**
- * Device edge: what the Inbox's buttons do. Writes go through `src/data` (change + outbox op in
+ * Device edge: what the Inbox's buttons do. Writes go through `@bullet/client` (change + outbox op in
  * one transaction); this file runs the Undo window and decides when to sync.
  *
  *  - Accept / Dismiss are written at once with their op on hold (`decideHeld`): the sync client
@@ -12,29 +12,31 @@
 import type { SuggestionPayload } from '@bullet/core'
 import { eq } from 'drizzle-orm'
 import { AccessibilityInfo, AppState } from 'react-native'
-import { decideHeld, releaseHolds, restoreSuggestion, retractDecision } from '../../data/decisions'
-import {
-  answerQuestion as answerQuestionLocal,
-  dismissQuestion,
-  undoSuggestion,
-} from '../../data/local'
-import { getDb } from '../../data/open'
-import { clearRejection, findRejection } from '../../data/rejections'
-import { suggestions } from '../../data/schema'
-import { deviceDeps } from '../../sync/runtime'
-import { COPY } from '../connections/copy'
-import { createStore } from '../store'
-import { notifyLocalChange, syncNow } from '../sync/engine'
 import {
   addDecision,
+  answerQuestion as answerQuestionLocal,
+  clearRejection,
+  COPY,
+  createStore,
+  decideHeld,
   type Decision,
+  dismissQuestion,
   expireDecisions,
   findDecision,
+  findRejection,
   nextExpiry,
+  releaseHolds,
   removeDecision,
+  restoreSuggestion,
+  retractDecision,
+  suggestions,
   UNDO_WINDOW_MS,
   type UndoState,
-} from './undo'
+  undoSuggestion,
+} from '@bullet/client'
+import { getDb } from '../../data/open'
+import { deviceDeps } from '../../sync/runtime'
+import { notifyLocalChange, syncNow } from '../sync/engine'
 
 /** Open Undo windows, shared by every screen that shows them. */
 export const undoStore = createStore<UndoState>([])

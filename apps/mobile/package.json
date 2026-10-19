@@ -8,12 +8,11 @@
     "ios": "expo run:ios",
     "android": "expo run:android",
     "web": "expo start --web",
-    "test": "pnpm exec vp test",
-    "db:generate": "drizzle-kit generate && node scripts/bundle-migrations.mjs"
+    "test": "pnpm exec vp test"
   },
   "dependencies": {
+    "@bullet/client": "workspace:*",
     "@bullet/core": "workspace:*",
-    "@bullet/engine": "workspace:*",
     "@expo/ui": "~57.0.25",
     "drizzle-orm": "catalog:",
     "expo": "~57.0.30",
@@ -53,10 +52,8 @@
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "~19.2.2",
-    "better-sqlite3": "catalog:",
-    "drizzle-kit": "catalog:",
     "typescript": "~6.0.3",
     "vite-plus": "catalog:"
   }

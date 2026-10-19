@@ -6,43 +6,39 @@
 import * as Network from 'expo-network'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { AccessibilityInfo } from 'react-native'
-import type { PhoneDb } from '@/data/db'
-import { getDb } from '@/data/open'
-import { type CaptureCounts, captureCounts, inboxCount } from '@/features/capture/counts'
 import {
-  type LoopAnswerCard,
+  cannotReachServer,
+  captureCounts,
+  type CaptureCounts,
+  dismissUnreachableNote,
+  evergreenChoices,
+  type EvergreenChoices,
+  inboxCount,
+  lastSyncedAt,
   loadLoopAnswers,
   loadNoticed,
   loadRelated,
   loadTheme,
+  loadThinkView,
+  type LoopAnswerCard,
   type MergeChoice,
   mergeChoices,
   type NoticedCard,
-  type RelatedItem,
-  type ThemeView,
-} from '@/features/connections/model'
-import {
-  lastSyncedAt,
   pendingLine,
+  type PhoneDb,
+  type Reachability,
+  type RelatedItem,
   serverRowTitle,
   serverStatusLine,
-} from '@/features/setup/settings'
-import {
-  type EvergreenChoices,
-  evergreenChoices,
-  loadThinkView,
+  showUnreachableNote,
+  type Store,
+  type ThemeView,
   type ThinkView,
-} from '@/features/reflect/model'
+} from '@bullet/client'
+import { getDb } from '@/data/open'
 import { undoStore } from '@/features/inbox/actions'
-import type { Store } from '@/features/store'
 import { changeStore, monitorStore, type Pairing, pairingStore } from '@/features/sync/engine'
 import { currentServerSettings, deviceDeps } from '@/sync/runtime'
-import {
-  cannotReachServer,
-  dismissUnreachableNote,
-  type Reachability,
-  showUnreachableNote,
-} from '@/features/sync/monitor'
 
 export function useStore<T>(store: Store<T>): T {
   return useSyncExternalStore(store.subscribe, store.get, store.get)

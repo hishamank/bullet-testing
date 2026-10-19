@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native'
 import { Icon } from '@/components/Icon'
 import { Sheet } from '@/components/journal/parts'
 import { Label } from '@/components/ui'
-import { THOUGHT_KINDS } from '@/features/journal/capture'
+import { THOUGHT_KINDS } from '@bullet/client'
 import { kindStyle, radius, space, type, useTheme } from '@/theme'
 
 export function KindPicker({
