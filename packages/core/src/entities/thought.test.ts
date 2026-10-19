@@ -126,4 +126,10 @@ test('evergreen questions: about 20, unique ids, calm questions', () => {
   expect(staleLoopQuestionText(' check the passport ')).toBe(
     'Still on your mind? «check the passport»',
   )
+  expect(staleLoopQuestionText('vérifier le passeport', 'fr')).toBe(
+    'Toujours en tête ? «vérifier le passeport»',
+  )
+  expect(staleLoopQuestionText('shuf l passport', 'arabizi')).toBe(
+    'Ba3do 3a balak? «shuf l passport»',
+  )
 })

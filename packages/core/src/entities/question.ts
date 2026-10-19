@@ -106,9 +106,26 @@ export const REFLECTIVE_CAPS = {
 /** The thought kinds a capture's reflective question may be about. */
 export const REFLECTIVE_THOUGHT_KINDS = ['worry', 'question', 'idea'] as const
 
-/** The question asked about a stale open loop (template, no model). */
-export function staleLoopQuestionText(thoughtText: string): string {
-  return `Still on your mind? «${thoughtText.trim()}»`
+/** The languages a templated reflective question can be worded in (the quote's language). */
+export type ReflectiveLanguage = 'en' | 'fr' | 'arabizi' | 'ar'
+
+/** "Still on your mind?" in the language of the thought it quotes. */
+export const STALE_LOOP_PREFIX: Record<ReflectiveLanguage, string> = {
+  en: 'Still on your mind?',
+  fr: 'Toujours en tête ?',
+  arabizi: 'Ba3do 3a balak?',
+  ar: 'بعدو عبالك؟',
+}
+
+/**
+ * The question asked about a stale open loop (template, no model), its prefix in the thought's
+ * language (the server guesses it with `quoteLanguage` from `@bullet/engine`).
+ */
+export function staleLoopQuestionText(
+  thoughtText: string,
+  language: ReflectiveLanguage = 'en',
+): string {
+  return `${STALE_LOOP_PREFIX[language]} «${thoughtText.trim()}»`
 }
 
 /** Is a reflective question showing in "To think about" at `now` (open, or its snooze is over)? */

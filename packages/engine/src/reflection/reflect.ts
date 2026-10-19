@@ -91,15 +91,21 @@ const MAX_QUESTION_CHARS = 240
 const ADVICE =
   /\b(you should|should you|you need to|you must|try to|have you tried|have you considered|why don'?t you|make sure|don'?t forget|remember to|tu devrais|il faut|essaie de|n'oublie pas|lazem|lezim)\b/i
 
+/**
+ * Compare quotes loosely: case, curly quotes, spacing, trailing punctuation (Latin and Arabic
+ * `،` `؟`), and Arabic short-vowel marks (U+064B–U+0652) and tatweel (U+0640), which the model
+ * may add or drop when copying.
+ */
 const norm = (s: string) =>
   s
     .normalize('NFC')
     .toLowerCase()
+    .replace(/[\u064B-\u0652\u0640]/gu, '')
     .replace(/[’`]/g, "'")
     .replace(/[«»“”"]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/[.,;:!?…]+$/u, '')
+    .replace(/[.,;:!?…،؟]+$/u, '')
 
 /**
  * Check a parsed answer against the thoughts it was asked about. Returns the question to store,

@@ -4,6 +4,7 @@ import { ENGINE_CONFIG_DEFAULTS } from '../config'
 import { EngineError } from '../errors'
 import { createScriptedLlmClient } from '../llm/scripted'
 import { mayPickEvergreen, type ReflectiveState, reflectiveRefusal } from './caps'
+import { quoteLanguage } from './language'
 import {
   REFLECT_SYSTEM_PROMPT,
   type ReflectableThought,
@@ -152,6 +153,54 @@ describe('reflectOnThoughts', () => {
         [WORRY],
       ),
     ).toMatchObject({ thoughtPosition: 2 })
+  })
+
+  test('Arabic quotes match without short vowels, tatweel or a trailing ، / ؟', () => {
+    const thought: ReflectableThought = {
+      position: 0,
+      kind: 'worry',
+      text: 'أنا خايفة من المقابلة بكرا',
+    }
+    expect(
+      validateReflection(
+        {
+          ask: true,
+          thought: 1,
+          quote: 'خايـفة مِن المقابلةُ،',
+          question: '«خايفة من المقابلة»: شو أكتر شي مقلقك فيها؟',
+        },
+        [thought],
+      ),
+    ).toMatchObject({ thoughtPosition: 0, quote: 'خايـفة مِن المقابلةُ،' })
+    // Marks in the thought itself, a plain quote; and a quote ending in ؟.
+    expect(
+      validateReflection(
+        {
+          ask: true,
+          thought: 1,
+          quote: 'شو بدّي اعمل؟',
+          question: 'كتبت «شو بدي اعمل». شو اللي محيّرك؟',
+        },
+        [{ position: 1, kind: 'question', text: 'شو بَدّي اعمل بالشغل' }],
+      ),
+    ).toMatchObject({ thoughtPosition: 1 })
+  })
+})
+
+describe('quoteLanguage', () => {
+  test.each([
+    ['check if the passport expires before March', 'en'],
+    ['call the bank', 'en'],
+    ['vérifier si le passeport expire', 'fr'],
+    ["j'ai oublié d'appeler le garage", 'fr'],
+    ['ana khayfe men l interview bukra', 'arabizi'],
+    ['shu baddi a3mel bi hal sheghel', 'arabizi'],
+    ['lezem shuf eza l passport ba3do sale7', 'arabizi'],
+    ['إتصل بالبنك بكرا', 'ar'],
+    ['', 'en'],
+    ['Karim', 'en'],
+  ])('%s → %s', (text, lang) => {
+    expect(quoteLanguage(text)).toBe(lang)
   })
 })
 

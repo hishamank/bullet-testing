@@ -187,6 +187,59 @@ describe('a reflective question from a capture', () => {
     expect(reflective()).toHaveLength(1)
     expect(reflective()[0]?.status).toBe('answered')
   })
+
+  test('an edit that rewords the asked-about thought withdraws its question and may ask anew', async () => {
+    const { h, reflective, live, thoughtOf } = setup()
+    const b = await h.capture('worry: the rent is late')
+    await h.worker.drain()
+    const [first] = reflective()
+    expect(first?.source_thought_id).toBe(thoughtOf(b, 'worry')?.id)
+    await h.push([
+      {
+        op_id: uid(),
+        type: 'bullet.edit',
+        bullet_id: b,
+        text: 'worry: my sister seems far away lately',
+        edited_at: T0 + 1,
+      },
+    ])
+    await h.worker.drain()
+    expect(reflective().find((q) => q.id === first?.id)?.state).toBe('deleted')
+    expect(live()).toHaveLength(1)
+    const reworded = h.db
+      .select()
+      .from(thoughts)
+      .where(and(eq(thoughts.source_bullet_id, b), eq(thoughts.state, 'active')))
+      .get()
+    expect(reworded?.id).not.toBe(first?.source_thought_id)
+    expect(live()[0]).toMatchObject({
+      source_bullet_id: b,
+      source_thought_id: reworded?.id,
+      text: 'You wrote «my sister seems». What about it stays with you?',
+    })
+  })
+
+  test('a dismissed or answered question still counts: one per capture after an edit', async () => {
+    for (const how of ['dismiss', 'answer'] as const) {
+      const { h, reflective, live, capture, op } = setup()
+      const b = await capture('worry: the rent is late')
+      const [q] = reflective()
+      if (how === 'dismiss') await op({ type: 'question.dismiss', question_id: q?.id })
+      else await capture('note: it is about the move really', { answers_question_id: q?.id })
+      await h.push([
+        {
+          op_id: uid(),
+          type: 'bullet.edit',
+          bullet_id: b,
+          text: 'worry: my sister seems far away lately',
+          edited_at: T0 + 1,
+        },
+      ])
+      await h.worker.drain()
+      expect(live(), how).toHaveLength(0)
+      expect(reflective(), how).toHaveLength(1)
+    }
+  })
 })
 
 describe('limits across all sources', () => {
@@ -256,6 +309,25 @@ describe('stale open loops', () => {
     }
     expect(loops()).toHaveLength(1)
     expect(loops()[0]?.source_bullet_id).not.toBe(resolved)
+  })
+
+  test('"Still on your mind?" is worded in the language of the thought it quotes', async () => {
+    const { h, reflective, capture, pass } = setup()
+    await capture('to_check: vérifier si le passeport expire')
+    await capture('to_check: lezem shuf eza l passport ba3do sale7')
+    const texts = () =>
+      reflective()
+        .filter((q) => q.origin === 'open_loop')
+        .map((q) => q.text)
+    h.clock.now = T0 + 7 * DAY
+    pass()
+    h.clock.now = T0 + 8 * DAY
+    await capture('note: still here')
+    pass()
+    expect(texts()).toEqual([
+      'Toujours en tête ? «vérifier si le passeport expire»',
+      'Ba3do 3a balak? «lezem shuf eza l passport ba3do sale7»',
+    ])
   })
 })
 
@@ -448,7 +520,7 @@ describe('the user acting on reflective questions', () => {
     expect(
       pulled.changes.bullets.filter((b) => b.answers_question_id === q?.id).map((b) => b.id),
     ).toEqual([a1, a2])
-    expect(pulled.changes.thoughts.every((t) => t.sensitive === false)).toBe(true)
+    expect(pulled.changes.thoughts.some((t) => 'sensitive' in t)).toBe(false)
   })
 })
 
@@ -472,9 +544,11 @@ describe('sensitive thoughts', () => {
     h.clock.now = T0 + 7 * DAY + 1
     pass()
     expect(reflective().map((q) => q.origin)).toEqual(['evergreen'])
-    // The flag is pulled (never shown).
-    const pulled = pullResponseSchema.parse(await h.pull())
-    expect(pulled.changes.thoughts.filter((t) => t.sensitive)).toHaveLength(1)
+    // The flag is server-only: never pulled to the phone.
+    const raw = (await h.pull()) as { changes: { thoughts: Record<string, unknown>[] } }
+    expect(raw.changes.thoughts).toHaveLength(3)
+    expect(raw.changes.thoughts.some((t) => 'sensitive' in t)).toBe(false)
+    expect(pullResponseSchema.parse(raw).changes.thoughts).toHaveLength(3)
   })
 
   test('a capture edited into distress withdraws its open question', async () => {

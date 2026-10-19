@@ -12,6 +12,7 @@ export {
   reflectOnThoughts,
   validateReflection,
 } from './reflect'
+export { quoteLanguage } from './language'
 export {
   mayPickEvergreen,
   type ReflectiveRefusal,
