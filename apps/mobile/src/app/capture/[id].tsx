@@ -217,6 +217,15 @@ export default function CaptureDetailScreen() {
           </View>
         ) : null}
 
+        {c.retryTranscription && !editing ? (
+          <View style={styles.failed}>
+            <Label tone="secondary" size={type.bodySmall} style={{ flex: 1 }}>
+              The home server found no speech it could use, so the phone's live draft was read.
+            </Label>
+            <TextButton title="Retry transcription" onPress={() => retryCaptures([c.id])} />
+          </View>
+        ) : null}
+
         {c.audioReadError ? (
           <Label tone="secondary" size={type.bodySmall}>
             {AUDIO_READ_ERROR_TEXT}

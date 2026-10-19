@@ -1036,6 +1036,76 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
   )
 
   test(
+    'no speech, but a real phone draft: the draft becomes the text and is processed',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
+      const tone = toneWav(3)
+      const path = join(dir, 'tone.wav')
+      writeFileSync(path, tone)
+      const draft = "Remind me to water the garden tomorrow, it's been dry."
+      const id = captureVoiceBullet(
+        p.db,
+        {
+          text: draft,
+          textEditedByUser: false,
+          audio: {
+            localPath: path,
+            mimeType: 'audio/wav',
+            durationMs: wavDurationMs(tone),
+            sizeBytes: tone.length,
+            sha256: sha256(tone),
+          },
+          draft: {
+            text: draft,
+            engine: 'apple-sfspeechrecognizer',
+            model: null,
+            languages: ['en-US'],
+          },
+        },
+        p.deps,
+      )
+      const t0 = Date.now()
+      const seen = await syncUntil(p, id, isSettled, CAPTURE_TIMEOUT)
+      const b = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
+      const things = p.db
+        .select()
+        .from(suggestions)
+        .where(and(eq(suggestions.source_bullet_id, id), eq(suggestions.state, 'active')))
+        .all()
+      record({
+        type: 'draft_fallback',
+        status: b.server_status,
+        text_from_draft: b.text_from_draft,
+        ms: Date.now() - t0,
+        transitions: seen.seen,
+        things: things.map((s) => ({ kind: s.target_kind, tier: s.tier, payload: s.payload })),
+      })
+      expect(b.server_status).toMatch(/^(processed|needs_review)$/)
+      expect(b.text_from_draft).toBe(true)
+      expect(b.text).toBe(draft)
+      expect(b.server_error_code).toBeNull()
+      quality(
+        'draft fallback: the draft produced a task',
+        things.some((s) => s.target_kind === 'task'),
+        things.map((s) => s.payload),
+      )
+      // "Retry transcription": Whisper runs again, still no speech, the capture stays as it was.
+      retryBullet(p.db, id, p.deps)
+      const again = await syncUntil(
+        p,
+        id,
+        (x) => x.server_attempts >= 2 && isSettled(x),
+        CAPTURE_TIMEOUT,
+      )
+      record({ type: 'draft_fallback_retry', transitions: again.seen })
+      const r = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
+      expect(r.text_from_draft).toBe(true)
+      expect(r.server_status).toMatch(/^(processed|needs_review)$/)
+    },
+    2 * CAPTURE_TIMEOUT,
+  )
+
+  test(
     'damaged recording: fails at once as transcription_failed; bullet.retry re-queues it',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))

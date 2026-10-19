@@ -542,3 +542,144 @@ describe('voice notes: transcription', () => {
     expect((await h.push([{ ...op, op_id: uid() }])).results[0]?.status).toBe('duplicate')
   })
 })
+
+describe('voice notes: the phone draft when no transcript is usable', () => {
+  const DRAFT = 'remind me to buy olive oil tomorrow'
+
+  for (const [what, transcriber] of [
+    ['no speech', () => createScriptedTranscriber(() => ({ text: ' .' }))],
+    [
+      'corrupt audio',
+      () =>
+        createScriptedTranscriber(() => {
+          throw new EngineError('TRANSCRIPTION_FAILED', 'ffmpeg conversion failed')
+        }),
+    ],
+    ['a silence hallucination', () => createScriptedTranscriber(() => ({ text: ' Thank you.' }))],
+  ] as const) {
+    test(`${what} → the draft becomes the text, processed as usual`, async () => {
+      const llm = llmByText({})
+      const h = createHarness(llm, { transcriber: transcriber() })
+      const { bulletId, audioId } = await captureVoice(h, { draft: DRAFT, text: DRAFT })
+      await put(h, audioId, 0, AUDIO)
+      await h.worker.drain()
+      expect(bullet(h, bulletId)).toMatchObject({
+        proc_status: 'processed',
+        proc_error_code: null,
+        text: DRAFT,
+        text_from_draft: true,
+        text_edited_by_user: false,
+      })
+      expect(llm.chatCalls.at(-1)?.messages[1]?.content).toContain(DRAFT)
+      expect(h.db.select().from(transcripts).where(eq(transcripts.kind, 'server')).all()).toEqual(
+        [],
+      )
+      // The flag reaches the phone.
+      const pulled = pullResponseSchema.parse(
+        await (await h.request('/sync/pull', { headers: auth(h) })).json(),
+      )
+      expect(pulled.changes.bullets.find((b) => b.id === bulletId)?.text_from_draft).toBe(true)
+    })
+  }
+
+  test('a silence hallucination with too short a draft fails as no speech', async () => {
+    const h = createHarness(llmByText({}), {
+      transcriber: createScriptedTranscriber(() => ({ text: 'Thanks for watching!' })),
+    })
+    const { bulletId, audioId } = await captureVoice(h, { draft: 'Thank you.' })
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'failed',
+      proc_error_code: 'transcription_no_speech',
+      text_from_draft: false,
+    })
+  })
+
+  test('a long real transcript that says "thank you" is kept', async () => {
+    const said = 'Thank you note for Sam, and pay the electricity bill.'
+    const h = createHarness(llmByText({}), {
+      transcriber: createScriptedTranscriber(() => ({ text: said })),
+    })
+    const { bulletId, audioId } = await captureVoice(h, { draft: '', text: 'Voice note, 0:03' })
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({ text: said, text_from_draft: false })
+  })
+
+  test('"Retry transcription": a good transcript replaces the draft text', async () => {
+    let up = false
+    const llm = llmByText({})
+    const h = createHarness(llm, {
+      transcriber: createScriptedTranscriber(() => ({
+        text: up ? 'Remind me to buy olive oil tomorrow.' : '',
+      })),
+    })
+    const { bulletId, audioId } = await captureVoice(h, { draft: DRAFT, text: DRAFT })
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({ proc_status: 'processed', text_from_draft: true })
+
+    up = true
+    await h.push([{ op_id: uid(), type: 'bullet.retry', bullet_id: bulletId }])
+    expect(bullet(h, bulletId)?.proc_status).toBe('synced')
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'processed',
+      text: 'Remind me to buy olive oil tomorrow.',
+      text_from_draft: false,
+    })
+    // Retry only re-runs a draft capture or a failed one.
+    const calls = llm.chatCalls.length
+    await h.push([{ op_id: uid(), type: 'bullet.retry', bullet_id: bulletId }])
+    expect(bullet(h, bulletId)?.proc_status).toBe('processed')
+    await h.worker.drain()
+    expect(llm.chatCalls.length).toBe(calls)
+  })
+
+  test('"Retry transcription" that still finds no speech leaves the capture as it was', async () => {
+    const llm = llmByText({})
+    const t = createScriptedTranscriber(() => ({ text: '[BLANK_AUDIO]' }))
+    const h = createHarness(llm, { transcriber: t })
+    const { bulletId, audioId } = await captureVoice(h, { draft: DRAFT, text: DRAFT })
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    const calls = llm.chatCalls.length
+    await h.push([{ op_id: uid(), type: 'bullet.retry', bullet_id: bulletId }])
+    await h.worker.drain()
+    expect(t.calls).toHaveLength(2)
+    expect(llm.chatCalls.length).toBe(calls)
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'processed',
+      proc_error_code: null,
+      text: DRAFT,
+      text_from_draft: true,
+    })
+  })
+
+  test("editing a draft capture makes it the user's text; a transcript no longer replaces it", async () => {
+    let up = false
+    const h = createHarness(llmByText({}), {
+      transcriber: createScriptedTranscriber(() => ({ text: up ? 'something else entirely' : '' })),
+    })
+    const { bulletId, audioId } = await captureVoice(h, { draft: DRAFT, text: DRAFT })
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    await h.push([
+      {
+        op_id: uid(),
+        type: 'bullet.edit',
+        bullet_id: bulletId,
+        text: 'buy olive oil and bread tomorrow',
+        edited_at: h.clock.now,
+      },
+    ])
+    expect(bullet(h, bulletId)).toMatchObject({ text_from_draft: false, text_edited_by_user: true })
+    up = true
+    await h.worker.drain()
+    expect(bullet(h, bulletId)).toMatchObject({
+      proc_status: 'processed',
+      text: 'buy olive oil and bread tomorrow',
+    })
+  })
+})

@@ -102,6 +102,7 @@ const page = (over: Partial<PullResponse['changes']> = {}, cursor = '1'): PullRe
         timezone: 'Europe/Paris',
         source: 'text',
         text_edited_by_user: false,
+        text_from_draft: false,
         answers_question_id: null,
         resolves_thought_id: null,
         processing: {

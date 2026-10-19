@@ -99,6 +99,7 @@ export class FakeServer implements SyncTransport {
         this.bullets.set(op.bullet.id, {
           ...bullet,
           text_edited_by_user: bullet.text_edited_by_user ?? false,
+          text_from_draft: false,
           answers_question_id: bullet.answers_question_id ?? null,
           resolves_thought_id: bullet.resolves_thought_id ?? null,
           owner_id: OWNER,

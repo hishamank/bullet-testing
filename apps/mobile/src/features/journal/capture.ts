@@ -55,6 +55,10 @@ export interface CaptureDetail {
   capturedAt: number
   timezone: string
   textEditedByUser: boolean
+  /** No usable home transcript: the text is this phone's live draft. */
+  textFromDraft: boolean
+  /** Offer "Retry transcription" (a draft capture the server has finished with). */
+  retryTranscription: boolean
   status: BulletProcessingStatus
   /** A retryable failure's reason (null for a recording that can't be transcribed). */
   errorReason: string | null
@@ -139,6 +143,12 @@ export function loadCaptureDetail(
     capturedAt: b.captured_at,
     timezone: b.timezone,
     textEditedByUser: b.text_edited_by_user,
+    textFromDraft: b.text_from_draft,
+    retryTranscription:
+      b.source === 'voice' &&
+      b.text_from_draft &&
+      !b.text_edited_by_user &&
+      (status === 'processed' || status === 'needs_review'),
     status,
     errorReason: status === 'failed' && failure === null ? errorReason(b.server_error_code) : null,
     errorCode: b.server_error_code ?? null,
@@ -175,6 +185,9 @@ function undoNotices(
 
 export type TranscriptTab = 'edit' | 'server' | 'draft'
 
+/** The label on a capture whose home transcript found no usable speech (decision 2). */
+export const FROM_DRAFT_TEXT = "From the phone's live draft"
+
 export interface TranscriptView {
   /** Tabs to show; empty when there is nothing to switch between. */
   tabs: { id: TranscriptTab; label: string }[]
@@ -196,7 +209,8 @@ function lastOf(ts: readonly TranscriptRow[], kind: TranscriptRow['kind']): Tran
  * stay viewable.
  */
 export function transcriptView(
-  c: Pick<CaptureDetail, 'text' | 'source' | 'textEditedByUser' | 'transcripts'>,
+  c: Pick<CaptureDetail, 'text' | 'source' | 'textEditedByUser' | 'transcripts'> &
+    Partial<Pick<CaptureDetail, 'textFromDraft'>>,
 ): TranscriptView {
   const server = lastOf(c.transcripts, 'server')
   const draft = lastOf(c.transcripts, 'device_draft')
@@ -207,6 +221,7 @@ export function transcriptView(
   if (draft) tabs.push({ id: 'draft', label: 'Phone draft' })
   let note: string | null = null
   if (edited) note = 'You edited the text, so your words are kept.'
+  else if (c.source === 'voice' && c.textFromDraft) note = FROM_DRAFT_TEXT
   else if (c.source === 'voice' && !server) {
     note = 'Live draft. Your recording is kept and transcribed again at home.'
   }

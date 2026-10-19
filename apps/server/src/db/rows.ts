@@ -18,6 +18,7 @@ export function toSyncedBullet(row: BulletRow): SyncedBullet {
     timezone: row.timezone,
     source: row.source,
     text_edited_by_user: row.text_edited_by_user,
+    text_from_draft: row.text_from_draft,
     answers_question_id: row.answers_question_id,
     resolves_thought_id: row.resolves_thought_id,
     processing: {

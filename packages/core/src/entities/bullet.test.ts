@@ -9,6 +9,7 @@ const validBullet = {
   timezone: 'Europe/Paris',
   source: 'text' as const,
   text_edited_by_user: false,
+  text_from_draft: false,
   answers_question_id: null,
   resolves_thought_id: null,
   created_at: 1_700_000_000_000,
@@ -25,6 +26,15 @@ const validBullet = {
 
 test('bullet select: valid object parses', () => {
   expect(bulletSelectSchema.parse(validBullet)).toEqual(validBullet)
+})
+
+test('bullet select: text_from_draft defaults to false for older servers', () => {
+  const { text_from_draft, ...older } = validBullet
+  void text_from_draft
+  expect(bulletSelectSchema.parse(older).text_from_draft).toBe(false)
+  expect(bulletSelectSchema.parse({ ...validBullet, text_from_draft: true }).text_from_draft).toBe(
+    true,
+  )
 })
 
 test('bullet select: rejects empty text', () => {

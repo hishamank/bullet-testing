@@ -70,6 +70,12 @@ Each bullet has exactly **one** of these states.
 - **Transcribed** (`transcribing → processing`): the server's transcript replaces the draft
   text, **unless you edited the draft** before sending (or later). Then your words stay and the
   server's transcript is only kept alongside. Either way the bullet is then read as usual.
+- **No usable transcript, but a real draft** (`transcribing → processing`): when the recording
+  has no speech the server can use (or can't be read) but the phone's live draft has real content
+  (more than three words, not just "Thank you."), the draft stays the text, the bullet is marked
+  **from the phone's live draft**, and it is read as usual. Whisper's well-known silence phrases
+  ("Thank you.", "Thanks for watching", "Merci.", "شكرا") count as no speech on a short recording
+  or when the draft disagrees. With no usable draft either, the bullet fails at once (below).
 - **Done** (`processing → processed` or `needs_review`): `needs_review` if at least one suggestion
   needs a decision, otherwise `processed`.
 - **All reviewed** (`needs_review → processed`): you accepted or dismissed every waiting
@@ -80,7 +86,10 @@ Each bullet has exactly **one** of these states.
   missing. A recording that **can't** be transcribed (no speech in it, or audio that can't be
   read) fails **at once**, without automatic retries: trying the same recording again would give
   the same answer.
-- **Retry** (`failed → synced`): you tapped Retry.
+- **Retry** (`failed → synced`): you tapped Retry. On a capture **from the phone's live draft**,
+  the same op is **Retry transcription** (`processed`/`needs_review → synced`): the server runs
+  Whisper again. A good transcript then replaces the draft text (unless you edited it) and the
+  capture is read again, keeping what still matches; still no speech leaves it as it was.
 - **Automatic retry** (`transcribing`/`processing → synced`): a temporary problem (the
   transcriber or the AI unreachable, too slow, or busy). The server will try again by itself
   shortly, up to 5 attempts. The bullet shows how many attempts so far and when the next one is
@@ -130,6 +139,9 @@ Every bullet carries:
 - **Source:** `text` or `voice`, plus **when** it was captured and the phone's **time zone**
   then. "Tomorrow 3pm" always means 3pm where you were when you said it.
 - **Edited by you:** whether you changed the text by hand. Server transcripts never overwrite it.
+- **From the phone's live draft** (`text_from_draft`): the server found no usable speech, so the
+  text is the phone's draft. Show "From the phone's live draft" and offer **Retry
+  transcription**. Cleared by a good transcript or by your edit. _Added 2026-10-19._
 
 ## 2b. Voice notes
 
@@ -144,7 +156,9 @@ Every bullet carries:
   - the **server transcript** (Whisper), which understands mixed English, Lebanese Arabic and
     French. It records which engine and model made it and the languages it heard.
 - The bullet's text is the server transcript once it exists, unless you edited the text yourself.
-  The UI can always show both transcripts and play the recording.
+  When there is no usable server transcript, the text stays the phone's draft (if it has real
+  content) and the bullet says so (`text_from_draft`). The UI can always show both transcripts
+  and play the recording.
 
 ## 2c. Thoughts
 
@@ -298,7 +312,8 @@ client-minted UUID `op_id`. The op types are `bullet.create` (with a client-mint
 optional `audio`: recording `id`, `mime_type`, `duration_ms`, `size_bytes`, `sha256` and the
 device `draft` transcript, optional `answers_question_id`, and optional `resolves_thought_id`),
 `bullet.edit` (`text`, `edited_at`; marks the text user-edited), `bullet.delete`
-(`mode: cascade | keep_extractions`), `bullet.retry`, `suggestion.accept` (optional edited
+(`mode: cascade | keep_extractions`), `bullet.retry` (a `failed` bullet, or a settled one with
+`text_from_draft`; anything else is a no-op), `suggestion.accept` (optional edited
 `payload`), `suggestion.reject`, `suggestion.undo`, `thought.reclassify` (`thought_id`, `kind`),
 `thought.resolve` / `thought.unresolve` (`thought_id`), `question.dismiss` (`question_id`),
 `question.answer` (`question_id`, `option`), and the manual edits: `task.update` (`task_id`,
@@ -309,7 +324,8 @@ device `draft` transcript, optional `answers_question_id`, and optional `resolve
 
 Who changed what by hand: tasks, events and tracker entries carry `user_edited_at` (null until a
 manual edit or delete). Thoughts carry `resolved_at` and `resolved_by_bullet_id`; questions
-carry `answer_option`; bullets carry `resolves_thought_id`. Older rows without them read as null.
+carry `answer_option`; bullets carry `resolves_thought_id` and `text_from_draft`. Older rows without
+them read as null (`text_from_draft`: false).
 
 Provenance: every thing and suggestion carries `source_bullet_id` (the capture) and
 `source_thought_id` (the thought; null for things made by hand or before thoughts existed).
