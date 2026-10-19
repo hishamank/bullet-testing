@@ -419,9 +419,24 @@ describe('the user acting on reflective questions', () => {
     const { h, reflective, capture } = setup()
     await capture('worry: the rent is late')
     const q = reflective()[0]
-    const a1 = await capture('note: it is mostly the uncertainty', { answers_question_id: q?.id })
+    // Captured offline a while ago, arriving now: an ordinary capture, split and extracted.
+    const a1 = await capture('note: it is mostly the uncertainty | task: call the landlord', {
+      answers_question_id: q?.id,
+      captured_at: T0 - 60_000,
+    })
     const a2 = await capture('note: and the landlord never replies', { answers_question_id: q?.id })
     expect(reflective()[0]).toMatchObject({ status: 'answered', answer_bullet_id: a1 })
+    expect(
+      h.db
+        .select()
+        .from(thoughts)
+        .where(eq(thoughts.source_bullet_id, a1))
+        .all()
+        .map((t) => t.kind),
+    ).toEqual(['note', 'task'])
+    expect(
+      h.db.select().from(suggestions).where(eq(suggestions.source_bullet_id, a1)).all(),
+    ).toMatchObject([{ target_kind: 'task', status: 'pending' }])
     const pulled = pullResponseSchema.parse(await h.pull())
     expect(pulled.changes.questions.find((x) => x.id === q?.id)).toMatchObject({
       kind: 'reflective',
