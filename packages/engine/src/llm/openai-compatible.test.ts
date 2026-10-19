@@ -38,6 +38,22 @@ describe('createOpenAiCompatibleClient', () => {
     })
   })
 
+  test('warns when a reply stopped at the max_tokens cap', async () => {
+    const warnings: string[] = []
+    const client = createOpenAiCompatibleClient({
+      baseUrl: 'http://x',
+      warn: (m) => warnings.push(m),
+      fetch: (async () =>
+        jsonResponse({
+          choices: [{ message: { role: 'assistant', content: '{"a":' }, finish_reason: 'length' }],
+        })) as typeof fetch,
+    })
+    const res = await client.chat({ model: 'm', messages: [], maxTokens: 8 })
+    expect(res.message.content).toBe('{"a":')
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('max_tokens=8')
+  })
+
   test('maps a non-OK status to LLM_HTTP', async () => {
     const client = createOpenAiCompatibleClient({
       baseUrl: 'http://x',

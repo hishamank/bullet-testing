@@ -70,10 +70,11 @@ Output ONLY the JSON object matching the schema. No Markdown code fences, no com
 
 /**
  * Generation cap for segmenting one chunk: the answer quotes the chunk and repeats it cleaned
- * (about two copies of it, and Arabizi tokenizes at ~3 characters a token), plus JSON per thought.
+ * (two copies of it) plus JSON per thought. Arabizi tokenizes at ~3 characters a token, but Arabic
+ * script can take about one token per character, so two copies need ~2 tokens per character.
  */
 export function segmentationMaxTokens(chunk: string): number {
-  return Math.max(1024, Math.ceil(chunk.length * 1.5))
+  return Math.max(1024, Math.ceil(chunk.length * 2))
 }
 
 /** Thoughts per chunk: about a minute of speech. */

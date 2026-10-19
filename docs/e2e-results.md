@@ -101,7 +101,7 @@ added after it). Run 4 failed only the idempotency check, on the harness's own l
 5. **One runaway generation cost 3 minutes and a retry.** In run 1 the extraction of "Slept 6
    hours." looped inside the JSON grammar (~1,400 tokens) until the 180 s deadline; the capture
    took 330 s instead of ~75 s. No request set `max_tokens`. Extraction is now capped at 1,024
-   tokens (live answers: 36–176), segmentation at 1.5 tokens per character (min 1,024); a cut-off
+   tokens (live answers: 36–176), segmentation at 2 tokens per character (room for Arabic script) (min 1,024); a cut-off
    reply goes to the existing repair retry.
 6. **Docs: whisper-server leaves recordings in its working directory.** With `--convert` it writes
    each upload to a temp WAV in the directory it was started from and keeps it when conversion
