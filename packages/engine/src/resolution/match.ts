@@ -97,12 +97,17 @@ function containmentScore(query: string, target: string): number {
  *   3. `text`                        — the raw source span (weakest fallback).
  * De-duplicated (a bullet often repeats the same word across signals).
  */
+/** Fields a model uses to name the tracker a reading belongs to (seen live with Qwen3.5-4B). */
+export const TRACKER_NAME_FIELDS = ['tracker', 'tracker_name'] as const
+
 function candidateQueries(candidate: Candidate): string[] {
   const queries: string[] = []
   const push = (v: unknown): void => {
     if (typeof v === 'string' && v.trim() !== '') queries.push(v.trim())
   }
   push(candidate.referenceName)
+  // A reading names its tracker in a field of its own: { tracker: "sleep", value: 6 }.
+  for (const k of TRACKER_NAME_FIELDS) push(candidate.fields[k])
   push(candidate.fields.name)
   push(candidate.fields.title)
   push(candidate.text)

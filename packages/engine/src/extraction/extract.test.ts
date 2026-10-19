@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vite-plus/test'
 import { ENGINE_CONFIG_DEFAULTS } from '../config'
 import { createScriptedLlmClient } from '../llm/scripted'
-import { extractCandidates, extractJsonObject } from './extract'
+import { EXTRACTION_MAX_TOKENS, extractCandidates, extractJsonObject } from './extract'
 import { buildExtractionPrompt } from './prompt'
 import { extractionJsonSchema, extractionResponseSchema } from './schema'
 import type { ExtractionSnapshot } from './snapshot'
@@ -89,6 +89,19 @@ describe('extractCandidates', () => {
     expect(llm.chatCalls).toHaveLength(1)
     expect(llm.chatCalls[0]?.model).toBe(config.model)
     expect(llm.chatCalls[0]?.jsonSchema).toBe(extractionJsonSchema)
+    // A generation cap, so a looping model stops long before the call's deadline.
+    expect(llm.chatCalls[0]?.maxTokens).toBe(EXTRACTION_MAX_TOKENS)
+  })
+
+  test('a reply cut off at the cap (a runaway) gets the repair retry', async () => {
+    const llm = createScriptedLlmClient({
+      chatQueue: [
+        '{"candidates":[{"kind":"activity","fields":{"name":"ran","name2":"ran","name3"',
+        JSON.stringify({ candidates: [] }),
+      ],
+    })
+    expect(await extractCandidates({ llm, config }, input('ran'), EMPTY_SNAPSHOT)).toEqual([])
+    expect(llm.chatCalls).toHaveLength(2)
   })
 
   test('retries ONCE on malformed JSON then succeeds', async () => {

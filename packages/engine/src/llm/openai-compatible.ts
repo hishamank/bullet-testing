@@ -18,10 +18,15 @@ export interface OpenAiCompatibleOptions {
   timeoutMs?: number
   /** Injected for tests; defaults to the global `fetch`. */
   fetch?: typeof fetch
+  /**
+   * Told when a reply stopped at the `maxTokens` cap (`finish_reason: "length"`): usually a model
+   * looping inside the JSON grammar. Defaults to `console.warn`.
+   */
+  warn?: (message: string) => void
 }
 
 interface ChatCompletionBody {
-  choices?: { message?: { role?: string; content?: string | null } }[]
+  choices?: { message?: { role?: string; content?: string | null }; finish_reason?: string }[]
 }
 
 export function createOpenAiCompatibleClient(opts: OpenAiCompatibleOptions): LlmClient {
@@ -34,6 +39,7 @@ export function createOpenAiCompatibleClient(opts: OpenAiCompatibleOptions): Llm
       const body: Record<string, unknown> = { model: req.model, messages: req.messages }
       if (req.temperature !== undefined) body.temperature = req.temperature
       if (req.seed !== undefined) body.seed = req.seed
+      if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens
       if (req.jsonSchema) {
         body.response_format = {
           type: 'json_schema',
@@ -63,6 +69,11 @@ export function createOpenAiCompatibleClient(opts: OpenAiCompatibleOptions): Llm
       }
 
       const raw = (await res.json()) as ChatCompletionBody & Record<string, unknown>
+      if (raw.choices?.[0]?.finish_reason === 'length') {
+        ;(opts.warn ?? console.warn)(
+          `[llm] reply cut off at max_tokens=${req.maxTokens ?? 'server default'}; it will be repaired or retried`,
+        )
+      }
       const content = raw.choices?.[0]?.message?.content
       if (typeof content !== 'string') {
         throw new EngineError('LLM_PARSE', 'LLM response had no message content', raw)

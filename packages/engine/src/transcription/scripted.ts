@@ -1,6 +1,7 @@
 /** A scripted {@link Transcriber} for tests: answers from a handler and records every request. */
 
 import { EngineError } from '../errors'
+import { hasSpeech } from './speech'
 import type { Transcriber, TranscriptionRequest, TranscriptionResult } from './types'
 
 export interface ScriptedTranscriber extends Transcriber {
@@ -27,7 +28,8 @@ export function createScriptedTranscriber(
 
 /**
  * A deadline for any {@link Transcriber} (rejects with `TRANSCRIBER_TIMEOUT`), and the guard every
- * result passes: an empty transcript is a failure (`TRANSCRIPTION_FAILED`), never an empty bullet.
+ * result passes: a transcript with no words is a failure (`TRANSCRIPTION_FAILED`), never a bullet
+ * whose text is "." or empty.
  */
 export function withTranscriberTimeout(inner: Transcriber, timeoutMs: number): Transcriber {
   return {
@@ -46,7 +48,7 @@ export function withTranscriberTimeout(inner: Transcriber, timeoutMs: number): T
         inner.transcribe(req).then(
           (res) => {
             clearTimeout(timer)
-            if (res.text.trim() === '') {
+            if (!hasSpeech(res.text)) {
               reject(new EngineError('TRANSCRIPTION_FAILED', 'no speech found in the recording'))
             } else resolve({ ...res, text: res.text.trim() })
           },

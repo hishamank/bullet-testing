@@ -5,6 +5,7 @@ import { engineConfig, loadServerConfig } from './config'
 import { openDb } from './db/client'
 import { recoverStuckJobs } from './queue/jobs'
 import { createWorker } from './queue/worker'
+import { ffmpegAvailable, watchConversionFailures } from './ops/whisper-health'
 import { createFileAudioStore } from './storage/audio-store'
 
 const config = loadServerConfig(process.env)
@@ -26,12 +27,15 @@ const worker = createWorker({
   llmTimeoutMs: config.llmTimeoutMs,
   // Without WHISPER_BASE_URL, voice bullets are processed on their device draft.
   transcriber: config.whisperBaseUrl
-    ? createWhisperCppTranscriber({
-        baseUrl: config.whisperBaseUrl,
-        model: config.whisperModel,
-        prompt: config.whisperPrompt,
-        timeoutMs: config.transcribeTimeoutMs + 5_000,
-      })
+    ? watchConversionFailures(
+        createWhisperCppTranscriber({
+          baseUrl: config.whisperBaseUrl,
+          model: config.whisperModel,
+          prompt: config.whisperPrompt,
+          timeoutMs: config.transcribeTimeoutMs + 5_000,
+        }),
+        { warn: (m) => console.warn(`[whisper] WARNING: ${m}`) },
+      )
     : undefined,
   transcriberTimeoutMs: config.transcribeTimeoutMs,
   audioStore,
@@ -48,6 +52,13 @@ const app = createApp({
 })
 
 console.log(`llm: ${config.llmBaseUrl} (model ${config.llmModel})`)
+if (config.whisperBaseUrl && !ffmpegAvailable()) {
+  // whisper-server --convert needs ffmpeg; usually it runs on this same machine and PATH.
+  console.warn(
+    '[whisper] WARNING: ffmpeg is not on the PATH. whisper-server --convert needs it to read ' +
+      'recordings; without it every voice note fails with transcription_failed.',
+  )
+}
 console.log(
   config.whisperBaseUrl
     ? `whisper: ${config.whisperBaseUrl} (model ${config.whisperModel})`

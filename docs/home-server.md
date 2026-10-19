@@ -88,7 +88,11 @@ Check it: `curl -s http://127.0.0.1:8080/health` → `{"status":"ok"}`.
 ## 4. Start whisper-server
 
 ```bash
-~/src/whisper.cpp/build/bin/whisper-server --host 127.0.0.1 --port 8081 -m ~/models/whisper/ggml-large-v3-turbo-q5_0.bin --convert -t 8
+mkdir -p ~/.cache/whisper-server && chmod 700 ~/.cache/whisper-server
+```
+
+```bash
+~/src/whisper.cpp/build/bin/whisper-server --host 127.0.0.1 --port 8081 -m ~/models/whisper/ggml-large-v3-turbo-q5_0.bin --convert --tmp-dir ~/.cache/whisper-server -t 8
 ```
 
 - `--convert` is required: the phone uploads AAC/M4A and whisper-server otherwise reads WAV
@@ -98,6 +102,12 @@ Check it: `curl -s http://127.0.0.1:8080/health` → `{"status":"ok"}`.
   first 30 s); a note that switches between Arabic, English and French is still transcribed as
   one piece, but the detected language is only the dominant one. Judge the quality on your own
   clips with the eval script before relying on it.
+- `--tmp-dir`: where `--convert` writes each recording while converting it. The default is the
+  directory you started the server from, and a recording ffmpeg can't decode is **left there**
+  (a copy of a journal recording in a random directory). Use a private directory. It must be
+  writable: an unwritable `--tmp-dir`, or ffmpeg missing from whisper-server's `PATH`, fails
+  every recording with the same `"FFmpeg conversion failed."` a damaged file gets, so each voice
+  note shows `transcription_failed`.
 - `-t 8`: CPU threads for the parts that do not run on the GPU.
 
 ## 5. Start the bullet server
@@ -136,8 +146,10 @@ Start:
 pnpm --filter server start
 ```
 
-It logs the LLM and Whisper endpoints it will use. Every route needs the token, `/health`
-included:
+It logs the LLM and Whisper endpoints it will use. With `WHISPER_BASE_URL` set, it also warns at
+startup when `ffmpeg` is not on its own `PATH` (whisper-server usually shares it), and logs
+`[whisper] WARNING: 3 recordings in a row failed ffmpeg conversion…` when conversions keep
+failing: that is the setup, not the recordings. Every route needs the token, `/health` included:
 
 ```bash
 curl -s -H "authorization: Bearer $BULLET_TOKEN" http://127.0.0.1:3001/health

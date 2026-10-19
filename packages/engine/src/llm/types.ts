@@ -23,6 +23,11 @@ export interface LlmChatRequest {
   jsonSchema?: Record<string, unknown>
   temperature?: number
   seed?: number
+  /**
+   * Cap on generated tokens. A small model can loop inside a JSON grammar (seen live: ~1 400
+   * tokens of one extraction until the deadline); the cap ends that early so the repair retry runs.
+   */
+  maxTokens?: number
 }
 
 /** The relevant fields of a chat completion response. */

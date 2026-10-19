@@ -23,6 +23,7 @@ describe('createOpenAiCompatibleClient', () => {
       model: 'm',
       messages: [{ role: 'user', content: 'hi' }],
       jsonSchema: schema,
+      maxTokens: 512,
     })
 
     expect(res.message.content).toBe('{"ok":true}')
@@ -30,10 +31,27 @@ describe('createOpenAiCompatibleClient', () => {
     expect(url).toBe('http://home.local:8080/v1/chat/completions')
     expect((init.headers as Record<string, string>).authorization).toBe('Bearer test-key')
     const sent = JSON.parse(init.body as string)
+    expect(sent.max_tokens).toBe(512)
     expect(sent.response_format).toEqual({
       type: 'json_schema',
       json_schema: { name: 'response', strict: true, schema },
     })
+  })
+
+  test('warns when a reply stopped at the max_tokens cap', async () => {
+    const warnings: string[] = []
+    const client = createOpenAiCompatibleClient({
+      baseUrl: 'http://x',
+      warn: (m) => warnings.push(m),
+      fetch: (async () =>
+        jsonResponse({
+          choices: [{ message: { role: 'assistant', content: '{"a":' }, finish_reason: 'length' }],
+        })) as typeof fetch,
+    })
+    const res = await client.chat({ model: 'm', messages: [], maxTokens: 8 })
+    expect(res.message.content).toBe('{"a":')
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('max_tokens=8')
   })
 
   test('maps a non-OK status to LLM_HTTP', async () => {

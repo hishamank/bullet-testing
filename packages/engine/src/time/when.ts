@@ -115,11 +115,16 @@ function parseTime(s: string, partOfDay: boolean): LocalTime | null {
   }
   const clock = /\b([01]?\d|2[0-3])[:h]([0-5]\d)\b/.exec(s)
   if (clock) return { hour: Number(clock[1]), minute: Number(clock[2]) }
-  // French "15h": only after "à"/"at"/"vers"…, or alone, so "slept 6h" is not a time of day.
+  // French "15h": only after "à"/"at"/"vers"…, right after a day ("jeudi 15h", "demain 9h",
+  // "ce soir 21h"), or alone, so "slept 6h" is not a time of day. Day words arrive mapped to
+  // English (englishDateWords); abbreviations are the ones WEEKDAY_RE reads as days ("sat",
+  // "sun", "mon" are ordinary words, and French "lun", "sam"… are not day words here at all).
   for (const m of s.matchAll(
-    /(?:^|\s)(?:(à|a|at|vers|avant|before|by|until|till|@|3al|3a)\s*)?([01]?\d|2[0-3])h\b/g,
+    /(?:^|\s)(?:(à|a|at|vers|avant|before|by|until|till|@|3al|3a)\s*|(\b(?:sunday|monday|tuesday|tues|tue|wednesday|wed|thursday|thurs|thur|thu|friday|fri|saturday|today|tonight|tomorrow|yesterday))\s+)?([01]?\d|2[0-3])h\b/g,
   ))
-    if (m[1] !== undefined || s.trim() === m[0].trim()) return { hour: Number(m[2]), minute: 0 }
+    if (m[1] !== undefined || m[2] !== undefined || s.trim() === m[0].trim()) {
+      return { hour: Number(m[3]), minute: 0 }
+    }
   if (/\b(noon|midday)\b/.test(s)) return { hour: 12, minute: 0 }
   if (/\bmidnight\b/.test(s)) return { hour: 0, minute: 0 }
   const bare = /\bat\s+(\d{1,2})\b(?!\s*(?:%|[.,]\d))/.exec(s)

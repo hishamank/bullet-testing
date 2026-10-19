@@ -126,6 +126,15 @@ export function createWhisperCppTranscriber(opts: WhisperCppOptions): Transcribe
       if (res.status === 400) {
         throw new EngineError('TRANSCRIPTION_FAILED', 'whisper-server rejected the audio', bodyText)
       }
+      // With --convert, audio ffmpeg cannot decode (a damaged recording) answers 500 with
+      // "FFmpeg conversion failed.": the recording is the problem, not the server.
+      if (res.status === 500 && /conversion failed/i.test(bodyText)) {
+        throw new EngineError(
+          'TRANSCRIPTION_FAILED',
+          'whisper-server could not decode the audio (ffmpeg conversion failed)',
+          bodyText,
+        )
+      }
       if (!res.ok) {
         throw new EngineError(
           'TRANSCRIBER_HTTP',

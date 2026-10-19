@@ -9,6 +9,7 @@ import {
   driftedFrom,
   SEGMENTATION_SYSTEM_PROMPT,
   segmentationJsonSchema,
+  segmentationMaxTokens,
   segmentCapture,
 } from './segmentation/segment'
 
@@ -84,6 +85,13 @@ describe('segmentCapture', () => {
       expect(text.slice(t.span?.start, t.span?.end)).toMatch(/rent|landlord|move/)
     }
     expect(llm.chatCalls[0]?.messages[1]?.content).toContain('Written on Thursday 2026-10-15 09:12')
+    // Capped, so a model looping in the grammar stops long before the deadline.
+    expect(llm.chatCalls[0]?.maxTokens).toBe(segmentationMaxTokens(text))
+  })
+
+  test('the segmentation cap leaves room for two copies of Arabic script', () => {
+    expect(segmentationMaxTokens('short')).toBe(1024)
+    expect(segmentationMaxTokens('x'.repeat(1500))).toBe(3000)
   })
 
   test('a paraphrased quote that cannot be found gets span null (the thought is still kept)', async () => {

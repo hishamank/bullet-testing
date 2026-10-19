@@ -1,10 +1,16 @@
 import { createHash } from 'node:crypto'
 import { pullResponseSchema } from '@bullet/core'
-import { createScriptedTranscriber, EngineError } from '@bullet/engine'
+import {
+  createScriptedLlmClient,
+  createScriptedTranscriber,
+  ENGINE_CONFIG_DEFAULTS,
+  EngineError,
+} from '@bullet/engine'
 import { eq } from 'drizzle-orm'
 import { describe, expect, test } from 'vite-plus/test'
 import { audioAttachments, bullets, jobs, transcripts } from '../db/schema'
-import { DEFAULT_RETRY_POLICY } from '../queue/jobs'
+import { claimNextJob, DEFAULT_RETRY_POLICY } from '../queue/jobs'
+import { processClaimedJob } from '../queue/process'
 import { parseByteRange } from './audio'
 import { candidate, createHarness, llmByText, T0, uid } from '../test/helpers'
 
@@ -302,6 +308,17 @@ describe('voice notes: transcription', () => {
     expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_failed')
   })
 
+  test('a transcript with no words (" ." for a tone) never replaces the draft', async () => {
+    const h = createHarness(llmByText({}), {
+      transcriber: createScriptedTranscriber(() => ({ text: ' .' })),
+    })
+    const { bulletId, audioId } = await captureVoice(h)
+    await put(h, audioId, 0, AUDIO)
+    await h.worker.drain()
+    expect(bullet(h, bulletId)?.proc_error_code).toBe('transcription_failed')
+    expect(bullet(h, bulletId)?.text).toBe('call mom bukra')
+  })
+
   test('an unreadable recording the user wrote down is read from their text', async () => {
     const llm = llmByText({})
     const h = createHarness(llm, {
@@ -367,6 +384,27 @@ describe('voice notes: transcription', () => {
     expect(h.db.select().from(transcripts).where(eq(transcripts.kind, 'server')).get()?.text).toBe(
       'call mom tomorrow',
     )
+  })
+
+  test('the transcription stage itself refuses a transcript with no words', async () => {
+    // Called directly, without the worker's transcriber wrapper: no transcriber bypasses it.
+    const h = createHarness()
+    const { bulletId, audioId } = await captureVoice(h)
+    await put(h, audioId, 0, AUDIO)
+    const claimed = claimNextJob(h.db, h.clock.now, { canTranscribe: true })
+    expect(claimed?.transcribe).not.toBeNull()
+    const deps = {
+      db: h.db,
+      llm: createScriptedLlmClient({ chat: () => '{"candidates":[]}' }),
+      engine: ENGINE_CONFIG_DEFAULTS,
+      now: () => h.clock.now,
+      transcriber: createScriptedTranscriber(() => ({ text: '[BLANK_AUDIO]' })),
+      audioStore: h.audioStore,
+    }
+    await expect(processClaimedJob(deps, claimed!)).rejects.toMatchObject({
+      code: 'TRANSCRIPTION_FAILED',
+    })
+    expect(bullet(h, bulletId)?.text).toBe('call mom bukra')
   })
 
   test('a retry after extraction failed does not transcribe again', async () => {
