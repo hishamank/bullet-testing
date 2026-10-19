@@ -98,5 +98,6 @@ export function installTheme(doc: Document = document): void {
   }
   const query = win?.matchMedia?.('(prefers-color-scheme: light)')
   apply(query?.matches ?? false)
-  query?.addEventListener?.('change', (e) => apply(e.matches))
+  if (query?.addEventListener) query.addEventListener('change', (e) => apply(e.matches))
+  else query?.addListener?.((e) => apply(e.matches))
 }

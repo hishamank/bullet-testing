@@ -66,6 +66,7 @@ export function AnswerPanel({ target, id }: { target: 'question' | 'thought'; id
             ? actions.sendLoopNote(text, pinned.id, attempt)
             : actions.sendCapture(text, attempt, { answersQuestionId: pinned.id })
         }}
+        onAbandon={actions.abandonSend}
         onSavedShown={() => nav.closePanel()}
       />
     </PanelFrame>

@@ -14,6 +14,7 @@ import type {
 } from '@bullet/core'
 import {
   answerConnection,
+  bullets,
   captureBullet,
   cardIsNew,
   cleanThemeName,
@@ -44,6 +45,7 @@ import {
   updateTrackerEntry,
   vetoLink,
 } from '@bullet/client'
+import { eq } from 'drizzle-orm'
 import type { Runtime } from './runtime'
 
 export function createActions(rt: Runtime) {
@@ -58,13 +60,20 @@ export function createActions(rt: Runtime) {
    * changed text goes through `editBullet`, so nothing is written twice.
    */
   const unstored = new Map<string, { id: string; text: string }>()
+  const stillExists = (id: string) =>
+    rt.db().select().from(bullets).where(eq(bullets.id, id)).get()?.state === 'active'
   async function durable(
     attempt: string,
     text: string,
     write: () => string,
     edit: (id: string) => void,
   ): Promise<string> {
-    const pending = unstored.get(attempt)
+    let pending = unstored.get(attempt)
+    // The capture was deleted since the failed store: the edit would be refused, so start over.
+    if (pending && !stillExists(pending.id)) {
+      unstored.delete(attempt)
+      pending = undefined
+    }
     let id: string
     if (pending) {
       id = pending.id
@@ -98,6 +107,10 @@ export function createActions(rt: Runtime) {
         () => captureBullet(rt.db(), { text, answersQuestionId: opts.answersQuestionId }, rt.deps),
         (id) => editBullet(rt.db(), id, text, rt.deps),
       ),
+    /** A send was given up (the panel closed, the draft emptied): forget its pending retry. */
+    abandonSend: (attempt: string): void => {
+      unstored.delete(attempt)
+    },
     retryCaptures(ids: readonly string[]): void {
       if (ids.length === 0) return
       rt.run(() => {
@@ -105,8 +118,7 @@ export function createActions(rt: Runtime) {
       })
     },
     keepAsAudio(bulletId: string): void {
-      keepAsAudioLocal(rt.db(), bulletId)
-      rt.notify()
+      rt.run(() => keepAsAudioLocal(rt.db(), bulletId))
     },
 
     // Journal and Capture detail

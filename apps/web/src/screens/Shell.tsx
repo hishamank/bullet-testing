@@ -73,6 +73,7 @@ export function Shell() {
             keepDraft
             status={<StatusLine />}
             onSend={(text, attempt) => actions.sendCapture(text, attempt)}
+            onAbandon={actions.abandonSend}
           />
         </div>
       </div>

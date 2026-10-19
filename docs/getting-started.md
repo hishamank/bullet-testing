@@ -26,8 +26,8 @@ only with a device token. Everything else stays on loopback.
 ### 1.1 Prerequisites
 
 Node 24 (see `.nvmrc`), pnpm 10, git, `cmake`, `ninja`, a C++ compiler, the Vulkan headers and
-`glslc` (or CUDA, or Metal on a Mac), and **`ffmpeg`** (whisper-server needs it to read the
-phone's recordings). Then, in the repo:
+`glslc` (or CUDA, or Metal on a Mac), **`ffmpeg`** (whisper-server needs it to read the
+phone's recordings) and the `sqlite3` command-line tool (for backups). Then, in the repo:
 
 ```bash
 pnpm install
@@ -165,33 +165,44 @@ Voice uses native modules, so the app does not run in Expo Go. The full explanat
 npm install --global eas-cli
 ```
 
+Run these from the `apps/mobile` folder (`cd apps/mobile` once; the next three blocks stay there):
+
 ```bash
-cd apps/mobile && eas login
+cd apps/mobile
+```
+
+```bash
+eas login
 ```
 
 Register the iPhone (open the link it prints on the iPhone, install the profile):
 
 ```bash
-cd apps/mobile && eas device:create
+eas device:create
 ```
 
 Build (the first run asks to create or link the Expo project and to sign in to your Apple account,
 and EAS manages the certificates):
 
 ```bash
-cd apps/mobile && eas build --platform ios --profile development
+eas build --platform ios --profile development
 ```
 
 Install the build from the link or QR code EAS prints, on the iPhone. Then turn on
 **Settings → Privacy & Security → Developer Mode** and restart when asked. With a Mac and Xcode you
 can instead run `npx expo run:ios --device` in `apps/mobile`.
 
+Go back to the repo root for the rest of this guide (`cd ../..`).
+
 A development build loads its JavaScript from the bundler, so start it on the computer and open
-the app:
+the app. Run it from the repo root:
 
 ```bash
 pnpm dev:mobile
 ```
+
+The iPhone must be able to reach the computer running the bundler (the same network), or start it
+with `npx expo start --tunnel` from `apps/mobile`.
 
 The build can also be made with the `preview` profile (`eas build --platform ios --profile
 preview`), an internal release build that carries its own JavaScript and needs no bundler; use it
@@ -202,8 +213,9 @@ once you stop changing the code.
 1. Open Bullet. The first screen is **Connect your home server**.
 2. Enter the server address (`<machine>.<tailnet>.ts.net`, from section 2) and paste the iPhone's
    token, then tap **Connect**. The phone checks the token against the server.
-3. Or tap **Not yet**: you land on Capture, captures stay on the phone, and you can pair later from
-   the server settings screen. Nothing is lost.
+3. Or tap **Not yet**: you land on Capture, captures stay on the phone, and you can pair later: open
+   the Settings sheet (the gear in the Journal header) and tap **Pair a home server**, or tap the
+   status line on the Capture page. Nothing is lost.
 
 The iPhone must be connected to Tailscale to reach the server. Without it, captures queue on the
 phone and send themselves later.
@@ -262,7 +274,7 @@ them with `DB_PATH` and `AUDIO_DIR`:
   runs);
 - the audio folder, `audio/`: every voice recording, kept forever.
 
-A consistent database copy while the server is running:
+Run these from the repo root. A consistent database copy while the server is running:
 
 ```bash
 sqlite3 apps/server/data/bullet.db ".backup '$HOME/backups/bullet-$(date +%F).db'"

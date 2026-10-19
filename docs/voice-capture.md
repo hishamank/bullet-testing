@@ -85,32 +85,38 @@ and again whenever native modules or `app.json` plugins change. JS changes reloa
 npm install --global eas-cli
 ```
 
+Run the `eas` commands from the `apps/mobile` folder:
+
 ```bash
-cd apps/mobile && eas login
+cd apps/mobile
 ```
 
 ```bash
-cd apps/mobile && eas device:create
+eas login
+```
+
+```bash
+eas device:create
 ```
 
 Open the link it prints on the iPhone to register the device.
 
 ```bash
-cd apps/mobile && eas build --platform ios --profile development
+eas build --platform ios --profile development
 ```
 
 You need a paid Apple Developer account. EAS manages the signing. Install the build from the link
 or QR code EAS shows, then turn on **Settings → Privacy & Security → Developer Mode** on the
-iPhone. Start the bundler on the computer; the dev build connects to it:
+iPhone. Start the bundler on the computer (from `apps/mobile`); the dev build connects to it:
 
 ```bash
-cd apps/mobile && npx expo start
+npx expo start
 ```
 
-**On a Mac with Xcode:** plug the iPhone in, then run:
+**On a Mac with Xcode:** plug the iPhone in, then run (from `apps/mobile`):
 
 ```bash
-cd apps/mobile && npx expo run:ios --device
+npx expo run:ios --device
 ```
 
 `eas.json` profiles: `development` is an internal dev client for a real device.

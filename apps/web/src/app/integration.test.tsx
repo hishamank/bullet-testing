@@ -378,6 +378,27 @@ describe('the web client', () => {
     await until(() => expect(countBullets(rt.db())).toBe(2))
   })
 
+  test('a failed store, then moving to another page (the box remounts), then Send: still one bullet', async () => {
+    await pair()
+    await until(() => expect(text()).toContain('Journal'))
+    const saveSpy = vi.spyOn(store, 'save').mockRejectedValue(new Error('disk full'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const first = $('textarea.capture-input') as HTMLTextAreaElement
+    await act(async () => setValue(first, 'kept across the remount'))
+    await click(button('Send'))
+    await until(() => expect(text()).toContain("Couldn't save this in your browser yet"))
+
+    await go('#/journal/stream')
+    const second = $('textarea.capture-input') as HTMLTextAreaElement
+    expect(second).not.toBe(first)
+    expect(second.value).toBe('kept across the remount')
+    saveSpy.mockRestore()
+    warn.mockRestore()
+    await click(button('Send'))
+    await until(() => expect(text()).toContain('Saved'))
+    expect(countBullets(rt.db())).toBe(1)
+  })
+
   test('closing the tab is only guarded while a user write is unsaved, not a sync outcome', async () => {
     await pair()
     await until(() => expect(text()).toContain('Journal'))
