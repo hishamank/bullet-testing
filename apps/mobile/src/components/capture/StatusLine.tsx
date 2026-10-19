@@ -7,6 +7,7 @@ import {
   onPhoneText,
   UNAUTHORIZED_TEXT,
   unpairedText,
+  untranscribableText,
   UNREACHABLE_TEXT,
 } from '@/features/capture/notice'
 import { usePairing, useSyncStatus } from '@/hooks'
@@ -26,6 +27,7 @@ export function StatusLine({ counts, onRetry }: { counts: CaptureCounts; onRetry
     onPhoneCount: counts.onPhone,
     cannotReachServer: sync.cannotReachServer,
     unpaired: pairing !== 'paired',
+    untranscribableIds: counts.untranscribableIds,
   })
   switch (notice.kind) {
     case 'unpaired':
@@ -55,6 +57,26 @@ export function StatusLine({ counts, onRetry }: { counts: CaptureCounts; onRetry
           />
         </View>
       )
+    case 'untranscribable': {
+      const one = notice.bulletId
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, touch, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel={untranscribableText(notice.count)}
+          accessibilityHint={one ? 'Opens the capture' : 'Opens the journal'}
+          onPress={() =>
+            one
+              ? router.push({ pathname: '/capture/[id]', params: { id: one } })
+              : router.push('/journal')
+          }
+        >
+          <Label tone="secondary" size={type.label}>
+            {untranscribableText(notice.count)}
+          </Label>
+        </Pressable>
+      )
+    }
     case 'on_phone':
       return (
         <Pressable

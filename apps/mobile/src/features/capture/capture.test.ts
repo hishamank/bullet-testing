@@ -20,6 +20,7 @@ import {
   journalCornerLabel,
   onPhoneText,
   unpairedText,
+  untranscribableText,
 } from './notice'
 
 const play = (events: ComposerEvent[]) => events.reduce(composerReducer, initialComposer)
@@ -100,6 +101,28 @@ describe('capture notice', () => {
     expect(unpairedText(2)).toBe('2 saved on this phone · Pair to sync')
   })
 
+  it("recordings that can't be transcribed: a line after Retry's, opening the one capture", () => {
+    expect(captureNotice({ ...base, failedCount: 1, untranscribableIds: ['v1'] })).toEqual({
+      kind: 'failed',
+      count: 1,
+    })
+    expect(captureNotice({ ...base, untranscribableIds: ['v1'] })).toEqual({
+      kind: 'untranscribable',
+      count: 1,
+      bulletId: 'v1',
+    })
+    expect(
+      captureNotice({
+        ...base,
+        untranscribableIds: ['v1', 'v2'],
+        onPhoneCount: 2,
+        cannotReachServer: true,
+      }),
+    ).toEqual({ kind: 'untranscribable', count: 2, bulletId: null })
+    expect(untranscribableText(1)).toBe("1 recording couldn't be transcribed")
+    expect(untranscribableText(2)).toBe("2 recordings couldn't be transcribed")
+  })
+
   it("doesn't mention captures on the phone while they are about to sync", () => {
     expect(captureNotice({ ...base, onPhoneCount: 1 })).toEqual({ kind: 'none' })
   })
@@ -123,6 +146,7 @@ describe('capture counts', () => {
     expect(captureCounts(db)).toEqual({
       onPhone: 2,
       failedIds: [],
+      untranscribableIds: [],
       awaitingServer: false,
       outbox: 2,
     })
@@ -134,6 +158,7 @@ describe('capture counts', () => {
     expect(captureCounts(db)).toEqual({
       onPhone: 0,
       failedIds: [a],
+      untranscribableIds: [],
       awaitingServer: true,
       outbox: 0,
     })
@@ -146,6 +171,25 @@ describe('capture counts', () => {
     // Retrying puts it back on the phone until sent; it no longer counts as failed.
     retryBullet(db, a, deps)
     expect(captureCounts(db)).toMatchObject({ onPhone: 1, failedIds: [] })
+  })
+
+  it("recordings that can't be transcribed are not retried; kept as audio, they leave both", () => {
+    const db = openTestDb()
+    const deps = testDeps()
+    const typed = captureBullet(db, { text: 'one' }, deps)
+    const voice = captureBullet(db, { text: 'Voice note, 0:12' }, deps)
+    db.delete(outbox).run()
+    db.update(bullets)
+      .set({ server_status: 'failed', server_error_code: 'llm_timeout' })
+      .where(eq(bullets.id, typed))
+      .run()
+    db.update(bullets)
+      .set({ server_status: 'failed', server_error_code: 'transcription_failed' })
+      .where(eq(bullets.id, voice))
+      .run()
+    expect(captureCounts(db)).toMatchObject({ failedIds: [typed], untranscribableIds: [voice] })
+    keepAsAudioLocal(db, voice)
+    expect(captureCounts(db)).toMatchObject({ failedIds: [typed], untranscribableIds: [] })
   })
 
   it('ignores deleted captures', () => {
