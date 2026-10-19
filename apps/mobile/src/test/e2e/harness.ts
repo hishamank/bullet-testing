@@ -20,7 +20,10 @@ import { openTestDb } from '../db'
 export const E2E = {
   url: process.env.BULLET_E2E_URL,
   token: process.env.BULLET_E2E_TOKEN ?? '',
-  /** A WAV of synthetic speech (e.g. espeak-ng) and words its transcript must contain. */
+  /**
+   * A WAV of synthetic speech (e.g. espeak-ng) and words its transcript must contain. Without it
+   * the two voice-transcript tests are skipped.
+   */
   speechWav: process.env.BULLET_E2E_SPEECH_WAV,
   speechWords: (process.env.BULLET_E2E_SPEECH_WORDS ?? 'olive')
     .split(',')

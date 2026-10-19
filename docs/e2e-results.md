@@ -35,7 +35,7 @@ Optional variables:
 
 | Variable                                       | Effect                                                                                 |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `BULLET_E2E_SPEECH_WAV`                        | A WAV of synthetic speech for the voice tests (without it, a tone is used)             |
+| `BULLET_E2E_SPEECH_WAV`                        | A WAV of synthetic speech; the two voice-transcript tests are skipped without it       |
 | `BULLET_E2E_SPEECH_WORDS`                      | Comma-separated words its transcript must contain (default `olive`)                    |
 | `BULLET_E2E_LLM_STOP` / `BULLET_E2E_LLM_START` | Shell commands that stop / start llama-server; enables the outage test                 |
 | `BULLET_E2E_LLM_URL`                           | llama-server root for the health check after the restart (default `127.0.0.1:8080`)    |

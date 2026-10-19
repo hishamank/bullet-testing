@@ -653,11 +653,13 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
     CAPTURE_TIMEOUT,
   )
 
-  test(
+  // A tone has no speech: it fails as transcription_failed (tested below), so these two need a
+  // speech WAV.
+  test.skipIf(!E2E.speechWav)(
     'voice: resumable upload → transcribing → server transcript replaces the draft → thoughts',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
-      const speech = E2E.speechWav ? readBytes(E2E.speechWav) : toneWav(3)
+      const speech = readBytes(E2E.speechWav!)
       const path = join(dir, 'speech.wav')
       writeFileSync(path, speech)
       // Fail the second upload request once: the next sync resumes from the server's offset.
@@ -730,20 +732,8 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         languages: server?.languages,
       })
       quality('voice: the phone saw `transcribing`', Boolean(transcribing), watch.seen)
-      if (E2E.speechWav) {
-        for (const w of E2E.speechWords) {
-          quality(
-            `voice: transcript has "${w}"`,
-            SPLIT(server?.text ?? '').includes(w),
-            server?.text,
-          )
-        }
-      } else {
-        quality(
-          'voice: a tone (no speech) gives an empty transcript',
-          (server?.text ?? '') === '',
-          server?.text,
-        )
+      for (const w of E2E.speechWords) {
+        quality(`voice: transcript has "${w}"`, SPLIT(server?.text ?? '').includes(w), server?.text)
       }
       const ths = listThoughts(flaky.db, id)
       record({
@@ -762,11 +752,11 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
     CAPTURE_TIMEOUT,
   )
 
-  test(
+  test.skipIf(!E2E.speechWav)(
     'voice: a draft the user edited wins over the server transcript',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
-      const speech = E2E.speechWav ? readBytes(E2E.speechWav) : toneWav(2)
+      const speech = readBytes(E2E.speechWav!)
       const path = join(dir, 'speech.wav')
       writeFileSync(path, speech)
       const mine = 'Buy olive oil and lemons tomorrow.'
