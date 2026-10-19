@@ -12,6 +12,7 @@ import {
   type TargetKind,
   type ThoughtKind,
   thoughtKindSchema,
+  type TrackerConfig,
 } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
@@ -124,12 +125,20 @@ export function loadCaptureDetail(
         unknown
       > | null
     },
-    tracker: (trackerId: string) =>
-      db
-        .select({ name: trackers.name, config: trackers.config })
-        .from(trackers)
-        .where(eq(trackers.id, trackerId))
-        .get() ?? null,
+    tracker: (trackerId: string) => {
+      const t =
+        db
+          .select({ name: trackers.name, config: trackers.config })
+          .from(trackers)
+          .where(eq(trackers.id, trackerId))
+          .get() ?? null
+      if (t) return t
+      // A reading of a tracker that is only proposed so far ("Start tracking Sleep?").
+      const proposed = ss.find((x) => x.id === trackerId && x.target_kind === 'tracker')
+      return proposed && typeof proposed.payload.name === 'string'
+        ? { name: proposed.payload.name, config: proposed.payload.config as TrackerConfig }
+        : null
+    },
   }
   const failure = transcriptionFailure(
     status,

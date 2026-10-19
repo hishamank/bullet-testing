@@ -377,6 +377,36 @@ describe('processCapture: capture → thoughts → things', () => {
     expect(out.questions.filter((q) => q.topic === 'new_tracker')).toHaveLength(1)
   })
 
+  test('a "note" that reads an existing tracker ("Meditation 4 today") is extracted', async () => {
+    const llm = scripted(
+      () => [
+        { text: 'Meditation 4 today', kind: 'note' },
+        { text: 'the meditation app is nice', kind: 'note' },
+      ],
+      () => [{ kind: 'tracker_entry', orientation: 'happened', fields: { value: 4 } }],
+    )
+    const snapshot = {
+      trackers: [
+        {
+          id: 't-med',
+          name: 'Meditation',
+          input_type: 'number' as const,
+          config: { input_type: 'number' as const, unit: 'min' },
+        },
+      ],
+      openTasks: [],
+    }
+    const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, snapshot)
+    expect(out.thoughts.map((t) => t.kind)).toEqual(['tracker', 'note'])
+    expect(out.things).toEqual([
+      expect.objectContaining({
+        target_kind: 'tracker_entry',
+        target_id: 't-med',
+        payload: expect.objectContaining({ value: 4 }),
+      }),
+    ])
+  })
+
   test('a reprocessed thought keeps its previous kind when its text is unchanged', async () => {
     const llm = scripted(
       () => [

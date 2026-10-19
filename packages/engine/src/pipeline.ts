@@ -11,6 +11,7 @@ import { extractCandidates } from './extraction/extract'
 import type { ExtractionSnapshot } from './extraction/snapshot'
 import type { LlmClient } from './llm/types'
 import { dedupeOutcome } from './resolution/dedupe'
+import { readingFromText } from './resolution/reading'
 import {
   type QuestionDraft,
   type ResolvedSuggestion,
@@ -89,6 +90,32 @@ export function keepPriorKinds(
   })
 }
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * A note that is plainly a reading of something already tracked ("Meditation 4 today", called a
+ * `note` live) is read as a `tracker` thought: it names an existing tracker and carries a number.
+ * A kind the user or a previous run settled is left alone.
+ */
+export function readingsOfTrackedThings(
+  thoughts: SegmentedThought[],
+  snapshot: ExtractionSnapshot,
+  prior: readonly PriorThought[] = [],
+): SegmentedThought[] {
+  if (snapshot.trackers.length === 0) return thoughts
+  const settled = new Set(prior.map((p) => normThought(p.text)))
+  return thoughts.map((t) => {
+    if ((t.kind !== 'note' && t.kind !== 'idea') || settled.has(normThought(t.text))) return t
+    const text = normThought(t.text)
+    const names = snapshot.trackers.some((tr) =>
+      new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(normThought(tr.name))}(?![\\p{L}])`, 'u').test(
+        text,
+      ),
+    )
+    return names && readingFromText(text, { allowBare: true }) ? { ...t, kind: 'tracker' } : t
+  })
+}
+
 const trackerKey = (s: ResolvedSuggestion): string | null =>
   s.target_kind === 'tracker' && s.operation === 'create' && typeof s.payload.name === 'string'
     ? normThought(s.payload.name)
@@ -101,8 +128,9 @@ export async function processCapture(
   opts: { chunkChars?: number } = {},
 ): Promise<CaptureOutcome> {
   const ctx: CaptureContext = { capturedAt: input.capturedAt, timezone: input.timezone }
-  const thoughts = keepPriorKinds(
-    await segmentCapture(deps, input, opts),
+  const thoughts = readingsOfTrackedThings(
+    keepPriorKinds(await segmentCapture(deps, input, opts), input.priorThoughts ?? []),
+    snapshot,
     input.priorThoughts ?? [],
   )
   const things: ThingDraft[] = []

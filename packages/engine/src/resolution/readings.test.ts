@@ -96,6 +96,9 @@ describe('tracker names: a short noun, never the reading', () => {
     ['smoked 3 cigarettes', 'Cigarettes'],
     ['weighed 72kg this morning', 'Weight'],
     ['hours of sleep', 'Sleep'],
+    ['sleep duration', 'Sleep'],
+    ['I slept seven hours last night', 'Sleep'],
+    ['run distance', 'Run'],
     ['sleep quality 4/5', 'Sleep Quality'],
     ["j'ai dormi 7 heures", 'Sommeil'],
     ['humeur 3/5', 'Humeur'],
@@ -201,6 +204,36 @@ describe('decision 3: readings are tracker entries with their value', () => {
       snapshot,
     ).suggestions
     expect(med[0]).toMatchObject({ target_id: 't-med', payload: { value: 90 } })
+  })
+
+  test("the model's link to an unrelated tracker is not trusted (live: slept → Meditation)", () => {
+    const snapshot: ExtractionSnapshot = {
+      trackers: [
+        {
+          id: 't-med',
+          name: 'Meditation',
+          input_type: 'number',
+          config: { input_type: 'number', unit: 'min' },
+        },
+      ],
+      openTasks: [],
+    }
+    const { suggestions } = resolve(
+      candidate({
+        kind: 'tracker_entry',
+        text: 'I slept seven hours last night.',
+        referenceName: 'Meditation',
+        fields: { tracker: 'Meditation', value: 7 },
+      }),
+      snapshot,
+      { kind: 'tracker' },
+    )
+    expect(suggestions.map((s) => [s.target_kind, s.operation])).toEqual([
+      ['tracker', 'create'],
+      ['tracker_entry', 'create'],
+    ])
+    expect(suggestions[0]?.payload.name).toBe('Sleep')
+    expect(suggestions[1]?.payload.value).toBe(7)
   })
 
   test('only a truly value-less activity may auto-apply', () => {

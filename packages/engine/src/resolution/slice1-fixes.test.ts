@@ -305,7 +305,12 @@ describe('record timestamps default to capture time, not processing time', () =>
 
   test('tracker entry with no date → logged_at = captured_at', () => {
     const s = one(
-      candidate({ kind: 'tracker_entry', referenceName: 'mood', fields: { value: 4 } }),
+      candidate({
+        kind: 'tracker_entry',
+        text: 'mood 4',
+        referenceName: 'mood',
+        fields: { value: 4 },
+      }),
       mood,
     )
     expect(s.target_kind).toBe('tracker_entry')
@@ -387,7 +392,12 @@ describe('a matched scale/number tracker with no value does not invent one', () 
 
   test('a numeric string value is still a reading', () => {
     const s = one(
-      candidate({ kind: 'tracker_entry', referenceName: 'weight', fields: { value: '72.5' } }),
+      candidate({
+        kind: 'tracker_entry',
+        text: 'weight 72.5',
+        referenceName: 'weight',
+        fields: { value: '72.5' },
+      }),
       trackers,
     )
     expect(s).toMatchObject({ target_kind: 'tracker_entry', target_id: 't-weight' })
@@ -396,7 +406,12 @@ describe('a matched scale/number tracker with no value does not invent one', () 
 
   test('a real scale value is still logged (and clamped)', () => {
     const s = one(
-      candidate({ kind: 'tracker_entry', referenceName: 'mood', fields: { value: 9 } }),
+      candidate({
+        kind: 'tracker_entry',
+        text: 'mood 9',
+        referenceName: 'mood',
+        fields: { value: 9 },
+      }),
       trackers,
     )
     expect(s.payload.value).toBe(5)

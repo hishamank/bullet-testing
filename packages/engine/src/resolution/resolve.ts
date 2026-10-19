@@ -45,7 +45,7 @@ import type { QuestionTopic } from '@bullet/core'
 import { ambiguousWeekday, type CaptureContext, resolveEnd, resolveWhen } from '../time/when'
 import { safeTimezone, zonedParts, zonedToEpoch } from '../time/zoned'
 import { type Match, matchOpenTask, matchTracker, TRACKER_NAME_FIELDS } from './match'
-import { trackerName } from './naming'
+import { trackerName, trackerNounFrom } from './naming'
 import { convertDuration, type Reading, readingFromFields, readingFromText } from './reading'
 import { assignTier } from './tier'
 import { cleanTitle } from './title'
@@ -96,6 +96,8 @@ export interface ResolveOutcome {
 
 /** Collects questions about the suggestion currently being resolved. */
 type Ask = (q: Omit<QuestionDraft, 'suggestionIndex'>) => void
+
+const NUMBER: TrackerConfig = { input_type: 'number' }
 
 /**
  * What one 'happened' candidate resolves to: usually one suggestion; a reading of something not
@@ -355,14 +357,33 @@ function resolveHappened(
   const reading = readingOf(candidate, thought)
   const readingKind =
     candidate.kind === 'tracker_entry' || candidate.kind === 'tracker' || thought.kind === 'tracker'
-  // What is measured, as a short noun ("Sleep"): the tracker's name, and one more way to match.
-  const name = trackerName([
+  // The user's own words: a link or a name the model gives must be borne out by them. Live, a
+  // small model "referenced" the only existing tracker for every reading ("Slept 6 hours" →
+  // Meditation, logged as 360 min).
+  const words = { ...candidate, referenceName: undefined, fields: {} }
+  const wordsNoun = trackerNounFrom(`${candidate.text}`)
+  const borneOut = (n: string | null | undefined): n is string =>
+    typeof n === 'string' &&
+    n.trim() !== '' &&
+    (wordsNoun === null ||
+      matchTracker(
+        words,
+        [{ id: '', name: n, input_type: 'number', config: NUMBER }],
+        [wordsNoun],
+      ) !== undefined)
+  const modelNames = [
     stringFieldOrNull(candidate.fields, [...TRACKER_NAME_FIELDS]),
-    readingKind ? candidate.referenceName : null,
+    readingKind ? (candidate.referenceName ?? null) : null,
     stringFieldOrNull(candidate.fields, ['name', 'title']),
-    candidate.text,
-  ])
-  const trackerHit = matchTracker(candidate, snapshot.trackers, reading ? [name] : [])
+  ]
+  // What is measured, as a short noun ("Sleep"): the tracker's name, and one more way to match.
+  const name = trackerName([...modelNames.filter(borneOut), candidate.text, ...modelNames])
+  const anyHit = matchTracker(candidate, snapshot.trackers, reading ? [name] : [])
+  // A number logged under the wrong measurement is the harm; a select/yes-no value is checked
+  // against the tracker's options instead.
+  const measured = (t: SnapshotTracker) => t.input_type === 'number' || t.input_type === 'scale'
+  const trackerHit =
+    anyHit && (!measured(anyHit.item) || borneOut(anyHit.item.name)) ? anyHit : undefined
   const taskHit = matchOpenTask(candidate, snapshot.openTasks)
   const one = (s: ResolvedSuggestion): Happened => ({ suggestions: [s], questions: [] })
 
