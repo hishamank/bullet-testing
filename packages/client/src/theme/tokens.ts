@@ -1,6 +1,8 @@
 /**
- * Night calm: the slice-1 visual system (design brief §4). Dark is the primary look; light is the
- * muted daytime palette. Pure data, so it can be checked for contrast in Vitest.
+ * Night calm: the slice-1 visual system (design brief §4), shared by the phone and the web app
+ * (`@bullet/client/theme`). Dark is the primary look; light is the muted daytime palette. Pure
+ * data (plain numbers and hex strings, no React Native styles), so it can be checked for contrast
+ * in Vitest and turned into CSS variables on the web.
  */
 
 import type { ThoughtKind } from '@bullet/core'
@@ -158,6 +160,7 @@ function luminance(hex: string): number {
 }
 
 export function contrastRatio(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-  return (hi + 0.05) / (lo + 0.05)
+  const la = luminance(a)
+  const lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
 }

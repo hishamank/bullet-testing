@@ -6,17 +6,25 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
-    "preview": "vp preview"
+    "preview": "vp preview",
+    "test": "vp test"
   },
   "dependencies": {
+    "@bullet/client": "workspace:*",
     "@bullet/core": "workspace:*",
+    "drizzle-orm": "catalog:",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "sql.js": "catalog:"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "@types/react": "~19.2.2",
     "@types/react-dom": "~19.2.2",
+    "@types/sql.js": "catalog:",
     "@vitejs/plugin-react": "^5.0.0",
+    "fake-indexeddb": "catalog:",
+    "jsdom": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }

@@ -18,6 +18,8 @@ export interface ServerConfig {
   dbPath: string
   /** Directory holding voice-note recordings (kept forever). */
   audioDir: string
+  /** The built web app to serve at `/` (`apps/web/dist`); unset = the default location. */
+  webDir: string | undefined
   /** llama.cpp `llama-server` root URL. */
   llmBaseUrl: string
   llmModel: string
@@ -103,6 +105,7 @@ export function loadServerConfig(env: Record<string, string | undefined>): Serve
     port: Number(env.PORT) || 3001,
     dbPath: env.DB_PATH?.trim() || './data/bullet.db',
     audioDir: env.AUDIO_DIR?.trim() || './data/audio',
+    webDir: env.WEB_DIR?.trim() || undefined,
     llmBaseUrl: env.LLM_BASE_URL?.trim() || 'http://127.0.0.1:8080',
     llmModel: env.LLM_MODEL?.trim() || 'default',
     llmApiKey: env.LLM_API_KEY?.trim() || undefined,

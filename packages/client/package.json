@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./theme": "./src/theme/tokens.ts",
+    "./testing": "./src/test/fake-server.ts"
   },
   "scripts": {
     "test": "vp test",
@@ -12,14 +14,17 @@
   },
   "dependencies": {
     "@bullet/core": "workspace:*",
-    "@bullet/engine": "workspace:*",
-    "drizzle-orm": "catalog:"
+    "@bullet/engine": "workspace:*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "better-sqlite3": "catalog:",
     "drizzle-kit": "catalog:",
+    "drizzle-orm": "catalog:",
     "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "drizzle-orm": "catalog:"
   }
 }

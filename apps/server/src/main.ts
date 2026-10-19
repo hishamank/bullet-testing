@@ -14,6 +14,7 @@ import { createFileAudioStore } from './storage/audio-store'
 import { recoverStuckReflectJobs } from './reflect/capture'
 import { recoverStuckLinkJobs } from './connections/link-job'
 import { scheduleReflectionPass } from './reflect/pass'
+import { defaultWebDir, findWebRoot } from './web'
 
 const config = loadServerConfig(process.env)
 const { db } = openDb(config.dbPath)
@@ -80,13 +81,20 @@ scheduleReflectionPass(db, {
   onError: (err) => console.error('[reflect]', err instanceof Error ? err.message : err),
 })
 
+const webRoot = findWebRoot(config.webDir ?? defaultWebDir())
 const app = createApp({
   db,
   audioStore,
+  webRoot: webRoot ?? undefined,
   onWorkQueued: () => worker.kick(),
   onError: (err) => console.error('[http]', err),
 })
 
+console.log(
+  webRoot
+    ? `web app: serving ${webRoot} at /`
+    : 'web app: not built (run `pnpm --filter web build` to serve it at /)',
+)
 console.log(`llm: ${config.llmBaseUrl} (model ${config.llmModel})`)
 console.log(
   `nightly: 02:00 ${config.timezone} (model ${config.llmNightlyModel ?? config.llmModel})`,
