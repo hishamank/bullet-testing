@@ -18,7 +18,8 @@ thought, taps Send, and moves on. Capture never waits on classification.
 - Extractions become **suggestions**. Confident, cheap ones auto-apply; the rest wait for review
   later. The app never turns capture into a form or a chat.
 - **iOS first** (tested on a real iPhone). Android stays possible through Expo but is not a
-  first-slice target. The **web** app is a secondary client (review, dashboards).
+  first-slice target. The **web** app is the desk companion to the phone (read the Stream and Inbox
+  on a big screen, decide in batches, type longer captures), never a second primary.
 - Privacy-first: journal text stays on the user's hardware. Never send it to hosted services.
 
 **Capture → thoughts → things.** The user can empty their mind: a **capture** (typed or spoken,
@@ -42,7 +43,7 @@ Habit, Goal, Note, Collection, Planner, recurrence and search come later, one at
 ```
 apps/
   mobile/     # Expo SDK 57 + Expo Router (Metro). Primary client.
-  web/        # Vite + React. Secondary client.
+  web/        # Vite + React. The desk companion: Stream, Inbox, keyboard capture. Served by the server.
   server/     # Node + Hono on the home machine: sync ingest, queue, LLM, apply.
 packages/
   core/       # @bullet/core — domain types + Zod schemas. Pure TS.
@@ -95,6 +96,27 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
 - **Soft delete only:** `state: 'active' | 'deleted'`. Never hard-delete domain rows.
 - **Provenance:** every extracted entity carries `source_bullet_id`.
 - **Node:** 24 LTS (`.nvmrc`, `engines`). **Commits:** Conventional Commits.
+
+### Web client (`apps/web`)
+
+- Same data layer as the phone: `@bullet/client`'s schema and `migrate()` over **sql.js**
+  (SQLite in WebAssembly, the `.wasm` bundled by Vite and served locally) behind drizzle's
+  `sql-js` driver, saved as one file image in **IndexedDB** (`data/persist.ts`: debounced, flushed
+  when the tab is hidden or closing; `data/tab-lock.ts`: one tab owns it). The mirror is a cache:
+  Unpair / Reset local copy wipe it and a full pull rebuilds it (unsent changes are lost; the UI
+  warns). The device token lives in `localStorage`; the web client has its own device token.
+- No logic of its own: `createInboxController` and `createSyncController` (in `@bullet/client`,
+  shared with the phone) run the Undo window, the outage monitor and the sync schedule;
+  `app/actions.ts` calls the same write functions the phone's actions do. Components, hooks
+  (`app/hooks.ts`), the hash router (`app/router.ts`, panel in `?panel=`), layout helpers
+  (`app/layout.ts`) and the sync triggers (`app/triggers.ts`: load, focus/visibility, `online`,
+  after writes, gentle interval while visible) are the thin edges.
+- Palette: `@bullet/client/theme` (the phone's tokens) turned into CSS variables at start-up
+  (`ui/theme-css.ts`); system fonts only; no third-party requests (the server's CSP enforces it).
+- The home server serves `apps/web/dist` at `/` before its auth check (`apps/server/src/web.ts`;
+  `WEB_DIR` overrides); the sync API paths and their bearer-token check are unchanged.
+- `@bullet/client` has `drizzle-orm` as a **peer** dependency: each app provides the one copy.
+  `@bullet/client/testing` exports the fake home server for other packages' tests.
 
 ### Capture loop (slice 1, 2026-10-18)
 

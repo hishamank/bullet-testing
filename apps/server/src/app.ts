@@ -21,6 +21,7 @@ import type { AudioStore } from './storage/audio-store'
 import type { Db } from './db/client'
 import { InvalidCursorError, parseCursor, pullChanges } from './sync/changes'
 import { pushOps } from './sync/push'
+import { serveWeb } from './web'
 
 /**
  * The HTTP app. Thin wrappers only: parse + authenticate, call a domain function, serialise.
@@ -34,6 +35,11 @@ export interface AppDeps {
   /** Called after a push queued processing work (wakes the worker). */
   onWorkQueued?: () => void
   onError?: (err: unknown) => void
+  /**
+   * The built web app (`apps/web/dist`) to serve at `/`, with no auth: the files hold no data and
+   * the app needs a device token to read anything. Unset: the server is API-only.
+   */
+  webRoot?: string
 }
 
 type Env = { Variables: { ownerId: string; deviceId: string } }
@@ -64,6 +70,8 @@ export function createApp(deps: AppDeps) {
     return c.json(apiError('internal', 'internal error'), 500)
   })
   app.notFound((c) => c.json(apiError('not_found', 'no such route'), 404))
+
+  if (deps.webRoot) app.use('*', serveWeb(deps.webRoot))
 
   app.use('*', async (c, next) => {
     const header = c.req.header('authorization') ?? ''

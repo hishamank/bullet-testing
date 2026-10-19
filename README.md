@@ -13,7 +13,7 @@ The previous web-first implementation is preserved at the git tag `legacy-v0`.
 ```
 apps/
   mobile/     # Expo (React Native) + Expo Router — the primary client, iOS first
-  web/        # Vite + React — secondary client (review, dashboards)
+  web/        # Vite + React — the desk companion (Stream, Inbox, keyboard capture); served by the server
   server/     # Node + Hono — sync ingest, processing queue, LLM calls (home machine)
 packages/
   core/       # domain types + Zod schemas (pure TS)
@@ -29,7 +29,7 @@ pnpm exec vp check       # format, lint, type-check
 pnpm test                # vp run -r test
 pnpm build               # vp run -r build
 pnpm dev:mobile          # expo start
-pnpm dev:web             # vite dev server
+pnpm dev:web             # vite dev server (forwards /sync to the home server)
 pnpm dev:server          # tsx watch, binds 127.0.0.1:3001
 ```
 
@@ -44,6 +44,9 @@ Environment: `HOST`, `PORT`, `DB_PATH`, `AUDIO_DIR` (voice recordings, kept fore
 `http://127.0.0.1:8080`), `LLM_MODEL`, `LLM_API_KEY`, `LLM_TIMEOUT_MS`, `WHISPER_BASE_URL` (whisper-server; unset = device
 drafts only), `WHISPER_MODEL`, `WHISPER_PROMPT`, `TRANSCRIBE_TIMEOUT_MS`. See
 `apps/server/.env.example`.
+
+The web app: `pnpm --filter web build`, then the server serves `apps/web/dist` at `/` (pair the
+browser with its own token). See section 6b of the doc below.
 
 Running it for real (llama-server + whisper-server, launch flags, Tailscale, the Whisper eval
 script): [`docs/home-server.md`](./docs/home-server.md).

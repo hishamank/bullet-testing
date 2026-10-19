@@ -1,9 +1,9 @@
 /** Device edge: the palette for the system colour scheme. */
 
 import { Platform, useColorScheme } from 'react-native'
-import { dark, light, type Palette } from './tokens'
+import { dark, light, type Palette } from '@bullet/client/theme'
 
-export * from './tokens'
+export * from '@bullet/client/theme'
 
 export function useTheme(): Palette {
   return useColorScheme() === 'light' ? light : dark

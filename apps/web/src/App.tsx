@@ -1,14 +1,30 @@
-import { taskStatusSchema } from '@bullet/core'
+import { useMemo } from 'react'
+import { createActions } from './app/actions'
+import { ActionsContext, NavContext, useHashRoute, useNavValue } from './app/nav'
+import { RuntimeContext, usePairing } from './app/hooks'
+import type { Runtime } from './app/runtime'
+import { Setup } from './screens/Setup'
+import { Shell } from './screens/Shell'
 
-/**
- * Placeholder web client. It will become the review and dashboard surface; the phone is the
- * primary capture client.
- */
-export function App() {
+/** The app, over a ready runtime (the boot step opens the local copy first). */
+export function App({ runtime }: { runtime: Runtime }) {
+  const actions = useMemo(() => createActions(runtime), [runtime])
   return (
-    <main style={{ fontFamily: 'system-ui', maxWidth: 640, margin: '0 auto', padding: 16 }}>
-      <h1>Bullet</h1>
-      <p>Web client placeholder. Task statuses: {taskStatusSchema.options.join(', ')}</p>
-    </main>
+    <RuntimeContext.Provider value={runtime}>
+      <ActionsContext.Provider value={actions}>
+        <Routed />
+      </ActionsContext.Provider>
+    </RuntimeContext.Provider>
+  )
+}
+
+function Routed() {
+  const route = useHashRoute()
+  const nav = useNavValue(route)
+  const pairing = usePairing()
+  return (
+    <NavContext.Provider value={nav}>
+      {pairing === 'unpaired' ? <Setup /> : <Shell />}
+    </NavContext.Provider>
   )
 }

@@ -34,6 +34,7 @@ export * from './features/capture/notice'
 export * from './features/capture/pinned'
 export * from './features/connections/copy'
 export * from './features/connections/model'
+export * from './features/inbox/controller'
 export * from './features/inbox/edit'
 export * from './features/inbox/model'
 export * from './features/inbox/summary'
@@ -52,6 +53,7 @@ export * from './features/reflect/wording'
 export * from './features/setup/pairing'
 export * from './features/setup/settings'
 export * from './features/store'
+export * from './features/sync/controller'
 export * from './features/sync/live'
 export * from './features/sync/monitor'
 export * from './features/voice/access'
@@ -64,8 +66,20 @@ export * from './features/voice/session'
 export * from './features/voice/sha256'
 export * from './features/voice/wav'
 
-// Two modules each define their own `startOfDay` / `spokenDuration`: the Journal's versions keep
-// the plain names, the other two are renamed here.
-export { spokenDuration, startOfDay } from './features/journal/format'
+// Two modules each define their own `startOfDay` / `spokenDuration`. The plain names below are the
+// Journal's versions (`features/journal/format`: day math and "3 minutes 12 seconds" for the Stream and
+// Capture detail). The Inbox's day start is exported as `inboxStartOfDay` and the voice recorder's
+// spoken length as `recordingSpokenDuration`.
+
+/**
+ * The Journal's `startOfDay(at, tz, offset)`: epoch ms of local midnight, `offset` days away.
+ * Not the Inbox's variant, which is exported as `inboxStartOfDay(now, tz)`.
+ */
+export { startOfDay } from './features/journal/format'
+/**
+ * The Journal's `spokenDuration(ms)` (VoiceOver length of a voice note on a card or in Capture
+ * detail). The recorder's variant is exported as `recordingSpokenDuration`.
+ */
+export { spokenDuration } from './features/journal/format'
 export { startOfDay as inboxStartOfDay } from './features/inbox/model'
 export { spokenDuration as recordingSpokenDuration } from './features/voice/format'

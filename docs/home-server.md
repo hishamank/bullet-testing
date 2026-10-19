@@ -198,6 +198,7 @@ Edit `apps/server/.env` (git-ignored; `start`, `dev` and the `device:*` scripts 
 | `PORT`                     | `3001`                  |                                                                                                                                                                    |
 | `DB_PATH`                  | `./data/bullet.db`      | Relative to `apps/server`                                                                                                                                          |
 | `AUDIO_DIR`                | `./data/audio`          | Recordings, kept forever. Back this up with the DB                                                                                                                 |
+| `WEB_DIR`                  | `../web/dist`           | The built web app served at `/` (section 6b); relative to `apps/server`. Not built = API only                                                                      |
 | `LLM_BASE_URL`             | `http://127.0.0.1:8080` | llama-server root                                                                                                                                                  |
 | `LLM_MODEL`                | `default`               | Label sent as `model`; match `--alias`                                                                                                                             |
 | `LLM_API_KEY`              | unset                   | Only if llama-server has `--api-key`                                                                                                                               |
@@ -262,6 +263,45 @@ tailscale serve --https=443 off
 ```
 
 Do **not** use `tailscale funnel`: it publishes the server to the internet.
+
+## 6b. The web app at your desk
+
+`apps/web` is the desk companion to the phone: read the Stream and Inbox on a big screen, work
+through decisions in batches, type longer captures on a real keyboard. It is a static app that the
+bullet server serves itself, so the only thing that ever leaves the page is its sync calls to this
+same server (no CDN, no analytics, no remote fonts; the page's Content-Security-Policy enforces it).
+
+```bash
+pnpm --filter web build          # writes apps/web/dist
+pnpm --filter server start       # logs "web app: serving …/apps/web/dist at /"
+```
+
+Open the same address you use for the phone (`https://<machine>.<tailnet>.ts.net/` over Tailscale
+serve, or `http://127.0.0.1:3001/` on the machine itself). The page and its files are public to
+whoever can reach the server, and hold no data; the sync API paths still require a bearer token on
+every request.
+
+1. Create a token for the browser (each device has its own):
+   `pnpm --filter server device:add my-browser`.
+2. Open the app, paste the token, press Connect. The address is pre-filled with the one you came
+   from; it must be this server (the page may only talk to its own origin).
+3. The browser keeps a **local copy** of the journal (SQLite compiled to WebAssembly, saved in
+   IndexedDB). It is a cache of the server plus any change the server has not confirmed yet.
+   **Settings → Reset local copy** or **Unpair** wipes it, and the next full pull rebuilds it; a
+   change that had not reached the server is lost with it, and the buttons say so first.
+   Only one tab of a browser opens the local copy at a time (Web Locks on https/localhost, a
+   BroadcastChannel ping on plain http). A capture shows "Saved" only once it is stored in
+   IndexedDB, and the browser asks before the tab closes with anything unsaved. If a stored copy
+   cannot be read, a backup of it is kept and a fresh one is rebuilt from the server.
+4. **The token lives in this browser's `localStorage`**, so a script injected into the page could
+   read it; XSS is the remaining exposure. The page ships no third-party scripts and its
+   Content-Security-Policy (`script-src 'self'`, no inline script or style, `connect-src 'self'`)
+   is what limits that. Revoke a lost browser's token with `pnpm --filter server device:revoke`.
+
+For development, `pnpm dev:web` runs Vite and forwards `/sync` and `/health` to
+`BULLET_SERVER_URL` (default `http://127.0.0.1:3001`), so enter `http://localhost:5173` as the
+address there. Over plain `http` on a tailnet address the app still works (ids fall back to
+`getRandomValues`, the one-tab check to a BroadcastChannel); https is still better.
 
 ## Judging Whisper on your own voice
 
