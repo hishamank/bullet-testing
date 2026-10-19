@@ -44,7 +44,8 @@ export default function ThemeScreen() {
         right={
           <IconButton
             icon="more"
-            label={COPY.moreLabel}
+            label={COPY.more}
+            accessibilityHint={COPY.moreHint}
             iconSize={20}
             onPress={() => showThemeMenu(edit)}
           />

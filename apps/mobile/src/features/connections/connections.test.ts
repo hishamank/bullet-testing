@@ -10,9 +10,13 @@ import {
 } from '@bullet/core'
 import { eq } from 'drizzle-orm'
 import { describe, expect, test } from 'vite-plus/test'
+import { decideHeld, retractDecision } from '../../data/decisions'
 import {
   acceptSuggestion,
   answerConnection,
+  dismissNoticed,
+  mergeTheme,
+  openNoticed,
   renameTheme,
   retireTheme,
   undoSuggestion,
@@ -25,15 +29,17 @@ import { closedLine, listLoops } from '../journal/loops'
 import { loadThinkView } from '../reflect/model'
 import { allCopy, closedByLine, pillLabel, pillText, quote, shortQuote } from './copy'
 import {
+  cardIsNew,
   cleanThemeName,
   dayWord,
-  inboxIsEmpty,
+  inboxSections,
   loadLoopAnswers,
   loadNoticed,
   loadRelated,
   loadTheme,
   mergeChoices,
   themeOfThoughts,
+  toDecideCount,
 } from './model'
 
 const DAY = 86_400_000
@@ -252,6 +258,12 @@ describe('wording', () => {
       '../../app/inbox/index.tsx',
       '../../app/theme/[id].tsx',
       '../../app/journal/loops.tsx',
+      '../../app/capture/[id].tsx',
+      '../../components/journal/CaptureCard.tsx',
+      '../journal/loops.ts',
+      '../journal/stream.ts',
+      '../inbox/summary.ts',
+      '../inbox/model.ts',
       './actions.ts',
       './model.ts',
     ]
@@ -305,6 +317,21 @@ describe('Noticed', () => {
     ])
   })
 
+  test('Clear dismisses the card (it leaves Noticed); the theme stays', () => {
+    const { db, deps } = setup()
+    dismissNoticed(db, CARD, deps)
+    expect(loadNoticed(db, T0)).toEqual([])
+    expect(loadTheme(db, THEME, T0)?.id).toBe(THEME)
+  })
+
+  test('Open marks a card opened once: only a new card is', () => {
+    const { db, deps } = setup()
+    expect(cardIsNew(db, CARD)).toBe(true)
+    openNoticed(db, CARD, deps)
+    expect(cardIsNew(db, CARD)).toBe(false)
+    expect(loadNoticed(db, T0)[0]?.isNew).toBe(false)
+  })
+
   test('"Not a theme" hides its card; nothing noticed leaves the section empty', () => {
     const { db, deps } = setup()
     retireTheme(db, THEME, deps)
@@ -349,6 +376,12 @@ describe('the theme screen and the "again" dot', () => {
     expect(loadTheme(db, id(0xfff), T0)).toBeNull()
   })
 
+  test('a theme merged away shows the theme it went into', () => {
+    const { db, deps } = setup()
+    mergeTheme(db, THEME2, THEME, deps)
+    expect(loadTheme(db, THEME2, T0)?.id).toBe(THEME)
+  })
+
   test('only thoughts of an active theme get the dot, pointing at that theme', () => {
     const { db } = setup()
     const map = themeOfThoughts(db, [LOOP, ANSWER, OTHER])
@@ -371,8 +404,8 @@ describe('Related', () => {
         bulletId: B3,
         text: 'جواز السفر',
         rtl: true,
-        meta: 'Today · same person',
-        label: 'Today, same person: «جواز السفر»',
+        meta: 'Today · same one',
+        label: 'Today, same one: «جواز السفر»',
       },
       {
         linkId: LINK,
@@ -407,8 +440,59 @@ describe('"Did this close it?"', () => {
         answerRtl: false,
         answerBulletId: B2,
         alreadyClosed: false,
+        decision: null,
       },
     ])
+  })
+
+  test("the answer is the vetted thought only, never the capture's text", () => {
+    const { db } = setup()
+    db.update(thoughts).set({ state: 'deleted' }).where(eq(thoughts.id, ANSWER)).run()
+    const [card] = loadLoopAnswers(db)
+    expect(card?.answer).toBeNull()
+    expect(card?.answerBulletId).toBe(B2)
+  })
+
+  test('decided, it stays on its card in the Undo window, then goes; Undo puts it back', () => {
+    const { db, deps } = setup()
+    decideHeld(db, RESOLVE, 'accepted', T0 + 6_000, deps)
+    expect(loadLoopAnswers(db)).toEqual([])
+    const held = loadLoopAnswers(db, new Map([[RESOLVE, 'accepted']]))
+    expect(held.map((a) => [a.suggestionId, a.decision, a.answer])).toEqual([
+      [RESOLVE, 'accepted', 'passport valid until 2029'],
+    ])
+    // Not counted while held, and not under Done for you twice.
+    expect(toDecideCount(0, held)).toBe(0)
+    const rows = loadInboxRows(db, { now: T0, timezone: TZ, heldIds: [RESOLVE] })
+    const undo = [
+      {
+        suggestionId: RESOLVE,
+        decision: 'accepted' as const,
+        bulletId: B2,
+        decidedAt: T0,
+        expiresAt: T0 + 6_000,
+        previousPayload: {},
+      },
+    ]
+    const view = buildInbox(rows, undo)
+    expect(view.done).toEqual([])
+    expect(view.groups).toEqual([])
+    expect(listLoops(db).toCheck).toEqual([])
+
+    // Undo inside the window: pending again, and the loop is open again.
+    expect(retractDecision(db, RESOLVE, resolve.payload, T0 + 1_000)).toBe(true)
+    expect(loadLoopAnswers(db).map((a) => a.decision)).toEqual([null])
+    expect(listLoops(db).toCheck.map((l) => l.id)).toEqual([LOOP])
+  })
+
+  test('Keep open is held the same way', () => {
+    const { db, deps } = setup()
+    decideHeld(db, RESOLVE, 'dismissed', T0 + 6_000, deps)
+    expect(loadLoopAnswers(db, new Map([[RESOLVE, 'dismissed']])).map((a) => a.decision)).toEqual([
+      'dismissed',
+    ])
+    expect(retractDecision(db, RESOLVE, resolve.payload, T0 + 1_000)).toBe(true)
+    expect(loadLoopAnswers(db).map((a) => a.decision)).toEqual([null])
   })
 
   test('a loop closed meanwhile shows as already closed', () => {
@@ -434,17 +518,27 @@ describe('"Did this close it?"', () => {
     expect(after.done).toEqual([])
   })
 
-  test('closed lines: by a capture, with a note when its words are gone, or checked off', () => {
+  test("a loop closed by any other capture never quotes that capture's text", () => {
+    const { db } = setup()
+    // Closed with a note (B3): no accepted "Did this close it?" for it.
+    db.update(thoughts)
+      .set({ resolved_at: T0, resolved_by_bullet_id: B3 })
+      .where(eq(thoughts.id, LOOP))
+      .run()
+    expect(listLoops(db).done.map((l) => l.closedLine)).toEqual(['Closed with a note'])
+  })
+
+  test('closed lines: by the answer, with a note, or checked off', () => {
     expect(closedLine('note text', { resolvedByBulletId: B2 })).toBe('Closed by «note text»')
     expect(closedLine(null, { resolvedByBulletId: B2 })).toBe('Closed with a note')
     expect(closedLine(null, { resolvedByBulletId: null })).toBe('Checked off')
   })
 
-  test('the whole Inbox is empty only when nothing at all shows', () => {
-    expect(inboxIsEmpty(true, 0, 0)).toBe(true)
-    expect(inboxIsEmpty(true, 1, 0)).toBe(false)
-    expect(inboxIsEmpty(true, 0, 1)).toBe(false)
-    expect(inboxIsEmpty(false, 0, 0)).toBe(false)
+  test('the Inbox sections: one empty state; no To think about above Noticed alone', () => {
+    expect(inboxSections(true, 0, 0)).toEqual({ empty: true, think: false })
+    expect(inboxSections(true, 1, 0)).toEqual({ empty: false, think: true })
+    expect(inboxSections(true, 0, 1)).toEqual({ empty: false, think: false })
+    expect(inboxSections(false, 0, 0)).toEqual({ empty: false, think: true })
   })
 })
 

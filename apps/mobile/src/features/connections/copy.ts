@@ -28,7 +28,9 @@ export const COPY = {
   notATheme: 'Not a theme',
   notAThemeHint: 'Removes this card and its theme',
   more: 'More',
-  moreLabel: 'More: rename or merge',
+  moreHint: 'Rename or merge',
+  clear: 'Clear',
+  clearHint: 'Removes this card. The theme stays.',
   rename: 'Rename',
   mergeWith: 'Merge with…',
   cancel: 'Cancel',
@@ -56,15 +58,16 @@ export const COPY = {
   notRelated: 'Not related',
   notRelatedNote: '“Not related” removes a link for good.',
   notRelatedConfirm: 'Not related?',
-  notRelatedDetail: 'This link goes, and these two stay apart from now on.',
+  notRelatedDetail: 'The link goes. These two are not linked again.',
 
   // Stream · "again" dot
   againLabel: 'comes up again',
-  openTheme: 'Open the theme',
+  openTheme: 'Opens the theme',
 
   // Theme screen
   back: 'Back',
-  themeGone: 'This theme isn’t showing any more.',
+  themeGone: 'This theme is no longer here.',
+  undo: 'Undo',
   capturesTitle: 'Captures',
 
   // VoiceOver announcements
@@ -129,5 +132,11 @@ export function allCopy(): string[] {
     thoughtCount(2),
     closeAskLabel('x', 'y'),
     closeAskLabel('x', null),
+    openThemeLabel('x'),
   ]
+}
+
+/** The "again" dot (and its VoiceOver action): "Opens the theme «…»". */
+export function openThemeLabel(thoughtText: string): string {
+  return `${COPY.openTheme} ${quote(thoughtText)}`
 }

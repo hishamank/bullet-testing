@@ -5,7 +5,7 @@
 
 import type { BulletSource, SuggestionTier, TrackerConfig, TrackerEntryValue } from '@bullet/core'
 import { zonedParts, zonedToEpoch } from '@bullet/engine'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, ne } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import {
   listOpenQuestions,
@@ -201,7 +201,7 @@ export function buildInbox(rows: InboxRows, undo: UndoState): InboxView {
       (s) =>
         s.auto_applied ||
         rows.answeredSuggestionIds.has(s.id) ||
-        s.target_kind === 'thought_resolve',
+        (s.target_kind === 'thought_resolve' && !decisions.has(s.id)),
     )
     .map((s) => ({
       suggestionId: s.id,
@@ -285,7 +285,14 @@ export function loadInboxRows(
       : db
           .select()
           .from(suggestions)
-          .where(and(active, inArray(suggestions.id, [...opts.heldIds])))
+          .where(
+            and(
+              active,
+              inArray(suggestions.id, [...opts.heldIds]),
+              // A held "Did this close it?" stays on its own card (features/connections).
+              ne(suggestions.target_kind, 'thought_resolve'),
+            ),
+          )
           .all()
   const pendingIds = new Set(pending.map((s) => s.id))
   const decide = [...pending, ...held.filter((s) => !pendingIds.has(s.id))].sort(

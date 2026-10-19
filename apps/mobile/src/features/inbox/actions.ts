@@ -22,6 +22,7 @@ import { getDb } from '../../data/open'
 import { clearRejection, findRejection } from '../../data/rejections'
 import { suggestions } from '../../data/schema'
 import { deviceDeps } from '../../sync/runtime'
+import { COPY } from '../connections/copy'
 import { createStore } from '../store'
 import { notifyLocalChange, syncNow } from '../sync/engine'
 import {
@@ -143,6 +144,16 @@ export function startTracking(id: string, name: string): void {
 export function acceptAll(ids: readonly string[]): void {
   const n = decide(ids, 'accepted')
   if (n > 0) announce(`Added ${n}. Undo is available for a few seconds.`)
+}
+
+/**
+ * "Did this close it?": Close it (accepted) or Keep open (dismissed, which the server keeps as a
+ * permanent veto of the pair), held in the same Undo window as every other To decide card.
+ */
+export function decideLoopAnswer(id: string, decision: Decision): void {
+  if (decide([id], decision) > 0) {
+    announce(decision === 'accepted' ? COPY.closed : COPY.keptOpen)
+  }
 }
 
 export function dismiss(id: string, label: string): void {

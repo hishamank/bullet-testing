@@ -1,14 +1,16 @@
 /**
  * Inbox · Noticed cards ("«quote» · came up N times in M days", up to 3 quotes, the theme pill,
- * Open / Not a theme / ···) and "Did this close it?" cards («loop» ← «answer», Close it / Keep
- * open, or "Already closed"). Layout only: the screen passes what each tap does.
+ * Open / Not a theme / Clear / ···) and "Did this close it?" cards («loop» ← «answer», Close it /
+ * Keep open with the usual Undo window, or "Already closed"). Layout only: the screen passes what
+ * each tap does.
  */
 
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { OptionButton } from '@/components/inbox/parts'
 import { IconButton, Label, TextButton, touch } from '@/components/ui'
-import { closeAskLabel, COPY } from '@/features/connections/copy'
+import { closeAskLabel, COPY, quote } from '@/features/connections/copy'
 import type { LoopAnswerCard, NoticedCard as Card } from '@/features/connections/model'
-import { radius, readingFont, space, type, useTheme } from '@/theme'
+import { readingFont, space, type, useTheme } from '@/theme'
 import { ConnectionCard, QuoteLink, Quoted, ThemePill } from './parts'
 
 export function NoticedCard({
@@ -16,6 +18,7 @@ export function NoticedCard({
   onOpenCapture,
   onOpen,
   onNotATheme,
+  onClear,
   onRename,
   onMore,
 }: {
@@ -23,6 +26,8 @@ export function NoticedCard({
   onOpenCapture: (bulletId: string) => void
   onOpen: () => void
   onNotATheme: () => void
+  /** Let this card go; the theme stays. */
+  onClear: () => void
   onRename: () => void
   onMore: () => void
 }) {
@@ -45,12 +50,7 @@ export function NoticedCard({
         ))}
       </View>
       <View style={styles.actions}>
-        <OutlineButton
-          title={COPY.open}
-          label={`${COPY.open}: ${card.headline}`}
-          hint={COPY.openHint}
-          onPress={onOpen}
-        />
+        <OptionButton title={COPY.open} label={`${COPY.open}: ${card.headline}`} onPress={onOpen} />
         <TextButton
           title={COPY.notATheme}
           tone="secondary"
@@ -58,8 +58,21 @@ export function NoticedCard({
           accessibilityHint={COPY.notAThemeHint}
           onPress={onNotATheme}
         />
+        <TextButton
+          title={COPY.clear}
+          tone="secondary"
+          accessibilityLabel={`${COPY.clear}: ${card.headline}`}
+          accessibilityHint={COPY.clearHint}
+          onPress={onClear}
+        />
         <View style={{ flex: 1 }} />
-        <IconButton icon="more" label={COPY.moreLabel} iconSize={20} onPress={onMore} />
+        <IconButton
+          icon="more"
+          label={COPY.more}
+          accessibilityHint={COPY.moreHint}
+          iconSize={20}
+          onPress={onMore}
+        />
       </View>
     </ConnectionCard>
   )
@@ -80,12 +93,15 @@ export function LoopAnswer({
   onOpenCapture,
   onClose,
   onKeepOpen,
+  onUndo,
   onClear,
 }: {
   item: LoopAnswerCard
   onOpenCapture: (bulletId: string) => void
   onClose: () => void
   onKeepOpen: () => void
+  /** Undo inside the window after Close it / Keep open. */
+  onUndo: () => void
   /** "Already closed" → OK: the card goes. */
   onClear: () => void
 }) {
@@ -98,7 +114,7 @@ export function LoopAnswer({
       </Label>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel={`Open loop: «${item.loop}»`}
+        accessibilityLabel={`Open loop: ${quote(item.loop)}`}
         accessibilityHint={COPY.quoteHint}
         onPress={() => onOpenCapture(item.loopBulletId)}
         style={({ pressed }) => [styles.quote, { opacity: pressed ? 0.6 : 1 }]}
@@ -108,7 +124,7 @@ export function LoopAnswer({
       {item.answer ? (
         <Pressable
           accessibilityRole="link"
-          accessibilityLabel={`Answered by «${item.answer}»`}
+          accessibilityLabel={`Answered by ${quote(item.answer)}`}
           accessibilityHint={COPY.quoteHint}
           onPress={() => onOpenCapture(item.answerBulletId)}
           style={({ pressed }) => [styles.quote, styles.answer, { opacity: pressed ? 0.6 : 1 }]}
@@ -119,7 +135,18 @@ export function LoopAnswer({
           </View>
         </Pressable>
       ) : null}
-      {item.alreadyClosed ? (
+      {item.decision ? (
+        <View style={styles.decide}>
+          <Label tone="secondary" size={type.bodySmall} style={{ flex: 1 }}>
+            {item.decision === 'accepted' ? COPY.closed : COPY.keptOpen}
+          </Label>
+          <TextButton
+            title={COPY.undo}
+            accessibilityLabel={`${COPY.undo}: ${quote(item.loop)}`}
+            onPress={onUndo}
+          />
+        </View>
+      ) : item.alreadyClosed ? (
         <View style={styles.decide}>
           <Label tone="muted" size={type.bodySmall} style={{ flex: 1 }}>
             {COPY.alreadyClosed}
@@ -132,75 +159,19 @@ export function LoopAnswer({
         </View>
       ) : (
         <View style={styles.decide}>
-          <OutlineButton
+          <OptionButton
             title={COPY.keepOpen}
-            label={`${COPY.keepOpen}: «${item.loop}»`}
+            label={`${COPY.keepOpen}: ${quote(item.loop)}`}
             onPress={onKeepOpen}
           />
-          <FilledButton
+          <OptionButton
             title={COPY.closeIt}
-            label={`${COPY.closeIt}: «${item.loop}»`}
+            label={`${COPY.closeIt}: ${quote(item.loop)}`}
             onPress={onClose}
           />
         </View>
       )}
     </ConnectionCard>
-  )
-}
-
-function OutlineButton({
-  title,
-  label,
-  hint,
-  onPress,
-}: {
-  title: string
-  label: string
-  hint?: string
-  onPress: () => void
-}) {
-  const t = useTheme()
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={hint}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.pillButton,
-        { borderWidth: 1, borderColor: t.textMuted, backgroundColor: t.raised },
-        { opacity: pressed ? 0.7 : 1 },
-      ]}
-    >
-      <Label size={type.bodySmall}>{title}</Label>
-    </Pressable>
-  )
-}
-
-function FilledButton({
-  title,
-  label,
-  onPress,
-}: {
-  title: string
-  label: string
-  onPress: () => void
-}) {
-  const t = useTheme()
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.pillButton,
-        { backgroundColor: t.accent, opacity: pressed ? 0.8 : 1 },
-      ]}
-    >
-      <Text style={{ color: t.onAccent, fontSize: type.bodySmall, fontWeight: '600' }}>
-        {title}
-      </Text>
-    </Pressable>
   )
 }
 
@@ -215,11 +186,4 @@ const styles = StyleSheet.create({
   },
   quote: { minHeight: touch.minHeight, justifyContent: 'center' },
   answer: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  pillButton: {
-    ...touch,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: radius.pill,
-    paddingHorizontal: space.lg,
-  },
 })

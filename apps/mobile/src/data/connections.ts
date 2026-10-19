@@ -26,7 +26,8 @@ type ThemeRow = typeof themes.$inferSelect
 
 /** The small word a Related row carries. */
 export const RELATED_WORDS: Record<LinkType, string> = {
-  same_entity: 'same person',
+  // The server keeps no entity kind (person or place), so never "same person": a place isn't one.
+  same_entity: 'same one',
   same_topic: 'related',
   answers: 'answers',
   revisits: 'again',

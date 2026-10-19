@@ -3,7 +3,7 @@
 import { Pressable, StyleSheet, View } from 'react-native'
 import { AgainDot } from '@/components/connections/parts'
 import { Icon } from '@/components/Icon'
-import { COPY } from '@/features/connections/copy'
+import { openThemeLabel } from '@/features/connections/copy'
 import { KindPill, Label, QuestionText, TextButton } from '@/components/ui'
 import {
   AUDIO_READ_ERROR_TEXT,
@@ -63,7 +63,7 @@ export function CaptureCard({
     // The "again" dots are inside the card's one VoiceOver element: offer them as actions.
     ...themed.map((th, i) => ({
       name: `theme:${i}`,
-      label: `${COPY.openTheme}: «${th.text}»`,
+      label: openThemeLabel(th.text),
     })),
   ]
   return (
@@ -113,14 +113,14 @@ export function CaptureCard({
       </View>
       {showThoughts ? (
         card.thoughts.map((th) => (
-          <View key={th.id} style={styles.thought}>
+          <View key={th.id} style={[styles.thought, th.themeId ? styles.thoughtAgain : null]}>
             <KindPill kind={th.kind} />
             <Label size={type.bodySmall} style={styles.thoughtText}>
               {th.text}
             </Label>
             {th.themeId ? (
               <AgainDot
-                label={`${COPY.openTheme}: «${th.text}»`}
+                label={openThemeLabel(th.text)}
                 onPress={() => th.themeId && onOpenTheme(th.themeId)}
               />
             ) : null}
@@ -226,6 +226,8 @@ const styles = StyleSheet.create({
   state: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   thought: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, alignItems: 'baseline' },
+  // A thought with the "again" dot: tall enough for the dot's 44pt target, centred on it.
+  thoughtAgain: { minHeight: size.touch, alignItems: 'center', flexWrap: 'nowrap' },
   thoughtText: { flexShrink: 1, flexGrow: 1, flexBasis: 160 },
   failed: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md },

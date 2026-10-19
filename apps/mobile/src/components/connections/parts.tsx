@@ -127,11 +127,10 @@ const styles = StyleSheet.create({
   },
   pillHit: { minHeight: size.touch, justifyContent: 'center', alignSelf: 'flex-start' },
   pill: { borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 3 },
+  // A full 44pt column: the row it sits in is at least 44pt tall and centred (CaptureCard).
   dotHit: {
     width: size.touch,
     height: size.touch,
-    marginVertical: -14,
-    marginHorizontal: -14,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -33,6 +33,7 @@ import {
   loadThinkView,
   type ThinkView,
 } from '@/features/reflect/model'
+import { undoStore } from '@/features/inbox/actions'
 import type { Store } from '@/features/store'
 import { changeStore, monitorStore, type Pairing, pairingStore } from '@/features/sync/engine'
 import { currentServerSettings, deviceDeps } from '@/sync/runtime'
@@ -150,7 +151,9 @@ export function useNoticed(): NoticedCard[] {
 
 /** "Did this close it?" cards waiting (these do count in the badge). */
 export function useLoopAnswers(): LoopAnswerCard[] {
-  return useLocalQuery(loadLoopAnswers)
+  const undo = useStore(undoStore)
+  const held = useMemo(() => new Map(undo.map((e) => [e.suggestionId, e.decision])), [undo])
+  return useLocalQuery((db) => loadLoopAnswers(db, held), held)
 }
 
 /** "Merge with…": the other themes (empty while no theme is picked). */

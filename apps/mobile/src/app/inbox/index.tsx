@@ -27,6 +27,7 @@ import {
   answerSame,
   clearClosed,
   closeLoop,
+  dismissCard,
   keepLoopOpen,
   mergeInto,
   notATheme,
@@ -34,7 +35,7 @@ import {
   renameThemeTo,
 } from '@/features/connections/actions'
 import { COPY } from '@/features/connections/copy'
-import { inboxIsEmpty } from '@/features/connections/model'
+import { inboxSections, toDecideCount } from '@/features/connections/model'
 import { useInbox } from '@/features/inbox/useInbox'
 import { laterQuestion, notThisOne, pickQuestion } from '@/features/reflect/actions'
 import { useEvergreenChoices, useLoopAnswers, useNoticed, useThinkView } from '@/hooks'
@@ -59,7 +60,9 @@ export default function Inbox() {
   const loopAnswers = useLoopAnswers()
   const noticed = useNoticed()
   const [sheet, setSheet] = useState<ThemeSheet | null>(null)
-  const empty = inboxIsEmpty(view.empty, loopAnswers.length, noticed.length)
+  const sections = inboxSections(view.empty, loopAnswers.length, noticed.length)
+  const empty = sections.empty
+  const deciding = toDecideCount(view.pendingCount, loopAnswers)
   const journal = (questionId: string) =>
     router.push({ pathname: '/answer', params: { question: questionId } })
   const openCapture = (id: string) => router.push({ pathname: '/capture/[id]', params: { id } })
@@ -91,14 +94,7 @@ export default function Inbox() {
 
         {view.groups.length > 0 || loopAnswers.length > 0 ? (
           <>
-            <SectionTitle
-              title="To decide"
-              count={
-                view.pendingCount + loopAnswers.length > 0
-                  ? view.pendingCount + loopAnswers.length
-                  : undefined
-              }
-            />
+            <SectionTitle title="To decide" count={deciding > 0 ? deciding : undefined} />
             {loopAnswers.map((a) => (
               <LoopAnswer
                 key={a.suggestionId}
@@ -106,6 +102,7 @@ export default function Inbox() {
                 onOpenCapture={openCapture}
                 onClose={() => closeLoop(a.suggestionId)}
                 onKeepOpen={() => keepLoopOpen(a.suggestionId)}
+                onUndo={() => onUndo(a.suggestionId)}
                 onClear={() => clearClosed(a.suggestionId)}
               />
             ))}
@@ -141,7 +138,7 @@ export default function Inbox() {
         ) : null}
 
         {/* Nothing at all waiting: the one empty state above offers Pick a question. */}
-        {empty ? null : (
+        {sections.think ? (
           <>
             <SectionTitle
               title="To think about"
@@ -162,7 +159,7 @@ export default function Inbox() {
               <ThinkEmpty onPick={() => setPicking(true)} />
             )}
           </>
-        )}
+        ) : null}
         <AnsweredList items={think.answered} onAddMore={(q) => journal(q.id)} />
 
         {/* Noticed: below Questions; never in the badge, never notified. */}
@@ -180,6 +177,7 @@ export default function Inbox() {
                     openTheme(c.theme.id)
                   }}
                   onNotATheme={() => notATheme(c.theme.id)}
+                  onClear={() => dismissCard(c.id)}
                   onRename={() =>
                     setSheet({ mode: 'rename', themeId: c.theme.id, name: c.theme.name })
                   }
