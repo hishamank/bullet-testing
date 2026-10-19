@@ -5,6 +5,7 @@ import {
   canTransition,
   displayStatus,
   isSettledStatus,
+  isPermanentTranscriptionError,
   processingErrorCodeSchema,
   serverBulletProcessingStatusSchema,
 } from './processing'
@@ -55,6 +56,16 @@ describe('bullet processing status', () => {
     expect(canTransition('transcribing', 'synced')).toBe(true)
     expect(canTransition('transcribing', 'processed')).toBe(false)
     expect(processingErrorCodeSchema.options).toContain('transcription_failed')
+    expect(processingErrorCodeSchema.options).toContain('transcription_no_speech')
+  })
+
+  test('only corrupt audio and no speech are permanent transcription failures', () => {
+    expect(isPermanentTranscriptionError('transcription_failed')).toBe(true)
+    expect(isPermanentTranscriptionError('transcription_no_speech')).toBe(true)
+    expect(isPermanentTranscriptionError('transcription_unavailable')).toBe(false)
+    expect(isPermanentTranscriptionError('transcription_timeout')).toBe(false)
+    expect(isPermanentTranscriptionError('llm_unavailable')).toBe(false)
+    expect(isPermanentTranscriptionError(null)).toBe(false)
   })
 
   test('nonsense transitions are refused', () => {

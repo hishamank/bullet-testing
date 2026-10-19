@@ -129,6 +129,16 @@ export function accept(id: string, label: string, payload?: SuggestionPayload): 
   }
 }
 
+/** "Start tracking": accept a new tracker, with the name the user left in its field. */
+export function startTracking(id: string, name: string): void {
+  const current = currentPayload(id)
+  if (!current) return
+  const payload = current.payload.name === name ? undefined : { ...current.payload, name }
+  if (decide([id], 'accepted', payload) > 0) {
+    announce(`Started tracking ${name}. Undo is available for a few seconds.`)
+  }
+}
+
 /** "Accept both / all": several ops, sent together in one push when the window closes. */
 export function acceptAll(ids: readonly string[]): void {
   const n = decide(ids, 'accepted')

@@ -14,8 +14,12 @@ const bulletRow = (h: ReturnType<typeof createHarness>, id: string) => {
 describe('processing (scripted model, never live)', () => {
   test('a capture is extracted: value-less activity auto-applies, the event waits → needs_review', async () => {
     const llm = llmByText({
-      'ran 5k': [
-        candidate({ text: 'ran 5k', fields: { name: 'ran 5k' }, confidence: 0.95 }),
+      'went for a walk': [
+        candidate({
+          text: 'went for a walk',
+          fields: { name: 'went for a walk' },
+          confidence: 0.95,
+        }),
         candidate({
           kind: 'event',
           orientation: 'future_oneoff',
@@ -25,7 +29,7 @@ describe('processing (scripted model, never live)', () => {
       ],
     })
     const h = createHarness(llm)
-    const id = await h.capture('ran 5k, dentist thursday 3pm')
+    const id = await h.capture('went for a walk, dentist thursday 3pm')
     expect(await h.worker.drain()).toBe(1)
 
     const b = bulletRow(h, id)
@@ -33,7 +37,11 @@ describe('processing (scripted model, never live)', () => {
     expect(b.proc_attempts).toBe(1)
 
     const [activity] = h.db.select().from(activities).all()
-    expect(activity).toMatchObject({ name: 'ran 5k', occurred_at: T0, source_bullet_id: id })
+    expect(activity).toMatchObject({
+      name: 'Went for a walk',
+      occurred_at: T0,
+      source_bullet_id: id,
+    })
     expect(h.db.select().from(events).all()).toHaveLength(0) // waits for review
 
     const pulled = await h.pull()
@@ -203,7 +211,7 @@ describe('durability', () => {
       .from(activities)
       .all()
       .map((a) => a.name)
-    expect(names).toEqual(['v2 thing'])
+    expect(names).toEqual(['V2 thing'])
     expect(h.db.select().from(suggestions).all()).toHaveLength(1)
   })
 

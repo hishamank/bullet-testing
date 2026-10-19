@@ -4,7 +4,7 @@
  *   BULLET_E2E_URL=http://127.0.0.1:3001 BULLET_E2E_TOKEN=… pnpm --filter mobile exec vp test run src/test/e2e
  *
  * Optional: BULLET_E2E_SPEECH_WAV (+ BULLET_E2E_SPEECH_WORDS), BULLET_E2E_LLM_STOP /
- * BULLET_E2E_LLM_START, BULLET_E2E_SLOW=1, BULLET_E2E_REPORT, BULLET_E2E_TZ. Point it at a
+ * BULLET_E2E_LLM_START, BULLET_E2E_REPORT, BULLET_E2E_TZ. Point it at a
  * throwaway database: it writes made-up captures. See docs/e2e-results.md.
  *
  * Contract invariants are asserted; the model's judgement (kinds, dates, names) is recorded as
@@ -51,6 +51,8 @@ import {
   transcripts,
 } from '../../data/schema'
 import { TransportError, type SyncTransport } from '../../sync/transport'
+import { captureCounts } from '../../features/capture/counts'
+import { captureNotice } from '../../features/capture/notice'
 import {
   createPhone,
   E2E,
@@ -133,6 +135,10 @@ async function captureAndProcess(p: Phone, name: string, text: string, links = {
   return { id, watch, bullet: b, thoughts: ths, suggestions: sgs }
 }
 
+/** A reading that waits on a proposed tracker (decided with "Start tracking …?", never alone). */
+const isDependentReading = (s: { target_kind: string; operation: string }) =>
+  s.target_kind === 'tracker_entry' && s.operation === 'create'
+
 /** Contract checks every processed capture must pass. */
 function expectProcessedContract(p: Phone, r: Awaited<ReturnType<typeof captureAndProcess>>) {
   expect(r.bullet?.server_status).toMatch(/^(processed|needs_review)$/)
@@ -142,6 +148,30 @@ function expectProcessedContract(p: Phone, r: Awaited<ReturnType<typeof captureA
     // Definitions are never auto-applied.
     if (s.target_kind === 'tracker') expect(s.tier).not.toBe('auto')
     if (s.tier === 'auto') expect(s.status).toBe('accepted')
+    // Decision 3: only a value-less record may auto-apply.
+    if (s.tier === 'auto' && s.target_kind === 'activity') {
+      expect((s.payload as { quantity?: number | null }).quantity ?? null).toBeNull()
+    }
+    // A reading of a proposed tracker points at that tracker suggestion, and waits for it.
+    if (isDependentReading(s)) {
+      const t = r.suggestions.find((x) => x.id === s.payload.tracker_id)
+      expect(t?.target_kind).toBe('tracker')
+      expect(s.tier).not.toBe('auto')
+    }
+  }
+  // Decision 6: the phone's quiet line for its latest capture, once the server is done.
+  const latest = captureCounts(p.db).latest
+  if (latest?.id === r.id) {
+    const notice = captureNotice({
+      saved: false,
+      failedCount: 0,
+      onPhoneCount: 0,
+      cannotReachServer: false,
+      latest,
+      now: Date.now(),
+    })
+    expect(notice.kind).toBe(latest.things > 0 ? 'found' : 'none')
+    record({ type: 'feedback', name: r.id, notice, things: latest.things })
   }
   const pending = r.suggestions.some((s) => s.status === 'pending')
   expect(r.bullet?.server_status).toBe(pending ? 'needs_review' : 'processed')
@@ -212,15 +242,54 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         z?.weekday === 'Thursday' && z.hour === 15 && z.minute === 0,
         { payload: dentist?.payload, local: z },
       )
-      const run = ramble.suggestions.find(
-        (s) => s.target_kind === 'activity' && /\b(run|ran|5k)\b/.test(SPLIT(label(s.payload))),
+      quality(
+        'ramble: the dentist title is just "Dentist" (decision 5)',
+        dentist?.payload.title === 'Dentist',
+        dentist?.payload.title,
       )
-      quality('ramble: ran 5k → activity (5 km)', Boolean(run), run?.payload)
-      const sleep = ramble.suggestions.find(
-        (s) =>
-          SPLIT(label(s.payload)).includes('sleep') || SPLIT(label(s.payload)).includes('slept'),
+      // Decision 3 + 4: readings keep their value under a short-named tracker.
+      const reading = (tracker: string, value: number) => {
+        const offer = ramble.suggestions.find(
+          (s) => s.target_kind === 'tracker' && s.payload.name === tracker,
+        )
+        const entry = ramble.suggestions.find(
+          (s) =>
+            s.target_kind === 'tracker_entry' &&
+            s.payload.value === value &&
+            (offer ? s.payload.tracker_id === offer.id : true),
+        )
+        return { offer, entry }
+      }
+      const sleep = reading('Sleep', 6)
+      quality(
+        'ramble: "Slept 6 hours." → Start tracking Sleep? + 6 h (decisions 3, 4)',
+        Boolean(sleep.offer && sleep.entry),
+        { offer: sleep.offer?.payload, entry: sleep.entry?.payload },
       )
-      quality('ramble: slept 6 hours → a reading / tracker offer', Boolean(sleep), sleep?.payload)
+      const run = reading('Run', 5)
+      quality(
+        'ramble: "Ran 5k this morning." → Start tracking Run? + 5 km',
+        Boolean(run.offer && run.entry),
+        { offer: run.offer?.payload, entry: run.entry?.payload },
+      )
+      const autoWithNumber = ramble.suggestions.filter(
+        (s) => s.target_kind === 'activity' && s.tier === 'auto' && /\d/.test(label(s.payload)),
+      )
+      quality(
+        'ramble: no reading became a value-less auto activity',
+        autoWithNumber.length === 0,
+        autoWithNumber.map((s) => s.payload),
+      )
+      const insurance = ramble.suggestions.find((s) =>
+        SPLIT(label(s.payload)).includes('insurance'),
+      )
+      if (insurance) {
+        quality(
+          'ramble: the insurance title has no trailing period (decision 5)',
+          !/[.!?]$/.test(label(insurance.payload)),
+          label(insurance.payload),
+        )
+      }
     },
     CAPTURE_TIMEOUT,
   )
@@ -271,6 +340,25 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         Boolean(report),
         report?.payload,
       )
+      quality(
+        'mixed: the report title keeps the Arabizi words without "bukra" (decision 5)',
+        Boolean(report) && !SPLIT(label(report?.payload)).includes('bukra'),
+        label(report?.payload),
+      )
+      quality(
+        'mixed: the coiffeur title has no "jeudi 15h" (decision 5)',
+        Boolean(coiffeur) && !/jeudi|15h/i.test(label(coiffeur?.payload)),
+        label(coiffeur?.payload),
+      )
+      const mood = r.suggestions.find((s) => s.target_kind === 'tracker')
+      const moodEntry = r.suggestions.find(
+        (s) => s.target_kind === 'tracker_entry' && s.payload.value === 2,
+      )
+      quality(
+        'mixed: "mood 2 sur 5" → Start tracking Mood? (scale 1–5) + 2 (decisions 3, 4)',
+        mood?.payload.name === 'Mood' && Boolean(moodEntry),
+        { offer: mood?.payload, entry: moodEntry?.payload },
+      )
     },
     CAPTURE_TIMEOUT,
   )
@@ -290,8 +378,37 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
       expectProcessedContract(p, reviewCapture)
       const pending = () =>
         suggestionsOf(p, reviewCapture.id).filter(
-          (s) => s.status === 'pending' && s.target_kind !== 'tracker',
+          (s) => s.status === 'pending' && s.target_kind !== 'tracker' && !isDependentReading(s),
         )
+      const all = reviewCapture.suggestions
+      const titled = (t: string) => all.find((s) => label(s.payload) === t)
+      quality(
+        'review: "Pay the electricity bill." → title "Pay the electricity bill" (decision 5)',
+        Boolean(titled('Pay the electricity bill')),
+        all.map((s) => label(s.payload)),
+      )
+      const invented = all.filter(
+        (s) => s.target_kind === 'activity' && /\bpaid\b/i.test(label(s.payload)),
+      )
+      quality(
+        'review: no invented "Paid the electricity bill" activity',
+        invented.length === 0,
+        invented.map((s) => s.payload),
+      )
+      for (const [tracker, value] of [
+        ['Meditation', 20],
+        ['Water', 3],
+      ] as const) {
+        const offer = all.find((s) => s.target_kind === 'tracker' && s.payload.name === tracker)
+        const entry = all.find(
+          (s) => s.target_kind === 'tracker_entry' && s.payload.value === value,
+        )
+        quality(
+          `review: a ${tracker} reading keeps ${value} (decisions 3, 4)`,
+          Boolean(offer && entry),
+          { offer: offer?.payload, entry: entry?.payload },
+        )
+      }
       const qs = questionsOf(p, reviewCapture.id)
       quality(
         `review: "${today} at 7pm" on a ${today} asks "Which ${today}?"`,
@@ -382,7 +499,11 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         })
       }
       if (tracker) {
-        // "Yes" creates the tracker (used by the journal test for a reading to edit).
+        // "Yes" creates the tracker (used by the journal test for a reading to edit) and logs
+        // the reading that waited on it.
+        const waiting = suggestionsOf(p, reviewCapture.id).filter(
+          (s) => isDependentReading(s) && s.payload.tracker_id === tracker.suggestion_id,
+        )
         answerQuestion(p.db, tracker.id, 'Yes', p.deps)
         await p.sync()
         const q = p.db.select().from(questions).where(eq(questions.id, tracker.id)).get()
@@ -390,6 +511,17 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         const s = tracker.suggestion_id ? suggestion(p, tracker.suggestion_id) : undefined
         expect(s?.status).toBe('accepted')
         expect(s?.applied_entity_id).toBeTruthy()
+        for (const w of waiting) {
+          const logged = suggestion(p, w.id)
+          expect(logged?.status).toBe('accepted')
+          const e = p.db
+            .select()
+            .from(trackerEntries)
+            .where(eq(trackerEntries.id, String(logged?.applied_entity_id)))
+            .get()
+          expect(e?.tracker_id).toBe(s?.applied_entity_id)
+        }
+        record({ type: 'note', name: 'Yes logged readings', count: waiting.length })
       }
       const other = questionsOf(p, reviewCapture.id).find((q) => q.status === 'open')
       if (other) {
@@ -622,6 +754,16 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
           payload: s.payload,
         })),
       })
+      // An unchanged thought keeps its kind on re-processing (the model's kind used to drift).
+      const insuranceBefore = ramble.thoughts.find((t) => SPLIT(t.text).includes('insurance'))
+      const insuranceAfter = ths.find((t) => SPLIT(t.text).includes('insurance'))
+      if (insuranceBefore && insuranceAfter && insuranceBefore.text === insuranceAfter.text) {
+        quality(
+          'edit: the unchanged insurance thought keeps its kind',
+          insuranceAfter.kind === insuranceBefore.kind,
+          [insuranceBefore.kind, insuranceAfter.kind],
+        )
+      }
       // The user's kind sticks.
       const w2 = ths.find((t) => SPLIT(t.text).includes('landlord'))
       expect(w2?.kind).toBe('note')
@@ -634,7 +776,9 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
       }
       // "Ran 5k" is gone from the text: its suggestion is withdrawn (pending → gone; applied → undone).
       const runBefore = before.find(
-        (s) => s.target_kind === 'activity' && /\b(run|ran|5k)\b/.test(SPLIT(label(s.payload))),
+        (s) =>
+          (s.target_kind === 'activity' && /\b(run|ran|5k)\b/.test(SPLIT(label(s.payload)))) ||
+          (s.target_kind === 'tracker' && s.payload.name === 'Run'),
       )
       if (runBefore) {
         const now = p.db.select().from(suggestions).where(eq(suggestions.id, runBefore.id)).get()
@@ -653,7 +797,7 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
     CAPTURE_TIMEOUT,
   )
 
-  // A tone has no speech: it fails as transcription_failed (tested below), so these two need a
+  // A tone has no speech: it fails as transcription_no_speech (tested below), so these two need a
   // speech WAV.
   test.skipIf(!E2E.speechWav)(
     'voice: resumable upload → transcribing → server transcript replaces the draft → thoughts',
@@ -736,6 +880,24 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         quality(`voice: transcript has "${w}"`, SPLIT(server?.text ?? '').includes(w), server?.text)
       }
       const ths = listThoughts(flaky.db, id)
+      const things = suggestionsOf(flaky, id)
+      if (SPLIT(server?.text ?? '').includes('remind me')) {
+        quality(
+          'voice: "Remind me to buy olive oil tomorrow" → a task, not a tracker',
+          things.some((s) => s.target_kind === 'task') &&
+            // The clip also says "I slept seven hours": a Sleep offer is right, an olive one not.
+            !things.some(
+              (s) => s.target_kind === 'tracker' && /olive|oil|buy/i.test(label(s.payload)),
+            ),
+          things.map((s) => [s.target_kind, s.payload]),
+        )
+        const task = things.find((s) => s.target_kind === 'task')
+        quality(
+          'voice: its title is the user\'s words without "remind me" or "tomorrow"',
+          Boolean(task) && !/remind|tomorrow/i.test(label(task?.payload)),
+          label(task?.payload),
+        )
+      }
       record({
         type: 'extraction',
         name: 'voice',
@@ -807,6 +969,18 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         !quality('tracker: a reading offers "Start tracking …?"', Boolean(offer), first.suggestions)
       )
         return
+      const proposed = suggestion(p, offer!.suggestion_id!)
+      quality(
+        'tracker: the offer names a short noun, not the reading (decision 4)',
+        typeof proposed?.payload.name === 'string' &&
+          !/\d|level|today/i.test(String(proposed.payload.name)) &&
+          offer!.text === `Start tracking ${String(proposed.payload.name)}?`,
+        { name: proposed?.payload.name, question: offer!.text },
+      )
+      const reading = first.suggestions.find(
+        (x) => isDependentReading(x) && x.payload.tracker_id === offer!.suggestion_id,
+      )
+      quality('tracker: the reading (3) waits on the offer', reading?.payload.value === 3, reading)
       answerQuestion(p.db, offer!.id, 'Yes', p.deps)
       await p.sync()
       const s = suggestion(p, offer!.suggestion_id!)
@@ -817,6 +991,18 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         .where(eq(trackers.id, String(s?.applied_entity_id)))
         .get()
       expect(tracker).toBeTruthy()
+      if (reading) {
+        // Yes logged the first reading under the new tracker.
+        const logged = suggestion(p, reading.id)
+        expect(logged?.status).toBe('accepted')
+        expect(
+          p.db
+            .select()
+            .from(trackerEntries)
+            .where(eq(trackerEntries.id, String(logged?.applied_entity_id)))
+            .get()?.value,
+        ).toBe(3)
+      }
       record({ type: 'note', name: 'tracker created', tracker: tracker?.name, offer: offer!.text })
 
       const second = await captureAndProcess(p, 'tracker reading', `${tracker!.name} 4 today`)
@@ -984,13 +1170,14 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
   )
 
   test(
-    'a recording with no speech fails as transcription_failed and keeps the draft as text',
+    'a recording with no speech (and no usable draft) fails at once as transcription_no_speech',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
       const tone = toneWav(3)
       const path = join(dir, 'tone.wav')
       writeFileSync(path, tone)
-      const draft = 'note to self about the garden'
+      // Three words: too little to stand in for a transcript (decision 2), so it fails.
+      const draft = 'garden note maybe'
       const id = captureVoiceBullet(
         p.db,
         {
@@ -1012,22 +1199,143 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         },
         p.deps,
       )
-      await syncUntil(p, id, (b) => b.server_error_code !== null || isSettled(b), CAPTURE_TIMEOUT)
+      const t0 = Date.now()
+      const seen = await syncUntil(p, id, isSettled, CAPTURE_TIMEOUT)
       const b = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
       record({
         type: 'no_speech',
         error: b.server_error_code,
         message: b.server_error_message,
+        status: b.server_status,
+        attempts: b.server_attempts,
+        ms: Date.now() - t0,
+        transitions: seen.seen,
         text: b.text,
       })
-      expect(b.server_error_code).toBe('transcription_failed')
+      // Decision 1: no retries, straight to failed with the no-speech code.
+      expect(b.server_status).toBe('failed')
+      expect(b.server_error_code).toBe('transcription_no_speech')
+      expect(b.server_attempts).toBe(1)
       expect(b.text).toBe(draft)
     },
     CAPTURE_TIMEOUT,
   )
 
   test(
-    'damaged recording: transcription fails with an error code; bullet.retry re-queues it',
+    'no speech, but a real phone draft: the draft becomes the text and is processed',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
+      const tone = toneWav(3)
+      const path = join(dir, 'tone.wav')
+      writeFileSync(path, tone)
+      const draft = "Remind me to water the garden tomorrow, it's been dry."
+      const id = captureVoiceBullet(
+        p.db,
+        {
+          text: draft,
+          textEditedByUser: false,
+          audio: {
+            localPath: path,
+            mimeType: 'audio/wav',
+            durationMs: wavDurationMs(tone),
+            sizeBytes: tone.length,
+            sha256: sha256(tone),
+          },
+          draft: {
+            text: draft,
+            engine: 'apple-sfspeechrecognizer',
+            model: null,
+            languages: ['en-US'],
+          },
+        },
+        p.deps,
+      )
+      const t0 = Date.now()
+      const seen = await syncUntil(p, id, isSettled, CAPTURE_TIMEOUT)
+      const b = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
+      const things = p.db
+        .select()
+        .from(suggestions)
+        .where(and(eq(suggestions.source_bullet_id, id), eq(suggestions.state, 'active')))
+        .all()
+      record({
+        type: 'draft_fallback',
+        status: b.server_status,
+        text_from_draft: b.text_from_draft,
+        ms: Date.now() - t0,
+        transitions: seen.seen,
+        things: things.map((s) => ({ kind: s.target_kind, tier: s.tier, payload: s.payload })),
+      })
+      expect(b.server_status).toMatch(/^(processed|needs_review)$/)
+      expect(b.text_from_draft).toBe(true)
+      expect(b.text).toBe(draft)
+      expect(b.server_error_code).toBeNull()
+      quality(
+        'draft fallback: the draft produced a task',
+        things.some((s) => s.target_kind === 'task'),
+        things.map((s) => s.payload),
+      )
+      // "Retry transcription": Whisper runs again, still no speech, the capture stays as it was.
+      retryBullet(p.db, id, p.deps)
+      const again = await syncUntil(
+        p,
+        id,
+        (x) => x.server_attempts >= 2 && isSettled(x),
+        CAPTURE_TIMEOUT,
+      )
+      record({ type: 'draft_fallback_retry', transitions: again.seen })
+      const r = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
+      expect(r.text_from_draft).toBe(true)
+      expect(r.server_status).toMatch(/^(processed|needs_review)$/)
+    },
+    2 * CAPTURE_TIMEOUT,
+  )
+
+  test(
+    'digital silence ("Thank you." from Whisper) with no draft fails at once as no speech',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
+      const silence = toneWav(3, 0)
+      const path = join(dir, 'silence.wav')
+      writeFileSync(path, silence)
+      const id = captureVoiceBullet(
+        p.db,
+        {
+          text: 'Voice note, 0:03',
+          textEditedByUser: false,
+          audio: {
+            localPath: path,
+            mimeType: 'audio/wav',
+            durationMs: wavDurationMs(silence),
+            sizeBytes: silence.length,
+            sha256: sha256(silence),
+          },
+          draft: { text: '', engine: 'apple-sfspeechrecognizer', model: null, languages: [] },
+        },
+        p.deps,
+      )
+      const t0 = Date.now()
+      const seen = await syncUntil(p, id, isSettled, CAPTURE_TIMEOUT)
+      const b = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
+      record({
+        type: 'silence',
+        status: b.server_status,
+        error: b.server_error_code,
+        message: b.server_error_message,
+        attempts: b.server_attempts,
+        ms: Date.now() - t0,
+        transitions: seen.seen,
+      })
+      expect(b.server_status).toBe('failed')
+      expect(b.server_error_code).toBe('transcription_no_speech')
+      expect(b.server_attempts).toBe(1)
+      expect(b.text).toBe('Voice note, 0:03')
+    },
+    CAPTURE_TIMEOUT,
+  )
+
+  test(
+    'damaged recording: fails at once as transcription_failed; bullet.retry re-queues it',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'bullet-e2e-'))
       const junk = new Uint8Array(40_000).map((_, i) => (i * 7919 + 13) % 251)
@@ -1049,26 +1357,34 @@ describe.skipIf(!enabled)('slice 1 end to end (real home server)', () => {
         },
         p.deps,
       )
-      // First attempt: an error code and an automatic retry scheduled.
-      const first = await syncUntil(p, id, (b) => b.server_error_code !== null, CAPTURE_TIMEOUT)
+      // Decision 1: a recording that can't be decoded fails on the first attempt, no backoff.
+      const t0 = Date.now()
+      const first = await syncUntil(p, id, (b) => b.server_status === 'failed', CAPTURE_TIMEOUT)
       const b = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
       record({
         type: 'transcription_failure',
         error: b.server_error_code,
         message: b.server_error_message,
         status: b.server_status,
+        attempts: b.server_attempts,
+        ms: Date.now() - t0,
         transitions: first.seen,
       })
       expect(b.server_error_code).toBe('transcription_failed')
-      if (!E2E.slow) return
-      // Out of attempts (≈ 10 s + 1 min + 6 min + 15 min): failed, the recording kept.
-      await syncUntil(p, id, (x) => x.server_status === 'failed', 30 * MIN, 5_000)
+      expect(b.server_attempts).toBe(1)
       retryBullet(p.db, id, p.deps)
-      const retried = await syncUntil(p, id, (x) => x.server_status !== 'failed', 2 * MIN)
+      // The retry runs again (a second attempt), and fails again at once.
+      const retried = await syncUntil(
+        p,
+        id,
+        (x) => x.server_attempts >= 2 && x.server_status === 'failed',
+        2 * MIN,
+      )
       record({ type: 'retry', transitions: retried.seen })
       const r = p.db.select().from(bullets).where(eq(bullets.id, id)).get()!
-      expect(r.server_status).toMatch(/^(synced|transcribing)$/)
+      expect(r.server_status).toBe('failed')
+      expect(retried.seen.length).toBeGreaterThan(0)
     },
-    40 * MIN,
+    5 * MIN,
   )
 })

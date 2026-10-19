@@ -12,10 +12,13 @@
  * Matching: first by identity (kind + operation + target + normalised title/name), then any left
  * over pair up by kind + operation + target in order — so a small rewording of the bullet keeps
  * the task the user already accepted (and edited) instead of replacing it.
+ *
+ * A reading that depends on a proposed tracker (`dependsOn`) gets that tracker suggestion's id as
+ * its `payload.tracker_id`: ids are settled for every draft before anything is written.
  */
 
 import { randomUUID } from 'node:crypto'
-import { type ResolvedSuggestion, withProvenance } from '@bullet/engine'
+import { readingAsActivity, type ResolvedSuggestion, withProvenance } from '@bullet/engine'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { suggestions } from '../db/schema'
@@ -75,10 +78,55 @@ export interface ReconcileResult {
 /** A thing draft plus the thought it came from (null for drafts without one). */
 export type ThingDraftWithThought = ResolvedSuggestion & { thoughtId?: string | null }
 
+/**
+ * A declined tracker offer never comes back: re-processing finds it again, keeps it rejected, and
+ * its readings are what "Not now" made of them, activities with their value.
+ */
+function declinedReadingsAsActivities(
+  drafts: ThingDraftWithThought[],
+  existing: SuggestionRow[],
+): ThingDraftWithThought[] {
+  // Pair the tracker offers the way reconcile pairs everything (identity, then slot), so a
+  // re-processing that renamed the tracker still finds the offer that was declined.
+  const pool = existing.filter((s) => s.target_kind === 'tracker')
+  const pairedWith = new Map<number, SuggestionRow>()
+  const take = (pred: (s: SuggestionRow) => boolean) => {
+    const i = pool.findIndex(pred)
+    return i < 0 ? undefined : pool.splice(i, 1)[0]
+  }
+  const offers = [...drafts.entries()].filter(([, d]) => d.target_kind === 'tracker')
+  const later: number[] = []
+  for (const [n, d] of offers) {
+    const hit = take((s) => identityKey(s) === identityKey(d))
+    if (hit) pairedWith.set(n, hit)
+    else later.push(n)
+  }
+  for (const n of later) {
+    const d = drafts[n] as ThingDraftWithThought
+    const hit = take((s) => slotKey(s) === slotKey(d))
+    if (hit) pairedWith.set(n, hit)
+  }
+  return drafts.map((d) => {
+    const offer = d.dependsOn === undefined ? undefined : drafts[d.dependsOn]
+    if (!offer || offer.target_kind !== 'tracker' || d.dependsOn === undefined) return d
+    const declined = pairedWith.get(d.dependsOn)?.status === 'rejected'
+    if (!declined) return d
+    const { dependsOn, ...rest } = d
+    void dependsOn
+    return {
+      ...rest,
+      target_kind: 'activity',
+      operation: 'create',
+      target_id: null,
+      payload: readingAsActivity(d.payload, offer.payload),
+    }
+  })
+}
+
 export function reconcileSuggestions(
   db: Db,
   bullet: { id: string; owner_id: string },
-  drafts: ThingDraftWithThought[],
+  incoming: ThingDraftWithThought[],
   now: number,
 ): ReconcileResult {
   const existing = db
@@ -86,6 +134,7 @@ export function reconcileSuggestions(
     .from(suggestions)
     .where(and(eq(suggestions.source_bullet_id, bullet.id), eq(suggestions.state, 'active')))
     .all()
+  const drafts = declinedReadingsAsActivities(incoming, existing)
 
   const ids: string[] = Array.from({ length: drafts.length }, () => '')
   const pairs: [SuggestionRow, ThingDraftWithThought, number][] = []
@@ -107,12 +156,19 @@ export function reconcileSuggestions(
     if (hit) pairs.push([hit, d, n])
     else added.push(n)
   }
+  for (const [s, , n] of pairs) ids[n] = s.id
+  for (const n of added) ids[n] = randomUUID()
+  // A reading of a proposed tracker logs under that suggestion's id (the tracker's id once created).
+  const linked = (d: ThingDraftWithThought): ThingDraftWithThought =>
+    d.dependsOn === undefined || !ids[d.dependsOn]
+      ? d
+      : { ...d, payload: { ...d.payload, tracker_id: ids[d.dependsOn] } }
 
   // Retire first, so an undo can't trip over a suggestion about to be re-added.
   for (const s of pool) retireSuggestion(db, s, now)
 
-  for (const [s, d, n] of pairs) {
-    ids[n] = s.id
+  for (const [s, raw] of pairs) {
+    const d = linked(raw)
     if (s.status !== 'pending') continue
     const thoughtId = d.thoughtId ?? null
     const payload = withProvenance(d, bullet.owner_id, bullet.id, thoughtId).payload
@@ -129,11 +185,11 @@ export function reconcileSuggestions(
   }
 
   for (const n of added) {
-    const d = drafts[n] as ThingDraftWithThought
+    const d = linked(drafts[n] as ThingDraftWithThought)
     const insert = withProvenance(d, bullet.owner_id, bullet.id, d.thoughtId ?? null)
     const row: SuggestionRow = {
       ...insert,
-      id: randomUUID(),
+      id: ids[n] as string,
       created_at: now,
       updated_at: now,
       state: 'active',
@@ -142,7 +198,6 @@ export function reconcileSuggestions(
     }
     db.insert(suggestions).values(row).run()
     touch(db, bullet.owner_id, 'suggestions', row.id)
-    ids[n] = row.id
     autoApply(db, row, now)
   }
 

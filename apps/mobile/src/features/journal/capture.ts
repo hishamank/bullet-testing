@@ -8,9 +8,11 @@ import {
   type BulletDeleteMode,
   type BulletProcessingStatus,
   displayStatus,
+  type ProcessingErrorCode,
   type TargetKind,
   type ThoughtKind,
   thoughtKindSchema,
+  type TrackerConfig,
 } from '@bullet/core'
 import { and, eq } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
@@ -54,9 +56,15 @@ export interface CaptureDetail {
   capturedAt: number
   timezone: string
   textEditedByUser: boolean
+  /** No usable home transcript: the text is this phone's live draft. */
+  textFromDraft: boolean
+  /** Offer "Retry transcription" (a draft capture the server has finished with). */
+  retryTranscription: boolean
   status: BulletProcessingStatus
   /** A retryable failure's reason (null for a recording that can't be transcribed). */
   errorReason: string | null
+  /** The server's last error code (tells "no speech" from "couldn't read the audio"). */
+  errorCode: ProcessingErrorCode | null
   /** The recording can't be transcribed: `ask` (Write it down / Keep as audio) or `kept`. */
   transcriptionFailure: TranscriptionFailure
   audio: AudioRow | null
@@ -117,12 +125,20 @@ export function loadCaptureDetail(
         unknown
       > | null
     },
-    tracker: (trackerId: string) =>
-      db
-        .select({ name: trackers.name, config: trackers.config })
-        .from(trackers)
-        .where(eq(trackers.id, trackerId))
-        .get() ?? null,
+    tracker: (trackerId: string) => {
+      const t =
+        db
+          .select({ name: trackers.name, config: trackers.config })
+          .from(trackers)
+          .where(eq(trackers.id, trackerId))
+          .get() ?? null
+      if (t) return t
+      // A reading of a tracker that is only proposed so far ("Start tracking Sleep?").
+      const proposed = ss.find((x) => x.id === trackerId && x.target_kind === 'tracker')
+      return proposed && typeof proposed.payload.name === 'string'
+        ? { name: proposed.payload.name, config: proposed.payload.config as TrackerConfig }
+        : null
+    },
   }
   const failure = transcriptionFailure(
     status,
@@ -136,8 +152,15 @@ export function loadCaptureDetail(
     capturedAt: b.captured_at,
     timezone: b.timezone,
     textEditedByUser: b.text_edited_by_user,
+    textFromDraft: b.text_from_draft,
+    retryTranscription:
+      b.source === 'voice' &&
+      b.text_from_draft &&
+      !b.text_edited_by_user &&
+      (status === 'processed' || status === 'needs_review'),
     status,
     errorReason: status === 'failed' && failure === null ? errorReason(b.server_error_code) : null,
+    errorCode: b.server_error_code ?? null,
     transcriptionFailure: failure,
     audio,
     audioReadError: audio ? unreadableRecordings(db, [audio.id]).has(audio.id) : false,
@@ -171,6 +194,9 @@ function undoNotices(
 
 export type TranscriptTab = 'edit' | 'server' | 'draft'
 
+/** The label on a capture whose home transcript found no usable speech (decision 2). */
+export const FROM_DRAFT_TEXT = "From the phone's live draft"
+
 export interface TranscriptView {
   /** Tabs to show; empty when there is nothing to switch between. */
   tabs: { id: TranscriptTab; label: string }[]
@@ -192,7 +218,8 @@ function lastOf(ts: readonly TranscriptRow[], kind: TranscriptRow['kind']): Tran
  * stay viewable.
  */
 export function transcriptView(
-  c: Pick<CaptureDetail, 'text' | 'source' | 'textEditedByUser' | 'transcripts'>,
+  c: Pick<CaptureDetail, 'text' | 'source' | 'textEditedByUser' | 'transcripts'> &
+    Partial<Pick<CaptureDetail, 'textFromDraft'>>,
 ): TranscriptView {
   const server = lastOf(c.transcripts, 'server')
   const draft = lastOf(c.transcripts, 'device_draft')
@@ -203,6 +230,7 @@ export function transcriptView(
   if (draft) tabs.push({ id: 'draft', label: 'Phone draft' })
   let note: string | null = null
   if (edited) note = 'You edited the text, so your words are kept.'
+  else if (c.source === 'voice' && c.textFromDraft) note = FROM_DRAFT_TEXT
   else if (c.source === 'voice' && !server) {
     note = 'Live draft. Your recording is kept and transcribed again at home.'
   }

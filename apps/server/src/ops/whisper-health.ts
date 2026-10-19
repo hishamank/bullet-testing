@@ -48,7 +48,8 @@ export function watchConversionFailures(
           if (fresh && streak % threshold === 0) {
             opts.warn(
               `${streak} recordings in a row failed ffmpeg conversion in whisper-server. ` +
-                "Check that ffmpeg is on whisper-server's PATH and that its --tmp-dir is writable.",
+                "Check that ffmpeg is on whisper-server's PATH and that its --tmp-dir is writable. " +
+                'These voice notes failed at once (no automatic retry): Retry them once it is fixed.',
             )
           }
         }

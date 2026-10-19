@@ -263,7 +263,8 @@ describe("segmentation keeps the user's own words", () => {
     const out = await processCapture({ llm, config }, { text, ...CTX }, EMPTY)
     expect(body(llm.chatCalls[1] as LlmChatRequest)).toBe(text)
     expect(out.things[0]?.payload).toMatchObject({
-      title: text,
+      // The user's words, without the lead-in and the day (it is the due date).
+      title: '2a3mol call la mama',
       due_at: Date.UTC(2026, 9, 15, 22), // Friday 00:00 in Paris
     })
     expect(out.questions).toEqual([])
@@ -288,8 +289,8 @@ describe('processCapture: capture → thoughts → things', () => {
     // 1 segmentation call + extraction for the task and the to_check thoughts only.
     expect(llm.chatCalls).toHaveLength(3)
     expect(out.things.map((t) => [t.thoughtPosition, t.target_kind, t.payload.title])).toEqual([
-      [1, 'task', 'call the landlord tomorrow'],
-      [3, 'task', 'check if the lease ends in March'],
+      [1, 'task', 'Call the landlord'],
+      [3, 'task', 'Check if the lease ends in March'],
     ])
   })
 
@@ -302,7 +303,7 @@ describe('processCapture: capture → thoughts → things', () => {
     expect(out.questions).toEqual([
       {
         topic: 'date',
-        text: 'Which Thursday for "dentist"?',
+        text: 'Which Thursday for "Dentist"?',
         options: ['Today', 'Next Thursday'],
         thoughtPosition: 0,
         thingIndex: 0,
@@ -333,31 +334,109 @@ describe('processCapture: capture → thoughts → things', () => {
       ],
     )
     const out = await processCapture({ llm, config }, { text: 'slept 6 hours', ...CTX }, EMPTY)
-    // The reading stays an activity; the offer is a tracker definition the question is about.
-    expect(out.things.map((t) => [t.target_kind, t.tier])).toEqual([
-      ['activity', 'suggest'],
-      ['tracker', expect.not.stringMatching(/^auto$/)],
+    // Decision 3: the tracker offer (never auto), then the reading as an entry depending on it.
+    expect(out.things.map((t) => [t.target_kind, t.operation, t.tier])).toEqual([
+      ['tracker', 'create', 'suggest'],
+      ['tracker_entry', 'create', 'suggest'],
     ])
-    expect(out.things[1]?.payload).toEqual({
-      name: 'sleep',
+    expect(out.things[0]?.payload).toEqual({
+      name: 'Sleep',
       input_type: 'number',
-      config: { input_type: 'number' },
+      config: { input_type: 'number', unit: 'h' },
     })
+    expect(out.things[1]).toMatchObject({ payload: { value: 6 }, dependsOn: 0 })
     expect(out.questions[0]).toMatchObject({
       topic: 'new_tracker',
-      text: 'Start tracking "sleep"?',
+      text: 'Start tracking Sleep?',
       options: ['Yes', 'No'],
-      thingIndex: 1,
+      thingIndex: 0,
     })
+  })
+
+  test('two readings of one new tracker in a capture share one offer', async () => {
+    const llm = scripted(
+      () => [
+        { text: 'mood 2 sur 5 ce matin', kind: 'tracker' },
+        { text: 'call mom', kind: 'task' },
+        { text: 'mood 4/5 now', kind: 'tracker' },
+      ],
+      (t) =>
+        t === 'call mom'
+          ? [{ fields: { title: 'call mom' } }]
+          : [{ kind: 'tracker_entry', orientation: 'happened', fields: { tracker: 'mood' } }],
+    )
+    const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
+    expect(
+      out.things.map((t) => [t.target_kind, t.payload.value ?? t.payload.name, t.dependsOn]),
+    ).toEqual([
+      ['tracker', 'Mood', undefined],
+      ['tracker_entry', 2, 0],
+      ['task', undefined, undefined],
+      ['tracker_entry', 4, 0],
+    ])
+    expect(out.questions.filter((q) => q.topic === 'new_tracker')).toHaveLength(1)
+  })
+
+  test('a "note" that reads an existing tracker ("Meditation 4 today") is extracted', async () => {
+    const llm = scripted(
+      () => [
+        { text: 'Meditation 4 today', kind: 'note' },
+        { text: 'the meditation app is nice', kind: 'note' },
+      ],
+      () => [{ kind: 'tracker_entry', orientation: 'happened', fields: { value: 4 } }],
+    )
+    const snapshot = {
+      trackers: [
+        {
+          id: 't-med',
+          name: 'Meditation',
+          input_type: 'number' as const,
+          config: { input_type: 'number' as const, unit: 'min' },
+        },
+      ],
+      openTasks: [],
+    }
+    const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, snapshot)
+    expect(out.thoughts.map((t) => t.kind)).toEqual(['tracker', 'note'])
+    expect(out.things).toEqual([
+      expect.objectContaining({
+        target_kind: 'tracker_entry',
+        target_id: 't-med',
+        payload: expect.objectContaining({ value: 4 }),
+      }),
+    ])
+  })
+
+  test('a reprocessed thought keeps its previous kind when its text is unchanged', async () => {
+    const llm = scripted(
+      () => [
+        { text: 'Need to check whether the insurance covers it', kind: 'task' },
+        { text: 'new idea', kind: 'idea' },
+      ],
+      () => [],
+    )
+    const out = await processCapture(
+      { llm, config },
+      {
+        text: 'x',
+        ...CTX,
+        priorThoughts: [
+          { text: 'need to check whether the insurance  covers it', kind: 'to_check' },
+        ],
+      },
+      EMPTY,
+    )
+    expect(out.thoughts.map((t) => t.kind)).toEqual(['to_check', 'idea'])
   })
 
   test('at most 3 questions per capture, date questions first', async () => {
     const llm = scripted(
-      () => Array.from({ length: 5 }, (_, i) => ({ text: `reading ${i}`, kind: 'tracker' })),
+      () =>
+        ['mood', 'sleep', 'water', 'weight', 'energy'].map((t) => ({ text: t, kind: 'tracker' })),
       (t) => [{ kind: 'tracker_entry', orientation: 'happened', fields: { name: t, value: 1 } }],
     )
     const out = await processCapture({ llm, config }, { text: 'x', ...CTX }, EMPTY)
-    // Each reading: an activity plus a tracker offer.
+    // Each reading: a tracker offer plus the reading.
     expect(out.things).toHaveLength(10)
     expect(out.questions).toHaveLength(3)
   })
@@ -374,7 +453,7 @@ describe('processCapture: duplicate candidates within one thought', () => {
     expect(out.things).toHaveLength(1)
     expect(out.things[0]).toMatchObject({
       target_kind: 'task',
-      payload: { title: 'take the car to the garage' },
+      payload: { title: 'Take the car to the garage' },
     })
     expect(out.duplicates).toBe(1)
   })

@@ -140,12 +140,17 @@ function bestMatch<T>(items: T[], key: keyof T & string, queries: string[]): Mat
   return best
 }
 
-/** Best matching tracker DEFINITION for a candidate (by name), if any. */
+/**
+ * Best matching tracker DEFINITION for a candidate (by name), if any. `extraQueries` adds names
+ * derived by the resolver (a reading's tracker noun: "Slept 6 hours" → "Sleep").
+ */
 export function matchTracker(
   candidate: Candidate,
   trackers: SnapshotTracker[],
+  extraQueries: string[] = [],
 ): Match<SnapshotTracker> | undefined {
-  return bestMatch(trackers, 'name', candidateQueries(candidate))
+  const queries = [...new Set([...candidateQueries(candidate), ...extraQueries])]
+  return bestMatch(trackers, 'name', queries)
 }
 
 /** Best matching OPEN task for a candidate (by title), if any. */

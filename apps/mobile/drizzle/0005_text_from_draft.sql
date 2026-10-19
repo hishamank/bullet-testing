@@ -1,0 +1,1 @@
+ALTER TABLE `bullets` ADD `text_from_draft` integer DEFAULT false NOT NULL;

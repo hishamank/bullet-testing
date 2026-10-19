@@ -38,15 +38,18 @@ export type ServerBulletProcessingStatus = z.infer<typeof serverBulletProcessing
 
 /**
  * Why processing failed. Every failure is retryable by the user; the server also retries the
- * transient ones automatically with backoff before giving up.
+ * transient ones automatically with backoff before giving up. The two PERMANENT transcription
+ * failures (`transcription_failed`, `transcription_no_speech`) are not retried automatically: the
+ * same recording would fail the same way, so the bullet goes straight to `failed`.
  *
  *  - llm_unavailable — the home server could not reach the model (llama-server down, HTTP error).
  *  - llm_timeout     — the model did not answer in time.
  *  - llm_bad_output  — the model answered with something unusable, even after a repair retry.
  *  - transcription_unavailable — the speech-to-text engine (whisper.cpp) is down/unreachable.
  *  - transcription_timeout     — transcription did not finish in time.
- *  - transcription_failed      — the engine could not transcribe the audio (corrupt/unsupported
- *                                audio, or no speech found).
+ *  - transcription_failed      — the recording could not be decoded (corrupt/unsupported audio).
+ *  - transcription_no_speech   — the recording was read but holds no speech (silence, a tone,
+ *                                zero-length audio, or only Whisper's silence hallucinations).
  *  - internal        — any other server error.
  */
 export const processingErrorCodeSchema = z.enum([
@@ -56,8 +59,19 @@ export const processingErrorCodeSchema = z.enum([
   'transcription_unavailable',
   'transcription_timeout',
   'transcription_failed',
+  'transcription_no_speech',
   'internal',
 ])
+
+/** Transcription failures that retrying cannot fix: the bullet fails at once (no backoff). */
+export const PERMANENT_TRANSCRIPTION_ERRORS: readonly ProcessingErrorCode[] = [
+  'transcription_failed',
+  'transcription_no_speech',
+]
+
+/** Is this the recording's fault for good (corrupt, or no speech), rather than a passing outage? */
+export const isPermanentTranscriptionError = (code: ProcessingErrorCode | null): boolean =>
+  code !== null && PERMANENT_TRANSCRIPTION_ERRORS.includes(code)
 export type ProcessingErrorCode = z.infer<typeof processingErrorCodeSchema>
 
 export const processingErrorSchema = z.object({

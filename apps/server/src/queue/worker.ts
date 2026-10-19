@@ -53,7 +53,6 @@ export function createWorker(opts: WorkerOptions): Worker {
       ? withTranscriberTimeout(opts.transcriber, opts.transcriberTimeoutMs ?? 10 * 60_000)
       : undefined,
     audioStore: opts.audioStore,
-    maxAttempts: (opts.retry ?? DEFAULT_RETRY_POLICY).maxAttempts,
   }
   const canTranscribe = deps.transcriber !== undefined && deps.audioStore !== undefined
   let timer: ReturnType<typeof setInterval> | undefined

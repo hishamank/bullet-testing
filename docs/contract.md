@@ -70,6 +70,12 @@ Each bullet has exactly **one** of these states.
 - **Transcribed** (`transcribing → processing`): the server's transcript replaces the draft
   text, **unless you edited the draft** before sending (or later). Then your words stay and the
   server's transcript is only kept alongside. Either way the bullet is then read as usual.
+- **No usable transcript, but a real draft** (`transcribing → processing`): when the recording
+  has no speech the server can use (or can't be read) but the phone's live draft has real content
+  (more than three words, not just "Thank you."), the draft stays the text, the bullet is marked
+  **from the phone's live draft**, and it is read as usual. Whisper's well-known silence phrases
+  ("Thank you.", "Thanks for watching", "Merci.", "شكرا") count as no speech on a short recording
+  or when the draft disagrees. With no usable draft either, the bullet fails at once (below).
 - **Done** (`processing → processed` or `needs_review`): `needs_review` if at least one suggestion
   needs a decision, otherwise `processed`.
 - **All reviewed** (`needs_review → processed`): you accepted or dismissed every waiting
@@ -77,10 +83,17 @@ Each bullet has exactly **one** of these states.
 - **Failed** (`transcribing → failed` or `processing → failed`): the server tried several times
   and gave up (the transcriber or the AI was down, too slow, or gave nonsense). A failed bullet
   is **never lost**: the text and the recording are safe, only the transcript or extraction is
-  missing.
-- **Retry** (`failed → synced`): you tapped Retry.
-- **Automatic retry** (`transcribing`/`processing → synced`): a temporary problem. The server will try again by
-  itself shortly. The bullet shows how many attempts so far and when the next one is due.
+  missing. A recording that **can't** be transcribed (no speech in it, or audio that can't be
+  read) fails **at once**, without automatic retries: trying the same recording again would give
+  the same answer.
+- **Retry** (`failed → synced`): you tapped Retry. On a capture **from the phone's live draft**,
+  the same op is **Retry transcription** (`processed`/`needs_review → synced`): the server runs
+  Whisper again. A good transcript then replaces the draft text (unless you edited it) and the
+  capture is read again, keeping what still matches; still no speech leaves it as it was.
+- **Automatic retry** (`transcribing`/`processing → synced`): a temporary problem (the
+  transcriber or the AI unreachable, too slow, or busy). The server will try again by itself
+  shortly, up to 5 attempts. The bullet shows how many attempts so far and when the next one is
+  due.
 - **Edit** (`processed`/`needs_review`/`failed → synced`): you changed the text, so it's read
   again (see §4).
 
@@ -90,6 +103,16 @@ Each bullet has exactly **one** of these states.
   that version, **whatever its previous state was**. So an edited `processed` bullet goes back to
   `saved_local`, then `synced`, and so on.
 - Everything else shows the state the server last reported.
+- **Processing feedback** for the latest capture is one quiet, static line under the mic (no
+  spinner, no notification), from the capture's own status and time:
+  - while it is `saved_local` (and the server is reachable), `synced`, `transcribing` or
+    `processing`: "Saved. Sorting this out in the background.";
+  - more than 5 minutes after it was captured and still on its way: "Still sorting. Your capture
+    is safe.";
+  - done, with things found: "N things found" (taps through to the capture). A reading counts
+    with its new tracker as one thing; dismissed ones don't count. Shown for an hour.
+    Failed captures, recordings that can't be transcribed and offline captures keep their own
+    lines, which come first.
 - The phone keeps working fully offline: capture, edit, delete, accept/dismiss suggestions, edit
   tasks/events/readings, resolve thoughts, answer questions. It all queues up and goes out on the
   next sync.
@@ -106,8 +129,18 @@ Every bullet carries:
   - `llm_bad_output`: the AI's answer was unusable.
   - `transcription_unavailable`: the server's transcriber isn't running or isn't reachable.
   - `transcription_timeout`: transcribing took too long.
-  - `transcription_failed`: the recording couldn't be transcribed (damaged audio, or no speech).
+  - `transcription_failed`: the recording couldn't be read (damaged or undecodable audio).
+    Permanent: no automatic retry.
+  - `transcription_no_speech`: the recording was read but has no speech in it (silence, a tone,
+    zero-length audio, or only Whisper's silence phrases such as "Thank you."). Permanent: no
+    automatic retry. _Added 2026-10-19._
   - `internal`: something else went wrong on the server.
+
+  For the two permanent ones the phone offers **Write it down** / **Keep as audio** instead of
+  Retry, worded "No speech found in this recording" (`transcription_no_speech`) or "Couldn't
+  transcribe this recording" (`transcription_failed`). After "Write it down" the server reads
+  the user's words right away. `bullet.retry` still works on them (it tries the recording once
+  more).
 
   A `failed` bullet always has an error. A `synced` bullet may also have one while an automatic
   retry is waiting ("Retrying…").
@@ -116,6 +149,9 @@ Every bullet carries:
 - **Source:** `text` or `voice`, plus **when** it was captured and the phone's **time zone**
   then. "Tomorrow 3pm" always means 3pm where you were when you said it.
 - **Edited by you:** whether you changed the text by hand. Server transcripts never overwrite it.
+- **From the phone's live draft** (`text_from_draft`): the server found no usable speech, so the
+  text is the phone's draft. Show "From the phone's live draft" and offer **Retry
+  transcription**. Cleared by a good transcript or by your edit. _Added 2026-10-19._
 
 ## 2b. Voice notes
 
@@ -130,7 +166,9 @@ Every bullet carries:
   - the **server transcript** (Whisper), which understands mixed English, Lebanese Arabic and
     French. It records which engine and model made it and the languages it heard.
 - The bullet's text is the server transcript once it exists, unless you edited the text yourself.
-  The UI can always show both transcripts and play the recording.
+  When there is no usable server transcript, the text stays the phone's draft (if it has real
+  content) and the bullet says so (`text_from_draft`). The UI can always show both transcripts
+  and play the recording.
 
 ## 2c. Thoughts
 
@@ -171,7 +209,7 @@ survives the capture being processed again.
 ## 2d. Clarifying questions
 
 Sometimes a thing is ambiguous. The app may then ask a **clarifying question**: short, concrete,
-about one thing. Examples: "Which Thursday: today or next week?", "Start tracking sleep?".
+about one thing. Examples: "Which Thursday: today or next week?", "Start tracking Sleep?".
 
 - At most **3** per capture.
 - Each has a **topic** (`date`, `new_tracker` or `other`), the question text, up to 4 quick
@@ -184,7 +222,10 @@ about one thing. Examples: "Which Thursday: today or next week?", "Start trackin
     task or event the question is about (keeping its time of day), and it is **applied**. It then
     shows as applied, with **Undo**, like anything done for you.
   - **"Start tracking X?"**: **Yes** creates the tracker (your tap is the OK a new tracker always
-    needs). **No** dismisses that suggestion. The reading you said stays as an activity either way.
+    needs) and logs the reading you gave with it. **No** declines the tracker for good (it is
+    never offered again for that capture) and keeps the reading as a plain activity with its
+    value ("Slept · 6 h", no tracker), applied as a record. The Inbox shows the same decision on
+    the tracker's own card (see §3), and deciding there answers this question too.
 - **Or answer with a capture** (typed or spoken) that points at the question.
 - Either way the question becomes `answered` (with the option you tapped, if any).
 - There are no open-ended or reflective questions in slice 1. Those come later, are optional, and
@@ -198,7 +239,26 @@ event). Each suggestion is one proposed change:
 - **Kind:** `task`, `event`, `tracker` (a new thing to track), `tracker_entry` (a reading such as
   mood 4), or `activity` (something you did).
 - **Operation:** `create` (make a new one), `append` (log under an existing tracker), or `update`
-  (change something that exists, such as marking a task done).
+  (change something that exists, such as marking a task done). A `tracker_entry` **`create`** is
+  a reading of a tracker that is itself only proposed: its `payload.tracker_id` is that `tracker`
+  suggestion's id (which becomes the tracker's id once created). It is decided **with** the
+  tracker, never on its own: accepting the tracker logs it, "Not now" turns it into an applied
+  activity with the value (the suggestion's kind becomes `activity`), undoing the tracker undoes
+  it. _Added 2026-10-19._
+- **The same new tracker from two captures.** Each capture offers it on its own, and deciding one
+  never decides the other until a tracker of that name exists. Once one is accepted (on any
+  phone), every other open offer of that name is **linked** to it: it shows as `accepted` with
+  `applied_entity_id` = the existing tracker (it created nothing), its question is answered, and
+  its reading becomes an ordinary pending reading of that tracker ("Log 7 h to Sleep?"), one per
+  capture. Accepting an offer whose (edited) name matches an existing tracker links it the same
+  way rather than refusing. Undoing a linked offer never deletes the tracker. Undoing the new
+  tracker itself opens every offer linked to it again ("Start tracking Sleep?" with its reading
+  waiting on it, its question open), unless that would orphan something: it is refused
+  (`conflict`) when a reading logged with it was edited by hand, or when another capture's
+  reading is already logged to it.
+- **Declining a plain reading** ("Log 7 h to Sleep?" → dismiss) keeps no record: the reading is
+  not logged anywhere, and its words stay in the capture's thought. (Only "Not now" on a _new_
+  tracker keeps its reading as an activity.)
 - **Tier:** how sure the system is. This is what to show, rather than a percentage:
   - `auto`: applied automatically. The UI should offer **Undo**.
   - `suggest`: probably right; one tap to confirm.
@@ -213,6 +273,27 @@ Rules the design can rely on:
 - Suggestions **never expire**. Review whenever you like.
 - **New trackers are never applied automatically.** They always need your OK.
 - Readings with a value (mood 4, weight 72) and new tasks/events wait for a tap by default.
+- **A reading is never a value-less activity.** "Slept 6 hours", "meditated 20 minutes",
+  "mood 2 sur 5" always carry their value: logged under an existing tracker ("Log 6 h to
+  Sleep?"), or, for something not tracked yet, a new tracker plus the reading ("Start tracking
+  Sleep?"). A new tracker is offered only for a reading or a thing people track (sleep, mood,
+  water, a run…): "spent 2 hours at the dentist" keeps its value on an activity. A reading on
+  another scale or unit than its tracker ("mood 7/10" for a 1–5 tracker, "5 miles" for a km
+  one) is never clamped or converted: it waits as an activity with its value. Only a value-less
+  activity ("meditated", "went for a walk") may be applied automatically.
+- **Titles are a short phrase in your own words**: "Dentist" (with Thu 15:00 in the event's
+  start), "Pay the electricity bill". The date and time go into the structured fields
+  (`due_at`, `starts_at`) and out of the title, as do a reminder lead-in ("Remind me to",
+  "Need to", "Il faut") and trailing punctuation. Your spelling and language are kept: never
+  paraphrased or translated. A date phrase the app can't read yet ("this weekend") stays in the
+  title, and so does a possessive ("Prepare the slides for Monday's meeting").
+- **Tracker names are a short noun** for the measured thing, 1–2 words, Title Case, in your
+  language: "Mood", "Sleep", "Sommeil". Never the reading, its unit or its value.
+- **Inbox wording.** A new tracker: "Start tracking Mood?", its name in an editable field
+  (pre-filled), buttons **Start tracking** (accept, with the edited name as the payload's
+  `name`) and **Not now** (dismiss), and under it what each does with the reading ("Start
+  tracking logs 6 h. Not now keeps 6 h as an activity.").
+  A later reading: "Log 6 h to Sleep?".
 - Accepting a suggestion that's been waiting a while checks it against what's there **now**. If
   it no longer makes sense (say, the task it would mark done was deleted), you'll be told and
   nothing changes.
@@ -284,7 +365,8 @@ client-minted UUID `op_id`. The op types are `bullet.create` (with a client-mint
 optional `audio`: recording `id`, `mime_type`, `duration_ms`, `size_bytes`, `sha256` and the
 device `draft` transcript, optional `answers_question_id`, and optional `resolves_thought_id`),
 `bullet.edit` (`text`, `edited_at`; marks the text user-edited), `bullet.delete`
-(`mode: cascade | keep_extractions`), `bullet.retry`, `suggestion.accept` (optional edited
+(`mode: cascade | keep_extractions`), `bullet.retry` (a `failed` bullet, or a settled one with
+`text_from_draft`; anything else is a no-op), `suggestion.accept` (optional edited
 `payload`), `suggestion.reject`, `suggestion.undo`, `thought.reclassify` (`thought_id`, `kind`),
 `thought.resolve` / `thought.unresolve` (`thought_id`), `question.dismiss` (`question_id`),
 `question.answer` (`question_id`, `option`), and the manual edits: `task.update` (`task_id`,
@@ -295,7 +377,8 @@ device `draft` transcript, optional `answers_question_id`, and optional `resolve
 
 Who changed what by hand: tasks, events and tracker entries carry `user_edited_at` (null until a
 manual edit or delete). Thoughts carry `resolved_at` and `resolved_by_bullet_id`; questions
-carry `answer_option`; bullets carry `resolves_thought_id`. Older rows without them read as null.
+carry `answer_option`; bullets carry `resolves_thought_id` and `text_from_draft`. Older rows without
+them read as null (`text_from_draft`: false).
 
 Provenance: every thing and suggestion carries `source_bullet_id` (the capture) and
 `source_thought_id` (the thought; null for things made by hand or before thoughts existed).

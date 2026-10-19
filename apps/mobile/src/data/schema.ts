@@ -54,6 +54,8 @@ export const bullets = sqliteTable(
     text_edited_by_user: integer('text_edited_by_user', { mode: 'boolean' })
       .notNull()
       .default(false),
+    /** The server found no usable speech: the text is this phone's live draft. */
+    text_from_draft: integer('text_from_draft', { mode: 'boolean' }).notNull().default(false),
     answers_question_id: text('answers_question_id'),
     resolves_thought_id: text('resolves_thought_id'),
     server_status: text('server_status').$type<ServerBulletProcessingStatus>(),

@@ -46,7 +46,7 @@ export type SegmentScript = (
 
 /**
  * Answer the engine's SEGMENTATION calls (capture → thoughts) so tests can keep scripting just
- * extraction: by default the whole capture is one `task` thought (an extractable kind, so the
+ * extraction: by default the whole capture is one `activity` thought (an extractable kind, so the
  * extraction script still runs on the full text). Other calls go to `llm`.
  */
 export function withSegmentation(llm: LlmClient, segment?: SegmentScript): LlmClient {
@@ -56,7 +56,7 @@ export function withSegmentation(llm: LlmClient, segment?: SegmentScript): LlmCl
       const capture = /"""\n([\s\S]*?)\n"""/.exec(req.messages[1]?.content ?? '')?.[1] ?? ''
       const thoughts = segment
         ? segment(capture)
-        : [{ text: capture.trim(), quote: capture.trim(), kind: 'task' as const }]
+        : [{ text: capture.trim(), quote: capture.trim(), kind: 'activity' as const }]
       const content = JSON.stringify({ thoughts })
       return Promise.resolve({ message: { role: 'assistant' as const, content }, raw: {} })
     },

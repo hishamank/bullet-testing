@@ -32,8 +32,6 @@ export const E2E = {
   /** Shell commands that stop / start llama-server, for the outage test. */
   llmStop: process.env.BULLET_E2E_LLM_STOP,
   llmStart: process.env.BULLET_E2E_LLM_START,
-  /** Run tests that wait out the whole server retry policy (~23 min). */
-  slow: process.env.BULLET_E2E_SLOW === '1',
   /** JSON-lines file receiving one record per measurement / quality note. */
   report: process.env.BULLET_E2E_REPORT,
   timezone: process.env.BULLET_E2E_TZ ?? 'Asia/Beirut',

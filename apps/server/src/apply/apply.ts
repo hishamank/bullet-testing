@@ -24,9 +24,10 @@ import {
   taskSelectSchema,
   eventSelectSchema,
 } from '@bullet/core'
-import { and, eq, sql } from 'drizzle-orm'
+import { readingAsActivity, yesNoAnswer } from '@bullet/engine'
+import { and, eq, ne, sql } from 'drizzle-orm'
 import type { Db } from '../db/client'
-import { bullets, suggestions, trackers } from '../db/schema'
+import { bullets, questions, suggestions, trackerEntries, trackers } from '../db/schema'
 import { touch } from '../sync/changes'
 import { getEntity, insertEntity, patchEntity, softDeleteEntity } from './entities'
 
@@ -126,11 +127,179 @@ function applyCreate(db: Db, s: SuggestionRow, payload: Record<string, unknown>,
         ),
       )
       .get()
-    if (dup) throw new ApplyError('conflict', `a tracker named "${String(data.name)}" exists`)
+    // A tracker of that name exists (another capture's offer was accepted first, maybe on another
+    // phone): this offer is linked to it rather than refused or duplicated.
+    if (dup) return { entityId: dup.id, before: null, after: { [LINKED_TO]: dup.id } }
   }
 
   insertEntity(db, s.target_kind, { ...data, id: s.id, owner_id: s.owner_id }, now)
   return { entityId: s.id, before: null, after: null }
+}
+
+/** `applied_after` key marking a tracker offer resolved by linking it to an existing tracker. */
+const LINKED_TO = 'linked_to'
+
+/** The existing tracker a tracker offer was linked to (it created nothing), if it was. */
+function linkedTracker(s: SuggestionRow): string | null {
+  const v = s.applied_after?.[LINKED_TO]
+  return typeof v === 'string' ? v : null
+}
+
+/** A waiting reading of a linked offer becomes an ordinary reading of that tracker. */
+function repointReading(db: Db, r: SuggestionRow, trackerId: string, now: number): void {
+  updateSuggestionRow(db, r, { payload: { ...r.payload, tracker_id: trackerId } }, now)
+}
+
+/**
+ * Resolve another capture's still-open offer for a tracker that now exists: it is linked to that
+ * tracker (accepted, creating nothing), its "Start tracking …?" question is answered, and its
+ * readings wait as ordinary readings of the tracker ("Log 7 h to Sleep?"), one per capture.
+ */
+function linkOffer(db: Db, offer: SuggestionRow, trackerId: string, now: number): void {
+  const readings = dependentReadings(db, offer)
+  updateSuggestionRow(
+    db,
+    offer,
+    {
+      status: 'accepted',
+      resolved_at: now,
+      applied_entity_id: trackerId,
+      applied_at: now,
+      auto_applied: false,
+      applied_before: null,
+      applied_after: { [LINKED_TO]: trackerId },
+    },
+    now,
+  )
+  for (const r of readings) if (r.status === 'pending') repointReading(db, r, trackerId, now)
+  settleTrackerQuestions(db, offer, true, now)
+  refreshReviewStatus(db, offer.owner_id, offer.source_bullet_id, now)
+}
+
+/** Other captures' offers that were linked to this tracker (accepted, created nothing). */
+function offersLinkedTo(db: Db, ownerId: string, trackerId: string): SuggestionRow[] {
+  return db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.owner_id, ownerId),
+        eq(suggestions.target_kind, 'tracker'),
+        eq(suggestions.operation, 'create'),
+        eq(suggestions.state, 'active'),
+        eq(suggestions.applied_entity_id, trackerId),
+      ),
+    )
+    .all()
+    .filter((o) => linkedTracker(o) === trackerId)
+}
+
+/**
+ * The tracker a linked offer pointed at is being undone: the offer is open again ("Start tracking
+ * Sleep?"), its waiting readings wait on it again, and its question is asked again.
+ */
+function unlinkOffer(db: Db, offer: SuggestionRow, now: number): void {
+  const trackerId = offer.applied_entity_id
+  updateSuggestionRow(
+    db,
+    offer,
+    {
+      status: 'pending',
+      resolved_at: null,
+      applied_entity_id: null,
+      applied_at: null,
+      applied_before: null,
+      applied_after: null,
+    },
+    now,
+  )
+  const readings = db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.owner_id, offer.owner_id),
+        eq(suggestions.source_bullet_id, offer.source_bullet_id),
+        eq(suggestions.target_kind, 'tracker_entry'),
+        eq(suggestions.operation, 'create'),
+        eq(suggestions.status, 'pending'),
+        eq(suggestions.state, 'active'),
+      ),
+    )
+    .all()
+    .filter((r) => r.payload.tracker_id === trackerId)
+  for (const r of readings) repointReading(db, r, offer.id, now)
+  for (const q of db
+    .select()
+    .from(questions)
+    .where(
+      and(
+        eq(questions.owner_id, offer.owner_id),
+        eq(questions.suggestion_id, offer.id),
+        eq(questions.topic, 'new_tracker'),
+        eq(questions.status, 'answered'),
+        eq(questions.state, 'active'),
+      ),
+    )
+    .all()) {
+    db.update(questions)
+      .set({ status: 'open', answer_option: null, resolved_at: null, updated_at: now })
+      .where(eq(questions.id, q.id))
+      .run()
+    touch(db, offer.owner_id, 'questions', q.id)
+  }
+  refreshReviewStatus(db, offer.owner_id, offer.source_bullet_id, now)
+}
+
+const normName = (v: unknown) =>
+  typeof v === 'string' ? v.toLowerCase().trim().replace(/\s+/g, ' ') : ''
+
+/** Other captures' open offers of a tracker with this name. */
+function openOffersNamed(db: Db, ownerId: string, name: string, except: string): SuggestionRow[] {
+  return db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.owner_id, ownerId),
+        eq(suggestions.target_kind, 'tracker'),
+        eq(suggestions.operation, 'create'),
+        eq(suggestions.status, 'pending'),
+        eq(suggestions.state, 'active'),
+        ne(suggestions.id, except),
+      ),
+    )
+    .all()
+    .filter((o) => normName(o.payload.name) === normName(name))
+}
+
+/**
+ * A new tracker decided from its Inbox card ("Start tracking" / "Not now") answers its "Start
+ * tracking …?" question too, so it never lingers open.
+ */
+export function settleTrackerQuestions(db: Db, s: SuggestionRow, yes: boolean, now: number): void {
+  if (s.target_kind !== 'tracker') return
+  const open = db
+    .select()
+    .from(questions)
+    .where(
+      and(
+        eq(questions.owner_id, s.owner_id),
+        eq(questions.suggestion_id, s.id),
+        eq(questions.topic, 'new_tracker'),
+        eq(questions.status, 'open'),
+        eq(questions.state, 'active'),
+      ),
+    )
+    .all()
+  for (const q of open) {
+    const option = q.options.find((o) => yesNoAnswer(o) === yes) ?? null
+    db.update(questions)
+      .set({ status: 'answered', answer_option: option, resolved_at: now, updated_at: now })
+      .where(eq(questions.id, q.id))
+      .run()
+    touch(db, s.owner_id, 'questions', q.id)
+  }
 }
 
 /** Validate + revalidate a field-level update and write ONLY the patched fields. */
@@ -181,8 +350,34 @@ export interface ApplyOptions {
 }
 
 /**
+ * The pending readings that wait on a proposed tracker (`payload.tracker_id` is the tracker
+ * suggestion's id, which becomes the tracker's id when it is created).
+ */
+function dependentReadings(db: Db, tracker: SuggestionRow): SuggestionRow[] {
+  if (tracker.target_kind !== 'tracker' || tracker.operation !== 'create') return []
+  return db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.owner_id, tracker.owner_id),
+        eq(suggestions.source_bullet_id, tracker.source_bullet_id),
+        eq(suggestions.target_kind, 'tracker_entry'),
+        eq(suggestions.operation, 'create'),
+        eq(suggestions.state, 'active'),
+      ),
+    )
+    .all()
+    .filter((r) => r.payload.tracker_id === tracker.id)
+}
+
+/**
  * Apply a pending suggestion against current state and mark it accepted (or `edited`). An
  * already-applied suggestion is returned unchanged (idempotent).
+ *
+ * Accepting a new tracker ("Start tracking Sleep?") also logs the readings that waited on it: the
+ * user's yes covers the reading they gave in the same capture. One that no longer fits (the user
+ * changed the scale while accepting) stays waiting for its own decision.
  */
 export function applySuggestion(
   db: Db,
@@ -190,6 +385,33 @@ export function applySuggestion(
   now: number,
   opts: ApplyOptions = {},
 ): SuggestionRow {
+  const readings = dependentReadings(db, s)
+  const applied = applyOne(db, s, now, opts)
+  if (applied === s || applied.target_kind !== 'tracker' || applied.operation !== 'create') {
+    return applied
+  }
+  const trackerId = applied.applied_entity_id as string
+  if (linkedTracker(applied)) {
+    // Linked to an existing tracker: its readings wait as ordinary readings of it.
+    for (const r of readings) if (r.status === 'pending') repointReading(db, r, trackerId, now)
+  } else {
+    for (const r of readings) {
+      if (r.status !== 'pending') continue
+      try {
+        applyOne(db, r, now, {})
+      } catch (err) {
+        if (!(err instanceof ApplyError)) throw err
+      }
+    }
+  }
+  // The tracker exists now: every other capture's open offer for it turns into its readings.
+  for (const o of openOffersNamed(db, applied.owner_id, String(applied.payload.name), applied.id)) {
+    linkOffer(db, o, trackerId, now)
+  }
+  return applied
+}
+
+function applyOne(db: Db, s: SuggestionRow, now: number, opts: ApplyOptions = {}): SuggestionRow {
   if (s.applied_entity_id !== null && (s.status === 'accepted' || s.status === 'edited')) return s
   if (s.state !== 'active') throw new ApplyError('invalid', 'suggestion was withdrawn')
   if (s.status !== 'pending') throw new ApplyError('invalid', `suggestion is ${s.status}`)
@@ -216,11 +438,41 @@ export function applySuggestion(
   )
 }
 
-/** Dismiss a pending suggestion. */
+/**
+ * Dismiss a pending suggestion. "Not now" on a new tracker keeps each reading that waited on it
+ * as a plain activity with its value ("Slept · 6 h", no tracker), applied as a record: the
+ * reading is never lost, and the declined offer never comes back (reconcile keeps it rejected).
+ */
 export function rejectSuggestion(db: Db, s: SuggestionRow, now: number): SuggestionRow {
   if (s.status === 'rejected') return s
   if (s.status !== 'pending') throw new ApplyError('invalid', `suggestion is ${s.status}`)
-  return updateSuggestionRow(db, s, { status: 'rejected', resolved_at: now }, now)
+  const readings = dependentReadings(db, s)
+  const rejected = updateSuggestionRow(db, s, { status: 'rejected', resolved_at: now }, now)
+  for (const r of readings) {
+    if (r.status !== 'pending') continue
+    keepReadingAsActivity(db, r, s, now)
+  }
+  return rejected
+}
+
+/** Turn a waiting reading of a declined tracker offer into an applied activity with its value. */
+function keepReadingAsActivity(db: Db, r: SuggestionRow, offer: SuggestionRow, now: number): void {
+  const activity = updateSuggestionRow(
+    db,
+    r,
+    {
+      target_kind: 'activity',
+      operation: 'create',
+      target_id: null,
+      payload: readingAsActivity(r.payload, offer.payload),
+    },
+    now,
+  )
+  try {
+    applyOne(db, activity, now, {})
+  } catch (err) {
+    if (!(err instanceof ApplyError)) throw err
+  }
 }
 
 /**
@@ -230,6 +482,52 @@ export function rejectSuggestion(db: Db, s: SuggestionRow, now: number): Suggest
 export function undoSuggestion(db: Db, s: SuggestionRow, now: number): SuggestionRow {
   if (s.applied_entity_id === null || s.applied_at === null) {
     throw new ApplyError('invalid', 'suggestion is not applied')
+  }
+  // A tracker offer linked to an existing tracker created nothing: undoing it never touches that
+  // tracker (nor the readings now logged to it).
+  if (linkedTracker(s)) {
+    return updateSuggestionRow(
+      db,
+      s,
+      {
+        status: 'rejected',
+        resolved_at: now,
+        applied_entity_id: null,
+        applied_at: null,
+        applied_before: null,
+        applied_after: null,
+      },
+      now,
+    )
+  }
+  if (s.target_kind === 'tracker' && s.operation === 'create') {
+    // Undoing a new tracker takes the readings logged with it along; refused when one was changed
+    // by hand (it would be orphaned), or when the tracker has readings from elsewhere now.
+    const own = dependentReadings(db, s).filter((r) => r.applied_entity_id !== null)
+    for (const r of own) {
+      const e = getEntity(db, 'tracker_entry', s.owner_id, r.applied_entity_id as string)
+      if (e && typeof e.user_edited_at === 'number' && e.user_edited_at >= (r.applied_at ?? 0)) {
+        throw new ApplyError('conflict', 'a reading logged with this tracker was edited by you')
+      }
+    }
+    const ownIds = own.map((r) => r.applied_entity_id as string)
+    const others = db
+      .select({ id: trackerEntries.id })
+      .from(trackerEntries)
+      .where(
+        and(
+          eq(trackerEntries.owner_id, s.owner_id),
+          eq(trackerEntries.tracker_id, s.applied_entity_id),
+          eq(trackerEntries.state, 'active'),
+        ),
+      )
+      .all()
+      .filter((e) => !ownIds.includes(e.id))
+    if (others.length > 0) {
+      throw new ApplyError('conflict', 'the tracker has other readings now; not undone')
+    }
+    for (const r of own) undoSuggestion(db, r, now)
+    for (const o of offersLinkedTo(db, s.owner_id, s.applied_entity_id)) unlinkOffer(db, o, now)
   }
   const entity = getEntity(db, s.target_kind, s.owner_id, s.applied_entity_id)
   // Changed (or deleted) by hand since it was applied: the user's version stays.

@@ -71,6 +71,8 @@ export const bullets = sqliteTable(
     text_edited_by_user: integer('text_edited_by_user', { mode: 'boolean' })
       .notNull()
       .default(false),
+    /** No usable server transcript: the text is the phone's live draft (see core bullet.ts). */
+    text_from_draft: integer('text_from_draft', { mode: 'boolean' }).notNull().default(false),
     /** This capture answers a clarifying question. */
     answers_question_id: text('answers_question_id'),
     /** This capture closes an open-loop thought "with a note". */

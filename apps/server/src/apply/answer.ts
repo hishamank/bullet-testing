@@ -21,6 +21,7 @@ import { touch } from '../sync/changes'
 import {
   ApplyError,
   applySuggestion,
+  settleTrackerQuestions,
   getSuggestion,
   refreshReviewStatus,
   rejectSuggestion,
@@ -85,6 +86,8 @@ function answerNewTracker(db: Db, ownerId: string, s: SuggestionRow, option: str
   }
   refreshReviewStatus(db, ownerId, s.source_bullet_id, now)
 }
+
+export { settleTrackerQuestions }
 
 export function answerQuestionWithOption(
   db: Db,

@@ -20,5 +20,9 @@ export const MIGRATIONS: readonly { tag: string; sql: string }[] = [
   {
     "tag": "0004_outbox_hold",
     "sql": "ALTER TABLE `outbox` ADD `hold_until` integer;"
+  },
+  {
+    "tag": "0005_text_from_draft",
+    "sql": "ALTER TABLE `bullets` ADD `text_from_draft` integer DEFAULT false NOT NULL;"
   }
 ]

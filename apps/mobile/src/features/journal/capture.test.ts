@@ -156,6 +156,17 @@ describe('capture detail', () => {
     keepAsAudioLocal(db, b)
     expect(loadCaptureDetail(db, b, T0, TZ)?.transcriptionFailure).toBe('kept')
 
+    const silent = seedBullet(db, T0, {
+      source: 'voice',
+      server_status: 'failed',
+      server_error_code: 'transcription_no_speech',
+    })
+    expect(loadCaptureDetail(db, silent, T0, TZ)).toMatchObject({
+      transcriptionFailure: 'ask',
+      errorReason: null,
+      errorCode: 'transcription_no_speech',
+    })
+
     const other = seedBullet(db, T0, {
       source: 'voice',
       server_status: 'failed',
@@ -187,6 +198,29 @@ describe('capture detail', () => {
   })
 })
 
+describe('Retry transcription', () => {
+  test('offered on a finished capture read from the phone draft, not otherwise', () => {
+    const db = openTestDb()
+    const fromDraft = seedBullet(db, T0, {
+      source: 'voice',
+      server_status: 'needs_review',
+      text_from_draft: true,
+    })
+    expect(loadCaptureDetail(db, fromDraft, T0, TZ)).toMatchObject({
+      textFromDraft: true,
+      retryTranscription: true,
+    })
+    const busy = seedBullet(db, T0, {
+      source: 'voice',
+      server_status: 'processing',
+      text_from_draft: true,
+    })
+    expect(loadCaptureDetail(db, busy, T0, TZ)?.retryTranscription).toBe(false)
+    const transcribed = seedBullet(db, T0, { source: 'voice', server_status: 'processed' })
+    expect(loadCaptureDetail(db, transcribed, T0, TZ)?.retryTranscription).toBe(false)
+  })
+})
+
 describe('transcript toggle', () => {
   const ts = [
     { kind: 'device_draft' as const, text: 'draft' },
@@ -212,6 +246,16 @@ describe('transcript toggle', () => {
     expect(v.tabs).toEqual([])
     expect(v.text(v.initial)).toBe('draft')
     expect(v.note).toMatch(/Live draft/)
+  })
+  test('no usable home transcript: labelled as the phone draft', () => {
+    const v = transcriptView({
+      text: 'remind me to buy olive oil tomorrow',
+      source: 'voice',
+      textEditedByUser: false,
+      textFromDraft: true,
+      transcripts: [ts[0]!],
+    })
+    expect(v.note).toBe("From the phone's live draft")
   })
   test('edited by the user: their text first, both transcripts still there', () => {
     const v = transcriptView({

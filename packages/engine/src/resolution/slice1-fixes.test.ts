@@ -29,6 +29,16 @@ function candidate(overrides: Partial<Candidate>): Candidate {
   }
 }
 
+/** The record (activity or reading) a 'happened' candidate produced, next to any tracker offer. */
+function record(c: Candidate, snapshot: ExtractionSnapshot = EMPTY): ResolvedSuggestion {
+  const { suggestions } = resolveCandidates([c], snapshot, config, CTX)
+  const r = suggestions.find((s) => s.target_kind !== 'tracker')
+  expect(r).toBeDefined()
+  return r as ResolvedSuggestion
+}
+
+const recordTime = (s: ResolvedSuggestion) => s.payload.occurred_at ?? s.payload.logged_at
+
 function one(c: Candidate, snapshot: ExtractionSnapshot = EMPTY): ResolvedSuggestion {
   const { suggestions } = resolveCandidates([c], snapshot, config, CTX)
   expect(suggestions).toHaveLength(1)
@@ -84,7 +94,7 @@ describe('relative dates resolve against capture time + zone', () => {
     )
     expect(s).toMatchObject({ target_kind: 'event', operation: 'create', target_id: null })
     expect(s.payload).toEqual({
-      title: 'dentist',
+      title: 'Dentist',
       starts_at: paris(10, 15, 15),
       ends_at: paris(10, 15, 16),
       all_day: false,
@@ -124,7 +134,7 @@ describe('future happenings route to Event vs Task', () => {
     )
     expect(s.target_kind).toBe('task')
     expect(s.payload).toMatchObject({
-      title: 'take the car to the garage',
+      title: 'Take the car to the garage',
       due_at: paris(10, 15, 10),
     })
   })
@@ -295,7 +305,12 @@ describe('record timestamps default to capture time, not processing time', () =>
 
   test('tracker entry with no date → logged_at = captured_at', () => {
     const s = one(
-      candidate({ kind: 'tracker_entry', referenceName: 'mood', fields: { value: 4 } }),
+      candidate({
+        kind: 'tracker_entry',
+        text: 'mood 4',
+        referenceName: 'mood',
+        fields: { value: 4 },
+      }),
       mood,
     )
     expect(s.target_kind).toBe('tracker_entry')
@@ -303,32 +318,36 @@ describe('record timestamps default to capture time, not processing time', () =>
   })
 
   test('"ran 5k yesterday" → occurred yesterday at noon, not at its midnight', () => {
-    const s = one(
+    const s = record(
       candidate({ text: 'ran 5k yesterday', fields: { name: 'ran 5k', when: 'yesterday' } }),
     )
-    expect(s.payload.occurred_at).toBe(paris(10, 14, 12))
+    expect(recordTime(s)).toBe(paris(10, 14, 12))
   })
 
   // Qwen3.5-4B, 2026-10-18: "mood 3/10 today" / "slept 6 hours" were dated at local midnight.
   test('a record dated "today" (no time of day) → the capture time, not midnight', () => {
-    const s = one(
+    const s = record(
       candidate({ text: 'mood 3/10 today', fields: { name: 'mood', value: 3, when: 'today' } }),
     )
-    expect(s.payload.occurred_at).toBe(CAPTURED)
-    const slept = one(candidate({ text: 'slept 6 hours', fields: { name: 'sleep', when: 'lyom' } }))
-    expect(slept.payload.occurred_at).toBe(CAPTURED)
+    expect(recordTime(s)).toBe(CAPTURED)
+    const slept = record(
+      candidate({ text: 'slept 6 hours', fields: { name: 'sleep', when: 'lyom' } }),
+    )
+    expect(recordTime(slept)).toBe(CAPTURED)
   })
 
   test('"slept 6 hours last night" keeps its time of day (yesterday 20:00)', () => {
-    const s = one(
+    const s = record(
       candidate({ text: 'slept 6 hours', fields: { name: 'sleep', value: 6, when: 'last night' } }),
     )
-    expect(s.payload.occurred_at).toBe(paris(10, 14, 20))
+    expect(recordTime(s)).toBe(paris(10, 14, 20))
   })
 
   test('a French / Arabizi date phrase dates a record', () => {
-    const s = one(candidate({ text: 'rkadet 5k mbere7', fields: { name: 'run', when: 'mbere7' } }))
-    expect(s.payload.occurred_at).toBe(paris(10, 14, 12))
+    const s = record(
+      candidate({ text: 'rkadet 5k mbere7', fields: { name: 'run', when: 'mbere7' } }),
+    )
+    expect(recordTime(s)).toBe(paris(10, 14, 12))
   })
 
   test('"ran at 7am" → 07:00 today local', () => {
@@ -373,19 +392,39 @@ describe('a matched scale/number tracker with no value does not invent one', () 
 
   test('a numeric string value is still a reading', () => {
     const s = one(
-      candidate({ kind: 'tracker_entry', referenceName: 'weight', fields: { value: '72.5' } }),
+      candidate({
+        kind: 'tracker_entry',
+        text: 'weight 72.5',
+        referenceName: 'weight',
+        fields: { value: '72.5' },
+      }),
       trackers,
     )
     expect(s).toMatchObject({ target_kind: 'tracker_entry', target_id: 't-weight' })
     expect(s.payload.value).toBe(72.5)
   })
 
-  test('a real scale value is still logged (and clamped)', () => {
+  test('a value off the scale is never clamped: it waits on an activity with its value', () => {
     const s = one(
-      candidate({ kind: 'tracker_entry', referenceName: 'mood', fields: { value: 9 } }),
+      candidate({
+        kind: 'tracker_entry',
+        text: 'mood 9',
+        referenceName: 'mood',
+        fields: { value: 9 },
+      }),
       trackers,
     )
-    expect(s.payload.value).toBe(5)
+    expect(s).toMatchObject({ target_kind: 'activity', tier: 'suggest', payload: { quantity: 9 } })
+    const ok = one(
+      candidate({
+        kind: 'tracker_entry',
+        text: 'mood 4',
+        referenceName: 'mood',
+        fields: { value: 4 },
+      }),
+      trackers,
+    )
+    expect(ok).toMatchObject({ target_kind: 'tracker_entry', payload: { value: 4 } })
   })
 
   test('a boolean tracker mentioned as happened logs true, not false', () => {
@@ -465,8 +504,8 @@ describe('a reading names its tracker in a field (live Qwen3.5-4B output)', () =
     ]) {
       const { suggestions, questions } = resolveCandidates([sleep(fields)], EMPTY, config, CTX)
       const tracker = suggestions.find((s) => s.target_kind === 'tracker')
-      expect(tracker?.payload.name).toBe('sleep')
-      expect(questions[0]?.text).toBe('Start tracking "sleep"?')
+      expect(tracker?.payload.name).toBe('Sleep')
+      expect(questions[0]?.text).toBe('Start tracking Sleep?')
     }
   })
 

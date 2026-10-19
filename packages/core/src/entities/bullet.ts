@@ -21,6 +21,10 @@ import { ianaTimezone, nonEmptyString, timestampMs, uuid } from '../primitives'
  *    draft, then the server's (Whisper) transcript — unless the user edited it.
  *  - `text_edited_by_user` — true once the user changed the text by hand (before sending a voice
  *    draft, or any later edit). Server transcription then never overwrites the text.
+ *  - `text_from_draft` — the server found no usable speech in the recording, so the text is the
+ *    phone's live draft (read and processed as usual). The UI labels it "From the phone's live
+ *    draft" and may offer "Retry transcription" (`bullet.retry`); a good transcript then replaces
+ *    the draft text, unless the user edited it.
  *  - `processing`  — where the bullet is in the capture loop (see processing.ts).
  *
  * `id` is minted on the client (UUID v4) so sync is idempotent.
@@ -40,6 +44,8 @@ const bulletContentFields = {
 export const bulletSelectSchema = z.object({
   ...ownedTimestampedStateFields,
   ...bulletContentFields,
+  /** Added 2026-10-19; older servers omit it (false). */
+  text_from_draft: z.boolean().default(false),
   processing: bulletProcessingSchema,
 })
 export type Bullet = z.infer<typeof bulletSelectSchema>

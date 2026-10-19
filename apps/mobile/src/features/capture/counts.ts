@@ -1,11 +1,13 @@
 /** Read models for the capture page's corners and status line. Pure queries over the local mirror. */
 
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { displayStatus, isPermanentTranscriptionError } from '@bullet/core'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { PhoneDb } from '../../data/db'
 import { bulletsWithPendingChanges } from '../../data/mirror'
 import { listOpenQuestions, listPendingSuggestions } from '../../data/queries'
-import { bullets, outbox } from '../../data/schema'
+import { bullets, outbox, suggestions } from '../../data/schema'
 import { keptAsAudio } from '../journal/audio-only'
+import type { LatestCapture } from './notice'
 
 export interface CaptureCounts {
   /** Captures with a change the server hasn't confirmed ("N on this phone"). */
@@ -16,7 +18,8 @@ export interface CaptureCounts {
    */
   failedIds: string[]
   /**
-   * Failed voice captures whose recording can't be transcribed (`transcription_failed`), oldest
+   * Failed voice captures whose recording can't be transcribed (`transcription_failed` or
+   * `transcription_no_speech`), oldest
    * first: they need "Write it down" or "Keep as audio", not Retry. Ones kept as audio are left
    * out of both lists.
    */
@@ -25,6 +28,46 @@ export interface CaptureCounts {
   awaitingServer: boolean
   /** Ops waiting to be sent. */
   outbox: number
+  /** The most recent capture, for the processing feedback line (null when there is none). */
+  latest: LatestCapture | null
+}
+
+/** The most recent active capture with its shown status and the things found in it. */
+export function latestCapture(
+  db: PhoneDb,
+  pending = bulletsWithPendingChanges(db),
+): LatestCapture | null {
+  const b = db
+    .select({
+      id: bullets.id,
+      captured_at: bullets.captured_at,
+      server_status: bullets.server_status,
+    })
+    .from(bullets)
+    .where(eq(bullets.state, 'active'))
+    .orderBy(desc(bullets.captured_at))
+    .limit(1)
+    .get()
+  if (!b) return null
+  const things = db
+    .select({ kind: suggestions.target_kind, operation: suggestions.operation })
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.source_bullet_id, b.id),
+        eq(suggestions.state, 'active'),
+        ne(suggestions.status, 'rejected'),
+      ),
+    )
+    .all()
+    // A reading of a new tracker is one thing with that tracker ("Start tracking Sleep?").
+    .filter((s) => !(s.kind === 'tracker_entry' && s.operation === 'create')).length
+  return {
+    id: b.id,
+    status: displayStatus(b.server_status, pending.has(b.id)),
+    capturedAt: b.captured_at,
+    things,
+  }
 }
 
 export function captureCounts(db: PhoneDb): CaptureCounts {
@@ -42,8 +85,10 @@ export function captureCounts(db: PhoneDb): CaptureCounts {
     failed.map((r) => r.id),
   )
   const shown = failed.filter((r) => !audioOnly.has(r.id))
-  const failedIds = shown.filter((r) => r.code !== 'transcription_failed').map((r) => r.id)
-  const untranscribableIds = shown.filter((r) => r.code === 'transcription_failed').map((r) => r.id)
+  const failedIds = shown.filter((r) => !isPermanentTranscriptionError(r.code)).map((r) => r.id)
+  const untranscribableIds = shown
+    .filter((r) => isPermanentTranscriptionError(r.code))
+    .map((r) => r.id)
   const awaiting =
     db
       .select({ n: sql<number>`count(*)` })
@@ -69,6 +114,7 @@ export function captureCounts(db: PhoneDb): CaptureCounts {
     untranscribableIds,
     awaitingServer: awaiting > 0,
     outbox: outboxCount,
+    latest: latestCapture(db, pending),
   }
 }
 

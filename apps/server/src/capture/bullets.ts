@@ -58,6 +58,7 @@ export function createBullet(
     timezone: input.timezone,
     source: input.source,
     text_edited_by_user: input.text_edited_by_user ?? false,
+    text_from_draft: false,
     answers_question_id: input.answers_question_id ?? null,
     resolves_thought_id: input.resolves_thought_id ?? null,
     text_updated_at: input.captured_at,
@@ -112,6 +113,7 @@ export function editBullet(
     text_updated_at: editedAt,
     text_version: b.text_version + 1,
     text_edited_by_user: true,
+    text_from_draft: false,
   }
   db.update(bullets)
     .set({
@@ -120,6 +122,7 @@ export function editBullet(
       text_version: next.text_version,
       // From now on the user's words win over any server transcript.
       text_edited_by_user: true,
+      text_from_draft: false,
       // New content, new count: the attempts shown are for this text.
       proc_attempts: 0,
       updated_at: now,
@@ -183,10 +186,15 @@ export function deleteBullet(
   touch(db, ownerId, 'bullets', b.id)
 }
 
-/** Re-queue a failed bullet. A bullet that isn't failed is left alone (double-tap safe). */
+/**
+ * Re-queue a failed bullet, or "Retry transcription" on one read from the phone's draft (it runs
+ * Whisper again). Any other bullet is left alone (double-tap safe).
+ */
 export function retryBullet(db: Db, ownerId: string, bulletId: string, now: number): void {
   const b = getBullet(db, ownerId, bulletId)
   if (b.state !== 'active') throw new ApplyError('invalid', 'bullet was deleted')
-  if (b.proc_status !== 'failed') return
+  const settledFromDraft =
+    b.text_from_draft && (b.proc_status === 'processed' || b.proc_status === 'needs_review')
+  if (b.proc_status !== 'failed' && !settledFromDraft) return
   enqueue(db, b, now)
 }

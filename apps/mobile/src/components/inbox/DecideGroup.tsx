@@ -1,8 +1,14 @@
 /** One capture's waiting suggestions: its snippet, a row per suggestion, and "Accept both". */
 
-import { Pressable, StyleSheet, View } from 'react-native'
-import type { CaptureGroup, DecideItem } from '@/features/inbox/model'
-import { space, type, useTheme } from '@/theme'
+import { useState } from 'react'
+import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import {
+  logsLine,
+  type CaptureGroup,
+  type DecideItem,
+  trackerNameOrNull,
+} from '@/features/inbox/model'
+import { radius, space, type, useTheme } from '@/theme'
 import { Label, TextButton, touch } from '../ui'
 import { CaptureLink, card, DecideButton, InboxPill } from './parts'
 
@@ -12,6 +18,8 @@ export interface DecideHandlers {
   onEdit: (item: DecideItem) => void
   onUndo: (item: DecideItem) => void
   onAcceptAll: (items: DecideItem[]) => void
+  /** "Start tracking" a new tracker, with the name as the user left it. */
+  onStartTracking: (item: DecideItem, name: string) => void
 }
 
 /** Tiers shown as behaviour, never as numbers. */
@@ -52,15 +60,68 @@ export function DecideGroup({ group, ...h }: { group: CaptureGroup } & DecideHan
   )
 }
 
-function SuggestionRow({
+/**
+ * A new tracker: "Start tracking Mood?" with its name pre-filled and editable, and the reading it
+ * logs. "Start tracking" accepts it (with the edited name); "Not now" dismisses it.
+ */
+function NewTrackerRow({
   item,
-  onAccept,
   onDismiss,
-  onEdit,
-  onUndo,
+  onStartTracking,
 }: { item: DecideItem } & DecideHandlers) {
+  const t = useTheme()
+  const [name, setName] = useState(item.trackerName ?? '')
+  const clean = trackerNameOrNull(name)
+  const shown = clean ?? item.trackerName ?? item.summary.name
+  const logs = logsLine(item.logs)
+  return (
+    <View style={styles.tracker}>
+      <View style={styles.pillLine}>
+        <InboxPill kind={item.summary.pill.kind} label={item.summary.pill.label} />
+      </View>
+      <Label size={type.bodySmall} style={{ fontWeight: '600' }}>
+        Start tracking {shown}?
+      </Label>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        accessibilityLabel="Tracker name"
+        returnKeyType="done"
+        autoCapitalize="words"
+        style={[styles.input, { backgroundColor: t.raised, color: t.text }]}
+        placeholder={item.trackerName ?? 'Name'}
+        placeholderTextColor={t.textMuted}
+      />
+      {logs ? (
+        <Label tone="muted" size={type.caption}>
+          {logs}
+        </Label>
+      ) : null}
+      <View style={styles.trackerButtons}>
+        <TextButton
+          title="Not now"
+          tone="secondary"
+          accessibilityLabel={`Not now: don't track ${shown}`}
+          accessibilityHint={item.logs.length > 0 ? 'Keeps the reading as an activity' : undefined}
+          onPress={() => onDismiss(item)}
+        />
+        <TextButton
+          title="Start tracking"
+          accessibilityLabel={`Start tracking ${shown}`}
+          disabled={clean === null}
+          onPress={() => clean && onStartTracking(item, clean)}
+        />
+      </View>
+    </View>
+  )
+}
+
+function SuggestionRow(props: { item: DecideItem } & DecideHandlers) {
+  const { item, onAccept, onDismiss, onEdit, onUndo } = props
   const { summary } = item
   const hint = tierHint(item)
+
+  if (item.isNewTracker && !item.decision) return <NewTrackerRow {...props} />
 
   if (item.decision) {
     const word = item.decision === 'accepted' ? 'Added' : 'Dismissed'
@@ -96,7 +157,7 @@ function SuggestionRow({
           </Label>
         ) : null}
       </View>
-      <Label size={type.bodySmall}>{summary.text}</Label>
+      <Label size={type.bodySmall}>{summary.ask}</Label>
       {hint ? (
         <Label tone="muted" size={type.caption}>
           {hint}
@@ -157,4 +218,13 @@ const styles = StyleSheet.create({
   pillLine: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   buttons: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   allRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  tracker: { gap: space.sm },
+  trackerButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.lg },
+  input: {
+    minHeight: 44,
+    borderRadius: radius.note,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: type.body,
+  },
 })

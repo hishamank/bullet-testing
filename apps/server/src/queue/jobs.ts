@@ -6,7 +6,7 @@
  * in the same transaction.
  */
 
-import type { ProcessingErrorCode } from '@bullet/core'
+import { isPermanentTranscriptionError, type ProcessingErrorCode } from '@bullet/core'
 import { EngineError } from '@bullet/engine'
 import { and, asc, eq, lte } from 'drizzle-orm'
 import type { Db } from '../db/client'
@@ -124,7 +124,12 @@ export interface ClaimedJob {
   job: JobRow
   bullet: BulletRow
   /** Set when this run must transcribe the recording first (status `transcribing`). */
-  transcribe: { attachmentId: string; storageKey: string; mimeType: string } | null
+  transcribe: {
+    attachmentId: string
+    storageKey: string
+    mimeType: string
+    durationMs: number
+  } | null
 }
 
 export interface ClaimOptions {
@@ -157,7 +162,14 @@ function needsTranscription(db: Db, bulletId: string): ClaimedJob['transcribe'] 
       ),
     )
     .get()
-  return done ? null : { attachmentId: a.id, storageKey: a.storage_key, mimeType: a.mime_type }
+  return done
+    ? null
+    : {
+        attachmentId: a.id,
+        storageKey: a.storage_key,
+        mimeType: a.mime_type,
+        durationMs: a.duration_ms,
+      }
 }
 
 /**
@@ -271,6 +283,8 @@ export function classifyError(err: unknown): { code: ProcessingErrorCode; messag
         return { code: 'transcription_timeout', message }
       case 'TRANSCRIPTION_FAILED':
         return { code: 'transcription_failed', message }
+      case 'TRANSCRIPTION_NO_SPEECH':
+        return { code: 'transcription_no_speech', message }
     }
   }
   return { code: 'internal', message }
@@ -278,8 +292,9 @@ export function classifyError(err: unknown): { code: ProcessingErrorCode; messag
 
 /**
  * Record a failed attempt: schedule an automatic retry with backoff (bullet back to `synced`,
- * error + next_retry_at visible), or — out of attempts — mark it `failed`. A stale job (bullet
- * edited/deleted meanwhile) is ignored.
+ * error + next_retry_at visible), or — out of attempts — mark it `failed`. A permanent
+ * transcription failure (corrupt audio, no speech) is `failed` at once: retrying the same
+ * recording cannot help. A stale job (bullet edited/deleted meanwhile) is ignored.
  */
 export function markJobFailed(
   db: Db,
@@ -292,7 +307,7 @@ export function markJobFailed(
     const bullet = isJobCurrent(tx, claimed)
     if (!bullet) return 'stale'
     const { code, message } = classifyError(err)
-    const giveUp = claimed.job.attempts >= policy.maxAttempts
+    const giveUp = claimed.job.attempts >= policy.maxAttempts || isPermanentTranscriptionError(code)
     const runAfter = now + retryDelay(claimed.job.attempts, policy)
     tx.update(jobs)
       .set({

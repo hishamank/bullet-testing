@@ -7,7 +7,19 @@ export {
   type QuestionDraft,
   type ResolvedSuggestion,
   type ResolveOutcome,
+  readingAsActivity,
   resolveCandidates,
+  startTrackingQuestion,
+  type ThoughtContext,
   withProvenance,
 } from './resolve'
+export { isKnownMeasure, trackerName, trackerNounFrom } from './naming'
+export { cleanTitle, stripTrailingPunctuation, stripWhenPhrases } from './title'
+export {
+  convertDuration,
+  normalizeUnit,
+  type Reading,
+  readingFromFields,
+  readingFromText,
+} from './reading'
 export { assignTier, type TierOptions } from './tier'

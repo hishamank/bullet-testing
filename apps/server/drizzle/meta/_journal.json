@@ -29,6 +29,13 @@
       "when": 1792358749730,
       "tag": "0003_manual_edits_open_loops",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792380327127,
+      "tag": "0004_text_from_draft",
+      "breakpoints": true
     }
   ]
 }
