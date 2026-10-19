@@ -176,6 +176,81 @@ function linkOffer(db: Db, offer: SuggestionRow, trackerId: string, now: number)
   refreshReviewStatus(db, offer.owner_id, offer.source_bullet_id, now)
 }
 
+/** Other captures' offers that were linked to this tracker (accepted, created nothing). */
+function offersLinkedTo(db: Db, ownerId: string, trackerId: string): SuggestionRow[] {
+  return db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.owner_id, ownerId),
+        eq(suggestions.target_kind, 'tracker'),
+        eq(suggestions.operation, 'create'),
+        eq(suggestions.state, 'active'),
+        eq(suggestions.applied_entity_id, trackerId),
+      ),
+    )
+    .all()
+    .filter((o) => linkedTracker(o) === trackerId)
+}
+
+/**
+ * The tracker a linked offer pointed at is being undone: the offer is open again ("Start tracking
+ * Sleep?"), its waiting readings wait on it again, and its question is asked again.
+ */
+function unlinkOffer(db: Db, offer: SuggestionRow, now: number): void {
+  const trackerId = offer.applied_entity_id
+  updateSuggestionRow(
+    db,
+    offer,
+    {
+      status: 'pending',
+      resolved_at: null,
+      applied_entity_id: null,
+      applied_at: null,
+      applied_before: null,
+      applied_after: null,
+    },
+    now,
+  )
+  const readings = db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.owner_id, offer.owner_id),
+        eq(suggestions.source_bullet_id, offer.source_bullet_id),
+        eq(suggestions.target_kind, 'tracker_entry'),
+        eq(suggestions.operation, 'create'),
+        eq(suggestions.status, 'pending'),
+        eq(suggestions.state, 'active'),
+      ),
+    )
+    .all()
+    .filter((r) => r.payload.tracker_id === trackerId)
+  for (const r of readings) repointReading(db, r, offer.id, now)
+  for (const q of db
+    .select()
+    .from(questions)
+    .where(
+      and(
+        eq(questions.owner_id, offer.owner_id),
+        eq(questions.suggestion_id, offer.id),
+        eq(questions.topic, 'new_tracker'),
+        eq(questions.status, 'answered'),
+        eq(questions.state, 'active'),
+      ),
+    )
+    .all()) {
+    db.update(questions)
+      .set({ status: 'open', answer_option: null, resolved_at: null, updated_at: now })
+      .where(eq(questions.id, q.id))
+      .run()
+    touch(db, offer.owner_id, 'questions', q.id)
+  }
+  refreshReviewStatus(db, offer.owner_id, offer.source_bullet_id, now)
+}
+
 const normName = (v: unknown) =>
   typeof v === 'string' ? v.toLowerCase().trim().replace(/\s+/g, ' ') : ''
 
@@ -452,6 +527,7 @@ export function undoSuggestion(db: Db, s: SuggestionRow, now: number): Suggestio
       throw new ApplyError('conflict', 'the tracker has other readings now; not undone')
     }
     for (const r of own) undoSuggestion(db, r, now)
+    for (const o of offersLinkedTo(db, s.owner_id, s.applied_entity_id)) unlinkOffer(db, o, now)
   }
   const entity = getEntity(db, s.target_kind, s.owner_id, s.applied_entity_id)
   // Changed (or deleted) by hand since it was applied: the user's version stays.

@@ -259,6 +259,50 @@ describe('answering a clarifying question by tapping an option', () => {
   })
 })
 
+test('a declined offer stays declined when re-processing renames its tracker', async () => {
+  const h = createHarness(
+    llmByText({
+      'at night': [
+        candidate({
+          kind: 'tracker_entry',
+          text: 'slept 6 hours at night',
+          fields: { tracker: 'night sleep', value: 6, unit: 'hours' },
+        }),
+      ],
+      slept: [
+        candidate({
+          kind: 'tracker_entry',
+          text: 'slept 6 hours',
+          fields: { tracker: 'sleep', value: 6, unit: 'hours' },
+        }),
+      ],
+    }),
+  )
+  const id = await h.capture('slept 6 hours')
+  await h.worker.drain()
+  const q = h.db.select().from(questions).get()!
+  await h.push([answer(q.id, 'No')])
+  const b = h.db.select().from(bullets).get()!
+  await h.push([
+    {
+      op_id: uid(),
+      type: 'bullet.edit',
+      bullet_id: id,
+      text: 'slept 6 hours at night',
+      edited_at: b.text_updated_at + 1,
+    },
+  ])
+  await h.worker.drain()
+  const live = h.db
+    .select()
+    .from(suggestions)
+    .all()
+    .filter((s) => s.state === 'active')
+  expect(live.find((s) => s.target_kind === 'tracker')?.status).toBe('rejected')
+  expect(live.some((s) => s.target_kind === 'tracker_entry')).toBe(false)
+  expect(live.find((s) => s.target_kind === 'activity')?.status).toBe('accepted')
+})
+
 describe('the same new tracker offered by two captures', () => {
   const sleepLlm = () =>
     llmByText({
@@ -400,6 +444,48 @@ describe('the same new tracker offered by two captures', () => {
     ])
     expect(undoA.results[0]).toMatchObject({ status: 'rejected', error: { code: 'conflict' } })
     expect(h.db.select().from(trackers).get()?.state).toBe('active')
+  })
+
+  test("undoing A before acting on B opens B's offer again, which then creates the tracker", async () => {
+    const { h, a, b } = await twoCaptures()
+    const offerA = of(h, a).find(tracker)!
+    const offerB = of(h, b).find(tracker)!
+    await h.push([{ op_id: uid(), type: 'suggestion.accept', suggestion_id: offerA.id }])
+    expect(of(h, b).find(tracker)?.status).toBe('accepted')
+    const undo = await h.push([{ op_id: uid(), type: 'suggestion.undo', suggestion_id: offerA.id }])
+    expect(undo.results[0]?.status).toBe('applied')
+    expect(h.db.select().from(trackers).get()?.state).toBe('deleted')
+    // B is "Start tracking Sleep?" again, with its reading waiting on it.
+    expect(of(h, b).find(tracker)).toMatchObject({
+      status: 'pending',
+      applied_entity_id: null,
+      applied_at: null,
+      applied_after: null,
+    })
+    const readingB = of(h, b).find((s) => s.target_kind === 'tracker_entry')!
+    expect(readingB).toMatchObject({ status: 'pending', payload: { tracker_id: offerB.id } })
+    const qB = h.db
+      .select()
+      .from(questions)
+      .all()
+      .find((q) => q.source_bullet_id === b)
+    expect(qB).toMatchObject({ status: 'open', answer_option: null })
+    // Accepting B now creates the tracker and logs 7 h.
+    await h.push([{ op_id: uid(), type: 'suggestion.accept', suggestion_id: offerB.id }])
+    const live = h.db
+      .select()
+      .from(trackers)
+      .all()
+      .filter((t) => t.state === 'active')
+    expect(live.map((t) => t.id)).toEqual([offerB.id])
+    expect(
+      h.db
+        .select()
+        .from(trackerEntries)
+        .all()
+        .filter((e) => e.state === 'active')
+        .map((e) => [e.tracker_id, e.value]),
+    ).toEqual([[offerB.id, 7]])
   })
 
   test('undo of a tracker is refused when its reading was edited by hand', async () => {

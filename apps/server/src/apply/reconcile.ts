@@ -86,12 +86,30 @@ function declinedReadingsAsActivities(
   drafts: ThingDraftWithThought[],
   existing: SuggestionRow[],
 ): ThingDraftWithThought[] {
+  // Pair the tracker offers the way reconcile pairs everything (identity, then slot), so a
+  // re-processing that renamed the tracker still finds the offer that was declined.
+  const pool = existing.filter((s) => s.target_kind === 'tracker')
+  const pairedWith = new Map<number, SuggestionRow>()
+  const take = (pred: (s: SuggestionRow) => boolean) => {
+    const i = pool.findIndex(pred)
+    return i < 0 ? undefined : pool.splice(i, 1)[0]
+  }
+  const offers = [...drafts.entries()].filter(([, d]) => d.target_kind === 'tracker')
+  const later: number[] = []
+  for (const [n, d] of offers) {
+    const hit = take((s) => identityKey(s) === identityKey(d))
+    if (hit) pairedWith.set(n, hit)
+    else later.push(n)
+  }
+  for (const n of later) {
+    const d = drafts[n] as ThingDraftWithThought
+    const hit = take((s) => slotKey(s) === slotKey(d))
+    if (hit) pairedWith.set(n, hit)
+  }
   return drafts.map((d) => {
     const offer = d.dependsOn === undefined ? undefined : drafts[d.dependsOn]
-    if (!offer || offer.target_kind !== 'tracker') return d
-    const declined = existing.some(
-      (s) => s.status === 'rejected' && identityKey(s) === identityKey(offer),
-    )
+    if (!offer || offer.target_kind !== 'tracker' || d.dependsOn === undefined) return d
+    const declined = pairedWith.get(d.dependsOn)?.status === 'rejected'
     if (!declined) return d
     const { dependsOn, ...rest } = d
     void dependsOn
