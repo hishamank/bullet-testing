@@ -21,6 +21,7 @@ import { touch } from '../sync/changes'
 import {
   ApplyError,
   applySuggestion,
+  settleTrackerQuestions,
   getSuggestion,
   refreshReviewStatus,
   rejectSuggestion,
@@ -86,34 +87,7 @@ function answerNewTracker(db: Db, ownerId: string, s: SuggestionRow, option: str
   refreshReviewStatus(db, ownerId, s.source_bullet_id, now)
 }
 
-/**
- * A new tracker decided from its Inbox card ("Start tracking" / "Not now") answers its "Start
- * tracking …?" question too, so it never lingers open.
- */
-export function settleTrackerQuestions(db: Db, s: SuggestionRow, yes: boolean, now: number): void {
-  if (s.target_kind !== 'tracker') return
-  const open = db
-    .select()
-    .from(questions)
-    .where(
-      and(
-        eq(questions.owner_id, s.owner_id),
-        eq(questions.suggestion_id, s.id),
-        eq(questions.topic, 'new_tracker'),
-        eq(questions.status, 'open'),
-        eq(questions.state, 'active'),
-      ),
-    )
-    .all()
-  for (const q of open) {
-    const option = q.options.find((o) => yesNoAnswer(o) === yes) ?? null
-    db.update(questions)
-      .set({ status: 'answered', answer_option: option, resolved_at: now, updated_at: now })
-      .where(eq(questions.id, q.id))
-      .run()
-    touch(db, s.owner_id, 'questions', q.id)
-  }
-}
+export { settleTrackerQuestions }
 
 export function answerQuestionWithOption(
   db: Db,

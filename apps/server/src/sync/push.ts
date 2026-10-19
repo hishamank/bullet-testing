@@ -14,9 +14,10 @@ import {
   getSuggestion,
   refreshReviewStatus,
   rejectSuggestion,
+  settleTrackerQuestions,
   undoSuggestion,
 } from '../apply/apply'
-import { answerQuestionWithOption, settleTrackerQuestions } from '../apply/answer'
+import { answerQuestionWithOption } from '../apply/answer'
 import { deleteByHand, editByHand } from '../apply/manual'
 import { createBullet, deleteBullet, editBullet, retryBullet } from '../capture/bullets'
 import {

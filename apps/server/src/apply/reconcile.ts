@@ -18,7 +18,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { type ResolvedSuggestion, withProvenance } from '@bullet/engine'
+import { readingAsActivity, type ResolvedSuggestion, withProvenance } from '@bullet/engine'
 import { and, eq } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { suggestions } from '../db/schema'
@@ -78,10 +78,37 @@ export interface ReconcileResult {
 /** A thing draft plus the thought it came from (null for drafts without one). */
 export type ThingDraftWithThought = ResolvedSuggestion & { thoughtId?: string | null }
 
+/**
+ * A declined tracker offer never comes back: re-processing finds it again, keeps it rejected, and
+ * its readings are what "Not now" made of them, activities with their value.
+ */
+function declinedReadingsAsActivities(
+  drafts: ThingDraftWithThought[],
+  existing: SuggestionRow[],
+): ThingDraftWithThought[] {
+  return drafts.map((d) => {
+    const offer = d.dependsOn === undefined ? undefined : drafts[d.dependsOn]
+    if (!offer || offer.target_kind !== 'tracker') return d
+    const declined = existing.some(
+      (s) => s.status === 'rejected' && identityKey(s) === identityKey(offer),
+    )
+    if (!declined) return d
+    const { dependsOn, ...rest } = d
+    void dependsOn
+    return {
+      ...rest,
+      target_kind: 'activity',
+      operation: 'create',
+      target_id: null,
+      payload: readingAsActivity(d.payload, offer.payload),
+    }
+  })
+}
+
 export function reconcileSuggestions(
   db: Db,
   bullet: { id: string; owner_id: string },
-  drafts: ThingDraftWithThought[],
+  incoming: ThingDraftWithThought[],
   now: number,
 ): ReconcileResult {
   const existing = db
@@ -89,6 +116,7 @@ export function reconcileSuggestions(
     .from(suggestions)
     .where(and(eq(suggestions.source_bullet_id, bullet.id), eq(suggestions.state, 'active')))
     .all()
+  const drafts = declinedReadingsAsActivities(incoming, existing)
 
   const ids: string[] = Array.from({ length: drafts.length }, () => '')
   const pairs: [SuggestionRow, ThingDraftWithThought, number][] = []
