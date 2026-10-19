@@ -12,6 +12,12 @@ import { Button } from '../ui/primitives'
 
 const DRAFT_KEY = 'bullet.draft'
 
+/**
+ * Send attempts of the draft box, outside React: the Shell remounts the box when the page changes
+ * between the Capture page and the bar, and the restored draft must still be the same attempt.
+ */
+const draftAttempts = new Map<string, number>()
+
 function readDraft(key: string | null): string {
   if (!key) return ''
   try {
@@ -37,7 +43,7 @@ export interface CaptureBoxProps {
   placeholder?: string
   label?: string
   /** Save the capture. Resolves once it is stored in this browser; rejects if it could not be. */
-  onSend: (text: string) => Promise<unknown>
+  onSend: (text: string, attempt: string) => Promise<unknown>
   /** A card pinned above the text (the question or loop being answered). */
   pinned?: ReactNode
   /** The quiet line next to Send when nothing was just saved. */
@@ -45,6 +51,8 @@ export interface CaptureBoxProps {
   /** Keep an unsent draft across reloads (the plain capture box only). */
   keepDraft?: boolean
   autoFocus?: boolean
+  /** A send was given up without succeeding (the box closed, or its text was cleared). */
+  onAbandon?: (attempt: string) => void
   /** "Saved" has finished showing. */
   onSavedShown?: () => void
 }
@@ -58,6 +66,26 @@ export function CaptureBox(p: CaptureBoxProps) {
   const input = useRef<HTMLTextAreaElement>(null)
   const inputId = useId()
   const sending = useRef(false)
+  // Names this send until it succeeds, so a retry after a failed store is the same capture.
+  const instance = useId()
+  const own = useRef(0)
+  const attemptId = () =>
+    draftKey ? `${draftKey}:${draftAttempts.get(draftKey) ?? 0}` : `${instance}:${own.current}`
+  const advanceAttempt = () => {
+    if (draftKey) draftAttempts.set(draftKey, (draftAttempts.get(draftKey) ?? 0) + 1)
+    else own.current += 1
+  }
+  const abandon = useRef(p.onAbandon)
+  abandon.current = p.onAbandon
+  const currentId = useRef(attemptId)
+  currentId.current = attemptId
+  // A box that closes (an answer panel) gives up its pending send; the draft box lives on.
+  useEffect(
+    () => () => {
+      if (!draftKey) abandon.current?.(currentId.current())
+    },
+    [draftKey],
+  )
   const [problem, setProblem] = useState(false)
   const { savedAt } = state
   const shown = useRef(p.onSavedShown)
@@ -81,9 +109,10 @@ export function CaptureBox(p: CaptureBoxProps) {
     if (!canSend(state.text) || sending.current) return
     sending.current = true
     setProblem(false)
-    p.onSend(state.text).then(
+    p.onSend(state.text, attemptId()).then(
       () => {
         sending.current = false
+        advanceAttempt()
         writeDraft(draftKey, '')
         dispatch({ type: 'sent', at: Date.now() })
         input.current?.focus()
@@ -112,6 +141,7 @@ export function CaptureBox(p: CaptureBoxProps) {
         placeholder={p.placeholder ?? "What's on your mind?"}
         onChange={(e) => {
           writeDraft(draftKey, e.target.value)
+          if (e.target.value.trim() === '') p.onAbandon?.(attemptId())
           setProblem(false)
           dispatch({ type: 'change', text: e.target.value })
         }}

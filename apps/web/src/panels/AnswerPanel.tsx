@@ -60,12 +60,13 @@ export function AnswerPanel({ target, id }: { target: 'question' | 'thought'; id
           </div>
         }
         status={<span className="status-text">Your answer is saved as a capture too.</span>}
-        onSend={(text) => {
+        onSend={(text, attempt) => {
           // A loop's note is a capture that resolves the thought (`resolves_thought_id`).
           return pinned.kind === 'loop'
-            ? actions.sendLoopNote(text, pinned.id)
-            : actions.sendCapture(text, { answersQuestionId: pinned.id })
+            ? actions.sendLoopNote(text, pinned.id, attempt)
+            : actions.sendCapture(text, attempt, { answersQuestionId: pinned.id })
         }}
+        onAbandon={actions.abandonSend}
         onSavedShown={() => nav.closePanel()}
       />
     </PanelFrame>

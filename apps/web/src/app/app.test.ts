@@ -1,7 +1,7 @@
 import { dark, light } from '@bullet/client/theme'
-import { describe, expect, test } from 'vite-plus/test'
+import { describe, expect, test, vi } from 'vite-plus/test'
 import { sparkGeometry } from '../ui/Sparkline'
-import { themeCss } from '../ui/theme-css'
+import { installTheme, themeCss } from '../ui/theme-css'
 import { fromLocalInput, toLocalInput } from './datetime'
 import {
   isSendShortcut,
@@ -162,6 +162,30 @@ describe('theme', () => {
     expect(css.indexOf(dark.background)).toBeLessThan(css.indexOf('prefers-color-scheme: light'))
     expect(css).toContain('--kind-to-check-bg')
     expect(css).toContain('--space-lg:16px')
+  })
+
+  test('without constructable stylesheets the palette goes in as CSSOM properties, not a <style> element', () => {
+    const doc = document.implementation.createHTMLDocument('t')
+    expect('adoptedStyleSheets' in doc).toBe(false)
+    let listener: ((e: { matches: boolean }) => void) | undefined
+    const query = {
+      matches: false,
+      addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
+        listener = fn
+      },
+    }
+    const view = { matchMedia: vi.fn(() => query) }
+    Object.defineProperty(doc, 'defaultView', { value: view })
+    installTheme(doc)
+    const bg = () => doc.documentElement.style.getPropertyValue('--bg')
+    expect(doc.querySelector('style')).toBeNull()
+    expect(bg()).toBe(dark.background)
+    expect(doc.documentElement.style.getPropertyValue('--space-lg')).toBe('16px')
+    expect(view.matchMedia).toHaveBeenCalledWith('(prefers-color-scheme: light)')
+    listener?.({ matches: true })
+    expect(bg()).toBe(light.background)
+    listener?.({ matches: false })
+    expect(bg()).toBe(dark.background)
   })
 
   test('no web fonts and no remote anything', () => {

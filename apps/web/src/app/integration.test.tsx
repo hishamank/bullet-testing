@@ -4,7 +4,7 @@
  * the keyboard shortcut, syncs, and renders the Stream and the Inbox from the mirror.
  */
 
-import { bullets, outbox, type PhoneDb, suggestions } from '@bullet/client'
+import { bullets, captureBullet, outbox, type PhoneDb, suggestions } from '@bullet/client'
 import { FakeServer } from '@bullet/client/testing'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -338,6 +338,89 @@ describe('the web client', () => {
     const mirror = await openMirror(await loadSqlForTests(), store)
     expect(mirror.db.select().from(bullets).all()).toHaveLength(1)
     mirror.close()
+  })
+
+  test('editing the text after a failed store retries the same capture: one bullet, the new text', async () => {
+    await pair()
+    await until(() => expect(text()).toContain('Journal'))
+    const saveSpy = vi.spyOn(store, 'save').mockRejectedValue(new Error('disk full'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const box = $('textarea.capture-input') as HTMLTextAreaElement
+    await act(async () => setValue(box, 'first wording'))
+    await click(button('Send'))
+    await until(() => expect(text()).toContain("Couldn't save this in your browser yet"))
+
+    await act(async () => setValue(box, 'second wording'))
+    await click(button('Send'))
+    await until(() => expect(text()).toContain("Couldn't save this in your browser yet"))
+    expect(countBullets(rt.db())).toBe(1)
+
+    saveSpy.mockRestore()
+    warn.mockRestore()
+    await click(button('Send'))
+    await until(() => expect(text()).toContain('Saved'))
+    const mirror = await openMirror(await loadSqlForTests(), store)
+    expect(
+      mirror.db
+        .select()
+        .from(bullets)
+        .all()
+        .map((b) => b.text),
+    ).toEqual(['second wording'])
+    mirror.close()
+    // The home server got one bullet, with the final wording.
+    await until(() => expect(server.bullets.size).toBe(1))
+    expect([...server.bullets.values()][0]?.text).toBe('second wording')
+
+    // The next capture is a new one.
+    await act(async () => setValue(box, 'a different thought'))
+    await click(button('Send'))
+    await until(() => expect(countBullets(rt.db())).toBe(2))
+  })
+
+  test('a failed store, then moving to another page (the box remounts), then Send: still one bullet', async () => {
+    await pair()
+    await until(() => expect(text()).toContain('Journal'))
+    const saveSpy = vi.spyOn(store, 'save').mockRejectedValue(new Error('disk full'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const first = $('textarea.capture-input') as HTMLTextAreaElement
+    await act(async () => setValue(first, 'kept across the remount'))
+    await click(button('Send'))
+    await until(() => expect(text()).toContain("Couldn't save this in your browser yet"))
+
+    await go('#/journal/stream')
+    const second = $('textarea.capture-input') as HTMLTextAreaElement
+    expect(second).not.toBe(first)
+    expect(second.value).toBe('kept across the remount')
+    saveSpy.mockRestore()
+    warn.mockRestore()
+    await click(button('Send'))
+    await until(() => expect(text()).toContain('Saved'))
+    expect(countBullets(rt.db())).toBe(1)
+  })
+
+  test('closing the tab is only guarded while a user write is unsaved, not a sync outcome', async () => {
+    await pair()
+    await until(() => expect(text()).toContain('Journal'))
+    await act(async () => rt.flush())
+    expect(rt.dirty()).toBe(false)
+
+    // A sync outcome waiting for its debounced save: nothing of the user's is at risk.
+    await act(async () => rt.notify())
+    expect(rt.dirty()).toBe(false)
+
+    // A user write whose save fails stays guarded, and clears once it is stored.
+    const saveSpy = vi.spyOn(store, 'save').mockRejectedValue(new Error('disk full'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await act(async () => {
+      rt.run(() => captureBullet(rt.db(), { text: 'unsaved' }, rt.deps))
+    })
+    await tick()
+    expect(rt.dirty()).toBe(true)
+    saveSpy.mockRestore()
+    warn.mockRestore()
+    expect(await rt.flush()).toBe(true)
+    expect(rt.dirty()).toBe(false)
   })
 
   test('Reset local copy rebuilds the mirror from a full pull', async () => {

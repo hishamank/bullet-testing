@@ -32,7 +32,8 @@ activity. Kinds are classification (no review needed); the user can re-classify 
 
 **Slices:** 1 = capture, transcribe, store, split into thoughts, classify, extract things,
 clarifying questions as data. 2 = reflective questions. 3 = cross-capture connections and
-recurring themes. Build gradually; don't pull slice 2/3 forward.
+recurring themes (slices 1-3 are built; the web desk client is built too). Build later slices
+gradually, one at a time.
 
 **First-slice entity set:** `Bullet`, `Task`, `Tracker` / `Tracker Entry`, `Activity`, `Event`.
 Habit, Goal, Note, Collection, Planner, recurrence and search come later, one at a time.
@@ -191,7 +192,7 @@ rules, matching, apply logic or the extraction pipeline inside a route handler o
   Session logic is pure (`session.ts`, driver injected); needs a dev build, not Expo Go.
 - **Phone data layer** (`packages/client/src/data`, `src/sync`, exported by `@bullet/client`):
   Drizzle over an injected sync SQLite driver (expo-sqlite on the phone, better-sqlite3 in Vitest,
-  a browser SQLite later). Every local action writes its change **and** its outbox op in one
+  sql.js in the browser). Every local action writes its change **and** its outbox op in one
   transaction. Migrations are drizzle-kit SQL (`packages/client/drizzle`) inlined into
   `migrations.gen.ts` (`pnpm --filter @bullet/client db:generate`) and applied by the
   driver-agnostic `migrate(db)`, so the same code runs on device and in Vitest. On the phone,
