@@ -13,6 +13,7 @@ export {
   withProvenance,
 } from './resolve'
 export { trackerName, trackerNounFrom } from './naming'
+export { cleanTitle, stripTrailingPunctuation, stripWhenPhrases } from './title'
 export {
   convertDuration,
   normalizeUnit,

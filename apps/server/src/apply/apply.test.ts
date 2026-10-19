@@ -56,7 +56,7 @@ describe('accept / reject', () => {
     const [event] = h.db.select().from(events).all()
     expect(event).toMatchObject({
       id: s?.id,
-      title: 'dentist',
+      title: 'Dentist',
       all_day: false,
       source_bullet_id: b,
     })
@@ -331,8 +331,8 @@ describe('edit reconciles; delete offers cascade vs keep', () => {
 
     const live = suggestionsOf(h, b).filter((s) => s.state === 'active')
     expect(live.map((s) => String(s.payload.title ?? s.payload.name)).sort(byText)).toEqual([
-      'buy bread',
-      'buy milk',
+      'Buy bread',
+      'Buy milk',
     ])
     expect(live.find((s) => s.id === milk?.id)?.status).toBe('accepted') // kept as the user had it
     expect(h.db.select().from(tasks).all()).toHaveLength(1) // milk not duplicated

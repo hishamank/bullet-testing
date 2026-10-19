@@ -252,6 +252,12 @@ Rules the design can rely on:
   Sleep?"), or, for something not tracked yet, a new tracker plus the reading ("Start tracking
   Sleep?"). Only a value-less activity ("meditated", "went for a walk") may be applied
   automatically.
+- **Titles are a short phrase in your own words**: "Dentist" (with Thu 15:00 in the event's
+  start), "Pay the electricity bill". The date and time go into the structured fields
+  (`due_at`, `starts_at`) and out of the title, as do a reminder lead-in ("Remind me to",
+  "Need to", "Il faut") and trailing punctuation. Your spelling and language are kept: never
+  paraphrased or translated. A date phrase the app can't read yet ("this weekend") stays in the
+  title.
 - **Tracker names are a short noun** for the measured thing, 1–2 words, Title Case, in your
   language: "Mood", "Sleep", "Sommeil". Never the reading, its unit or its value.
 - **Inbox wording.** A new tracker: "Start tracking Mood?", its name in an editable field

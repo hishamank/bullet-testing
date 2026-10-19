@@ -38,7 +38,7 @@ describe('processing (scripted model, never live)', () => {
 
     const [activity] = h.db.select().from(activities).all()
     expect(activity).toMatchObject({
-      name: 'went for a walk',
+      name: 'Went for a walk',
       occurred_at: T0,
       source_bullet_id: id,
     })
@@ -211,7 +211,7 @@ describe('durability', () => {
       .from(activities)
       .all()
       .map((a) => a.name)
-    expect(names).toEqual(['v2 thing'])
+    expect(names).toEqual(['V2 thing'])
     expect(h.db.select().from(suggestions).all()).toHaveLength(1)
   })
 

@@ -48,6 +48,7 @@ import { type Match, matchOpenTask, matchTracker, TRACKER_NAME_FIELDS } from './
 import { trackerName } from './naming'
 import { convertDuration, type Reading, readingFromFields, readingFromText } from './reading'
 import { assignTier } from './tier'
+import { cleanTitle } from './title'
 
 /** A Suggestion INSERT draft — owner_id/source_bullet_id are added when persisting. */
 export interface ResolvedSuggestion {
@@ -406,7 +407,7 @@ function resolveHappened(
   // wasn't a quantity, so `quantity` reads null) that is therefore auto-eligible again. This is
   // consistent with the value rule: no WRONG value is ever silently written — only a value-less
   // record can auto-apply.
-  return one(createActivity(candidate, config, occurredAt, reading))
+  return one(createActivity(candidate, config, ctx, occurredAt, reading))
 }
 
 /** The question offered with a new tracker (decision 4: "Start tracking Mood?"). */
@@ -585,10 +586,15 @@ function markTaskDone(
 function createActivity(
   candidate: Candidate,
   config: EngineConfig,
+  ctx: CaptureContext,
   occurredAt: number,
   reading: Reading | null,
 ): ResolvedSuggestion {
-  const name = stringField(candidate.fields, ['name', 'title'], candidate.text)
+  // Like a title: the user's words, without the date (it is `occurred_at`) or end punctuation.
+  const name = cleanTitle(stringField(candidate.fields, ['name', 'title'], candidate.text), ctx, {
+    direction: 'past',
+    fallback: candidate.text,
+  })
   // A quantity makes the activity VALUE-BEARING (e.g. "drank 3 coffees") → the tier is capped to
   // 'suggest' by default (a value is never auto-applied silently). A quantity-less activity ("went
   // for a walk") is value-less and stays auto-eligible.
@@ -634,7 +640,11 @@ function resolveFutureOneoff(
   ask: Ask,
 ): ResolvedSuggestion {
   const when = whenFor(candidate, ctx, 'future')
-  const title = stringField(candidate.fields, ['title', 'name'], candidate.text)
+  // Decision 5: a short phrase in the user's words; the date and time live in the fields.
+  const title = cleanTitle(stringField(candidate.fields, ['title', 'name'], candidate.text), ctx, {
+    direction: 'future',
+    fallback: candidate.text,
+  })
   const quoted = stringFieldOrNull(candidate.fields, ['when', 'date', 'due', 'starts'])
   if (quoted && !when) {
     // The user said when, but we could not read it: ask rather than guess.

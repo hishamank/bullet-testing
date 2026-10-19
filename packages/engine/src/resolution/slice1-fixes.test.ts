@@ -94,7 +94,7 @@ describe('relative dates resolve against capture time + zone', () => {
     )
     expect(s).toMatchObject({ target_kind: 'event', operation: 'create', target_id: null })
     expect(s.payload).toEqual({
-      title: 'dentist',
+      title: 'Dentist',
       starts_at: paris(10, 15, 15),
       ends_at: paris(10, 15, 16),
       all_day: false,
@@ -134,7 +134,7 @@ describe('future happenings route to Event vs Task', () => {
     )
     expect(s.target_kind).toBe('task')
     expect(s.payload).toMatchObject({
-      title: 'take the car to the garage',
+      title: 'Take the car to the garage',
       due_at: paris(10, 15, 10),
     })
   })

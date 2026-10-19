@@ -263,7 +263,8 @@ describe("segmentation keeps the user's own words", () => {
     const out = await processCapture({ llm, config }, { text, ...CTX }, EMPTY)
     expect(body(llm.chatCalls[1] as LlmChatRequest)).toBe(text)
     expect(out.things[0]?.payload).toMatchObject({
-      title: text,
+      // The user's words, without the lead-in and the day (it is the due date).
+      title: '2a3mol call la mama',
       due_at: Date.UTC(2026, 9, 15, 22), // Friday 00:00 in Paris
     })
     expect(out.questions).toEqual([])
@@ -288,8 +289,8 @@ describe('processCapture: capture → thoughts → things', () => {
     // 1 segmentation call + extraction for the task and the to_check thoughts only.
     expect(llm.chatCalls).toHaveLength(3)
     expect(out.things.map((t) => [t.thoughtPosition, t.target_kind, t.payload.title])).toEqual([
-      [1, 'task', 'call the landlord tomorrow'],
-      [3, 'task', 'check if the lease ends in March'],
+      [1, 'task', 'Call the landlord'],
+      [3, 'task', 'Check if the lease ends in March'],
     ])
   })
 
@@ -302,7 +303,7 @@ describe('processCapture: capture → thoughts → things', () => {
     expect(out.questions).toEqual([
       {
         topic: 'date',
-        text: 'Which Thursday for "dentist"?',
+        text: 'Which Thursday for "Dentist"?',
         options: ['Today', 'Next Thursday'],
         thoughtPosition: 0,
         thingIndex: 0,
@@ -422,7 +423,7 @@ describe('processCapture: duplicate candidates within one thought', () => {
     expect(out.things).toHaveLength(1)
     expect(out.things[0]).toMatchObject({
       target_kind: 'task',
-      payload: { title: 'take the car to the garage' },
+      payload: { title: 'Take the car to the garage' },
     })
     expect(out.duplicates).toBe(1)
   })

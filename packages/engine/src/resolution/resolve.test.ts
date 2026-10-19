@@ -50,7 +50,7 @@ describe('orientation routing', () => {
     expect(s.operation).toBe('create')
     expect(s.target_id).toBeNull()
     expect(s.payload.tracker_id).toBeNull()
-    expect(s.payload.name).toBe('wandered')
+    expect(s.payload.name).toBe('Wandered')
   })
 
   test('happened + strong tracker match → APPEND a tracker_entry with target_id', () => {
@@ -131,7 +131,7 @@ describe('orientation routing', () => {
     const s = first(suggestions)
     expect(s.target_kind).toBe('task')
     expect(s.operation).toBe('create')
-    expect(s.payload.title).toBe('buy milk')
+    expect(s.payload.title).toBe('Buy milk')
   })
 
   test('future_recurring → create a tracker DEFINITION', () => {
@@ -293,7 +293,7 @@ describe('deterministic resolution — links WITHOUT depending on referenceName 
     expect(s.operation).toBe('create')
     expect(s.target_id).toBeNull()
     expect(s.payload.tracker_id).toBeNull()
-    expect(s.payload.name).toBe('walk')
+    expect(s.payload.name).toBe('Walk')
   })
 
   test('BORDERLINE match links but the tier is FORCED to "suggest" (never auto)', () => {
@@ -802,7 +802,7 @@ describe('model-nesting normalisation (small models wrap field values one level 
     expect(s.target_kind).toBe('activity')
     expect(s.operation).toBe('create')
     // The unwrapped name is read, NOT the raw bullet text fallback.
-    expect(s.payload.name).toBe('wandered around')
+    expect(s.payload.name).toBe('Wandered around')
   })
 
   test('"drank 3 coffees" — nested { value: { value: 3 } } with NO tracker → activity quantity 3', () => {
@@ -886,8 +886,9 @@ describe('model-nesting normalisation (small models wrap field values one level 
     )
     const s = first(suggestions)
     expect(s.target_kind).toBe('task')
-    // The empty object is not a string → stringField falls back to the bullet text, exactly as today.
-    expect(s.payload.title).toBe('buy milk tomorrow')
+    // The empty object is not a string → stringField falls back to the bullet text, its date
+    // moved to `due_at` (decision 5).
+    expect(s.payload.title).toBe('Buy milk')
   })
 
   describe('unwrapValue / flattenFields units', () => {
