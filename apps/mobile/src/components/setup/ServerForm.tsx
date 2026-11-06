@@ -1,7 +1,7 @@
 /** Home server address + device token, checked with one small pull, then saved securely. */
 
 import { useState } from 'react'
-import { StyleSheet, TextInput, View } from 'react-native'
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   CHECK_MESSAGES,
   checkConnection,
@@ -116,8 +116,9 @@ export function ServerForm({
           style={field}
         />
         <Label tone="muted" size={type.label}>
-          On the server, run `pnpm --filter server device:add my-iphone` and paste the token it
-          prints.
+          On the server, run{' '}
+          <Text style={styles.command}>pnpm --filter server device:add my-iphone</Text> and paste
+          the token it prints.
         </Label>
       </View>
       {message ? (
@@ -147,4 +148,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: space.md,
   },
+  command: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
 })

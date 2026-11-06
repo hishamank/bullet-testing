@@ -37,6 +37,7 @@ export default function JournalLayout() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.switchBar}
         contentContainerStyle={styles.switch}
         accessibilityRole="tablist"
       >
@@ -74,6 +75,9 @@ export default function JournalLayout() {
 }
 
 const styles = StyleSheet.create({
+  // A ScrollView grows by default; in this column it would split the height with the view below
+  // and stretch the tabs into tall pills.
+  switchBar: { flexGrow: 0 },
   switch: { gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.sm },
   tab: {
     minHeight: size.touch,
